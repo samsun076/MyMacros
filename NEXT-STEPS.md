@@ -55,24 +55,54 @@ bar is world-class, no AI slop — the v2 mockups set the standard; don't regres
 them. Commit per issue with "closes #N", push when done.
 ```
 
-## Session B — M1 scaffold (Opus 5 @ xhigh)
+## Session B1 — M1 scaffold, autonomous half (Opus 5 @ xhigh)
 
-Issues **#4–#8**: Workers project (Vite + React + Hono) · D1 schema + migrations (incl. theme,
-accent, focus_macro columns in profiles) · better-auth (Google + passkeys) · Workers Builds
-push-to-deploy + ANTHROPIC_API_KEY secret · PWA shell (tab bar per theme conventions).
-Run after Session A — the PWA shell wants the frozen tab-bar/chrome-blend conventions.
+Everything in M1 that needs zero credentials — run it unattended. Issues **#4, #5, #8**
+plus the code side of **#6**:
 
-First act of the session: write the project `CLAUDE.md` (build rules from PLAN.md, dev
-commands, conventions) so every future session self-orients.
+- Project `CLAUDE.md` first (build rules from PLAN.md incl. the field-tested chrome-blend
+  mechanics, dev commands, conventions) so every future session self-orients.
+- #4 Workers project (Vite + React + Hono), local dev working end to end.
+- #5 D1 schema + migrations (incl. theme, accent, focus_macro columns in profiles) —
+  applied to the *local* D1 (miniflare sqlite); remote apply waits for B2.
+- #6 better-auth wiring (Google + passkeys) in code, with Google client ID/secret as env
+  placeholders — passkeys need no external setup, Google creds land in B2.
+- #8 PWA shell — tab bar per the frozen theme conventions (opaque --chrome, body bg =
+  --bg-top on phone widths), manifest, tokens.css imported, verified at 375 via
+  tools/shot-matrix.mjs.
+
+Last act: rewrite the Session B2 checklist below with the exact pending items and any
+values/URLs Dave will need, so B2 is a paint-by-numbers pairing session.
 
 ### Starter prompt (paste verbatim)
 
 ```
-Working on MyMacros (~/Projects/MyMacros). Read PLAN.md and NEXT-STEPS.md, then
-execute issues #4–#8 (M1 scaffold) in order. Start by writing a project
-CLAUDE.md capturing the build rules and dev commands. Commit per issue with
-"closes #N", push when done.
+Working on MyMacros (~/Projects/MyMacros). Read PLAN.md, NEXT-STEPS.md and
+design/TOKENS.md, then run Session B1: the autonomous half of M1. Start by
+writing the project CLAUDE.md. Then issues #4, #5 (local D1 only), the code
+side of #6 (better-auth with Google creds as env placeholders; passkeys
+fully), and #8 (PWA shell per the frozen theme conventions, verified at 375
+with tools/shot-matrix.mjs). Do NOT block on anything needing my accounts —
+stub it, and finish by updating the Session B2 checklist in NEXT-STEPS.md
+with exactly what's pending. Commit per issue ("closes #N" only where the
+issue is fully done — #6 stays open for B2), push when done.
 ```
+
+## Session B2 — M1 credentials & deploy, together (Opus 5 @ xhigh, Dave present)
+
+The half that needs Dave's accounts — do it paired; ~15–20 min. Finishes **#6** and **#7**.
+(B1 rewrites this list with exact values/URLs; until then, the shape is:)
+
+1. `! npx wrangler login` — browser OAuth click-through.
+2. Create real D1 + R2, apply migrations remote, wire bindings in wrangler config.
+3. Google Cloud Console: OAuth client for better-auth (agent supplies exact steps +
+   redirect URIs; Dave pastes back client ID/secret) → `wrangler secret put`.
+4. Cloudflare dashboard: connect repo to Workers Builds (GitHub OAuth grant, pick repo).
+5. `wrangler secret put ANTHROPIC_API_KEY` — Dave pastes the key (can slip to M2;
+   nothing in M1 calls Claude).
+6. Push → first deploy → smoke test on Dave's phone (login with Google, add a passkey,
+   install the PWA, check the chrome blend in standalone mode — answers the Memex open
+   question about theme-color in PWA mode).
 
 ## Then
 
