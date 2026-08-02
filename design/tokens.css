@@ -27,8 +27,12 @@
   --surface-raised: #242f40;    /* card top edge / elevated gradient stop */
   --chrome: #111720;            /* bottom bar surface; what iOS Safari blends
                                    with. Never accent-tinted (accent switches
-                                   live). theme-color meta: top = --bg-top,
-                                   bottom chrome = this */
+                                   live) and MUST be applied fully opaque —
+                                   Safari won't tint from translucent /
+                                   backdrop-filtered edges. Top chrome comes
+                                   from the BODY background (set it to
+                                   --bg-top on phone widths); theme-color
+                                   meta is ignored in-browser */
   --track: #263041;             /* empty meter/bar track */
   --line: rgba(214,226,240,.10);
   --line-soft: rgba(214,226,240,.06);

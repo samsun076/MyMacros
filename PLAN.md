@@ -44,7 +44,7 @@ The exception is **motif slots** — 3–4 components that render per-theme vari
 4. **Theme QA pass at the end of each milestone** — quick render check of the two light packs; full port + QA lands in M5 (#30).
 5. **Accent-aware accents** — anything colored accent must reference `--accent`, since Night Athletic users can switch it live.
 6. **375px is the reference width** — Dave's phone is an iPhone 13 mini. No design is done until verified at 375 (then 390/428); screenshot matrix tooling in #31.
-7. **Safari chrome blend** — the tab bar's *surface* color (never accent) bleeds through the bottom safe area with no seam, so iOS Safari tints its chrome to match; `theme-color` meta handles the top.
+7. **Safari chrome blend** — the tab bar's *surface* color (never accent) bleeds through the bottom safe area with no seam, so iOS Safari tints its chrome to match. Field-tested mechanics: the bottom-edge surface must be **fully opaque** (Safari won't tint from translucent/backdrop-filtered edges), and the *top* chrome follows the **body background** (set it to the page-top color on phone widths — `theme-color` meta is ignored in-browser, kept for the PWA case).
 
 ## V1 scope — the daily loop
 

@@ -14,7 +14,7 @@ forks a component, with the sole exception of the motif slots below.
 | `--page-surface` | Full `background` value for the app frame — gradient wash in Night Athletic, a flat color in the light packs |
 | `--bg-top` / `--bg` / `--bg-bottom` | Wash stops; `--bg-top` is also the `theme-color` meta for the top |
 | `--surface` / `--surface-raised` | Cards; raised = elevated gradient stop |
-| `--chrome` | Bottom-bar surface. iOS Safari blends its own chrome with it, so it extends through the safe area with **zero seam** and is **never accent-tinted** |
+| `--chrome` | Bottom-bar surface. iOS Safari blends its own chrome with it, so it extends through the safe area with **zero seam**, is **never accent-tinted**, and must be applied **fully opaque** — Safari won't tint from translucent or backdrop-filtered edges (field-tested on device vs Field Notes) |
 | `--track` | Empty meter/bar track |
 | `--line` / `--line-soft` | Hairlines |
 | `--ink` / `--ink-secondary` / `--ink-muted` | Text tiers (Night Athletic: no pure white anywhere) |
@@ -62,7 +62,13 @@ variants** (placeholder variants OK until the M5 port, per build rule 3):
   switch it live (build rule 5).
 - **375px is the reference width** (iPhone 13 mini). Verify with
   `node tools/shot-matrix.mjs` before calling any screen done.
-- `theme-color` meta = `--bg-top`; the tab bar's chrome-blend = `--chrome`.
+- **Safari chrome blend, field-tested:** in-browser iOS Safari paints its
+  *top* chrome from the document (body) background — `theme-color` is
+  ignored — so on phone widths the body background is `--bg-top`. Its
+  *bottom* bar + home-indicator strip derive from the page's bottom-edge
+  content, but only if that surface is opaque; the tab bar is solid
+  `--chrome`, no alpha, no backdrop blur. (`theme-color` meta stays at
+  `--bg-top` for the standalone/PWA case.)
 
 ## Mark-color validation (dataviz pass)
 
