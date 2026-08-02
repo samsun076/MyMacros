@@ -6,8 +6,20 @@ import "./styles/app.css";
 const root = document.getElementById("root");
 if (!root) throw new Error("#root missing from index.html");
 
+syncThemeColor();
+
 createRoot(root).render(
   <StrictMode>
     <App />
   </StrictMode>,
 );
+
+/** Keep <meta name="theme-color"> equal to --bg-top for whichever theme is
+ *  active. It's ignored by iOS Safari in-browser but honoured in standalone
+ *  mode, and the theme is a per-user setting that can change at runtime
+ *  (#29), so it can't be a static value in the HTML. */
+function syncThemeColor() {
+  const bgTop = getComputedStyle(document.documentElement).getPropertyValue("--bg-top").trim();
+  if (!bgTop) return;
+  document.querySelector('meta[name="theme-color"]')?.setAttribute("content", bgTop);
+}

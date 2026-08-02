@@ -69,6 +69,9 @@
   --radius-mark: 4px;           /* budget meter ends */
   --meter-height: 18px;         /* budget meter */
   --macro-bar-height: 6px;
+  --tabbar-height: 62px;        /* bottom chrome, excluding the safe area —
+                                   screens pad their bottom by this so the
+                                   fixed bar never covers content */
 }
 
 :root[data-theme="night-athletic"][data-accent="gold"] {

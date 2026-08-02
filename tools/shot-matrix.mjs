@@ -11,6 +11,11 @@
 //   node tools/shot-matrix.mjs "sketches/e-log-flow.html#confirm"   # hash = flow stage
 //   node tools/shot-matrix.mjs --widths 375,390 file.html
 //
+// Live app screens (every one of them is behind auth, so pass a session
+// cookie — `npm run dev` in another terminal):
+//   node tools/shot-matrix.mjs --cookie better-auth.session_token=... \
+//     http://localhost:5173/ http://localhost:5173/settings
+//
 // 375 (iPhone 13 mini) is the reference width — nothing is "done" until it
 // passes here. The dashed line on the sheet marks that device's fold
 // (logical viewport height). Zero npm deps: Node ≥22 (native WebSocket) + Chrome.
@@ -33,9 +38,14 @@ const OUT_DIR = "shots";
 const argv = process.argv.slice(2);
 let widths = Object.keys(DEVICES).map(Number);
 const files = [];
+const cookies = [];
 for (let i = 0; i < argv.length; i++) {
   if (argv[i] === "--widths") widths = argv[++i].split(",").map(Number);
-  else files.push(argv[i]);
+  else if (argv[i] === "--cookie") {
+    const raw = argv[++i];
+    const eq = raw.indexOf("=");
+    cookies.push({ name: raw.slice(0, eq), value: raw.slice(eq + 1) });
+  } else files.push(argv[i]);
 }
 if (files.length === 0) {
   for await (const f of glob("sketches/*.html")) {
@@ -100,6 +110,16 @@ function sheetHtml(name, shots) {
   </style><h1>${name}</h1><main>${cols}</main>`;
 }
 
+const TIMEOUT_MS = Number(process.env.SHOT_TIMEOUT_MS || 30000);
+function deadline(promise, what) {
+  return Promise.race([
+    promise,
+    new Promise((_, rej) =>
+      setTimeout(() => rej(new Error(`timed out after ${TIMEOUT_MS}ms: ${what}`)), TIMEOUT_MS),
+    ),
+  ]);
+}
+
 // ── main ─────────────────────────────────────────────
 await mkdir(OUT_DIR, { recursive: true });
 const profileDir = await mkdtemp(join(tmpdir(), "shot-matrix-"));
@@ -108,14 +128,37 @@ const cdp = await connect(wsUrl);
 
 try {
   const page = await openPage(cdp);
+
+  if (cookies.length) {
+    await cdp.send("Network.enable", {}, page.sessionId);
+    for (const c of cookies) {
+      // scoped to the first input's origin — these are all one dev server
+      await cdp.send(
+        "Network.setCookie",
+        { ...c, url: new URL(files[0]).origin, path: "/" },
+        page.sessionId,
+      );
+    }
+    console.log(`  (${cookies.length} cookie(s) set — shooting as a signed-in user)`);
+  }
+
   for (const file of files) {
     const [path, hash] = file.split("#");
-    const name = basename(path, ".html") + (hash ? `-${hash}` : "");
-    const url = `file://${resolve(path)}${hash ? "#" + hash : ""}`;
+    const isUrl = /^https?:\/\//.test(path);
+    // a URL has no filename, so name it after its route: / → app-home
+    const name = isUrl
+      ? "app-" + (new URL(path).pathname.replace(/^\/|\/$/g, "").replace(/\//g, "-") || "home")
+      : basename(path, ".html") + (hash ? `-${hash}` : "");
+    const url = isUrl ? file : `file://${resolve(path)}${hash ? "#" + hash : ""}`;
     const shots = [];
     for (const width of widths) {
-      await page.navigate(url);
-      const { png, height } = await fullPageShot(cdp, page.sessionId, width);
+      // a page that crashes on render never fires load or resolves fonts.ready
+      // — fail with the URL rather than hanging the design loop
+      await deadline(page.navigate(url), `navigate ${url}`);
+      const { png, height } = await deadline(
+        fullPageShot(cdp, page.sessionId, width),
+        `render ${name}@${width}`,
+      );
       const out = join(OUT_DIR, `${name}@${width}.png`);
       await writeFile(out, png);
       shots.push({ width, height, file: `file://${resolve(out)}` });

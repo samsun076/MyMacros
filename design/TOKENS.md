@@ -24,6 +24,7 @@ forks a component, with the sole exception of the motif slots below.
 | `--display-font` / `--body-font` / `--numeral-font` / `--data-font` | Numerals always set `font-variant-numeric: tabular-nums`; data-font is timestamps/scales/micro-captions |
 | `--radius-card/-thumb/-button/-mark` | Shape scale |
 | `--meter-height` / `--macro-bar-height` | Meter metrics |
+| `--tabbar-height` | Bottom chrome height, excluding the safe area. Screens pad their bottom by it so the fixed bar never covers content |
 
 Mapping from the sketch's local names (`sketches/c2-night-athletic.html`):
 `--bg-page→--canvas`, `--bg-low→--bg-bottom`, `--surface-2→--surface-raised`,

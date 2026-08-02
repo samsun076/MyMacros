@@ -2,8 +2,40 @@
 <html lang="en" data-theme="night-athletic" data-accent="coral">
   <head>
     <meta charset="utf-8" />
+    <!-- viewport-fit=cover is what makes env(safe-area-inset-*) non-zero -->
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+
     <title>MyMacros</title>
+    <meta
+      name="description"
+      content="Photograph your food, AI fills in the macros, and your daily calorie budget breathes with your running."
+    />
+
+    <!-- Ignored by iOS Safari in-browser (it tints from the body background
+         instead — see design/TOKENS.md), honoured in standalone/PWA mode.
+         main.tsx keeps it in sync with --bg-top when the theme changes. -->
+    <meta name="theme-color" content="#1a2230" />
+
+    <!-- Same families the frozen sketches use, so the app and the design
+         ground truth render identically. Self-hosting them (one less
+         third-party dependency on first paint, and offline-safe) is a
+         follow-up — see NEXT-STEPS.md. -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,100..900&family=Barlow+Condensed:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="icon" href="/icons/icon-32.png" sizes="32x32" type="image/png" />
+    <link rel="apple-touch-icon" href="/icons/icon-180.png" />
+
+    <!-- iOS home-screen install: no browser chrome, dark status bar text -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="MyMacros" />
+    <meta name="mobile-web-app-capable" content="yes" />
   </head>
   <body>
     <div id="root"></div>
