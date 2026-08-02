@@ -1,10 +1,12 @@
 # Next steps — session playbook
 
-State as of 2026-08-02 (evening): plan locked (PLAN.md), 31 issues across 7 milestones.
+State as of 2026-08-02 (night): plan locked (PLAN.md), 31 issues across 7 milestones.
 **M0 is done** — Session A ran: #31 (shot-matrix tooling), tweak list folded into
 c2-night-athletic, #2 (design/tokens.css + TOKENS.md), #3 (e-log-flow mockup), light-pack
-theme-QA done (one finding filed on #30). **Next up: Session B.** This file is the runway:
-what to run next, on which model, with paste-ready starter prompts.
+theme-QA done (one finding filed on #30). **Session B1 is done** — #4, #5 (local D1), #8
+and the code half of #6 all landed; project CLAUDE.md written. **Next up: Session B2**,
+the credentials-and-deploy half — everything left in M1 needs Dave's accounts. This file
+is the runway: what to run next, on which model, with paste-ready starter prompts.
 
 ## Model guidance (Claude Code sessions)
 
@@ -55,7 +57,7 @@ bar is world-class, no AI slop — the v2 mockups set the standard; don't regres
 them. Commit per issue with "closes #N", push when done.
 ```
 
-## Session B1 — M1 scaffold, autonomous half (Opus 5 @ xhigh)
+## Session B1 — M1 scaffold, autonomous half (Opus 5 @ xhigh) — ✅ done 2026-08-02
 
 Everything in M1 that needs zero credentials — run it unattended. Issues **#4, #5, #8**
 plus the code side of **#6**:
@@ -90,19 +92,121 @@ issue is fully done — #6 stays open for B2), push when done.
 
 ## Session B2 — M1 credentials & deploy, together (Opus 5 @ xhigh, Dave present)
 
-The half that needs Dave's accounts — do it paired; ~15–20 min. Finishes **#6** and **#7**.
-(B1 rewrites this list with exact values/URLs; until then, the shape is:)
+The half that needs Dave's accounts — do it paired; ~20–30 min. Finishes **#6** and **#7**
+and closes M1. Everything below is blocked on a login or a console only Dave can reach;
+nothing here is code that could have been written in B1.
 
-1. `! npx wrangler login` — browser OAuth click-through.
-2. Create real D1 + R2, apply migrations remote, wire bindings in wrangler config.
-3. Google Cloud Console: OAuth client for better-auth (agent supplies exact steps +
-   redirect URIs; Dave pastes back client ID/secret) → `wrangler secret put`.
-4. Cloudflare dashboard: connect repo to Workers Builds (GitHub OAuth grant, pick repo).
-5. `wrangler secret put ANTHROPIC_API_KEY` — Dave pastes the key (can slip to M2;
-   nothing in M1 calls Claude).
-6. Push → first deploy → smoke test on Dave's phone (login with Google, add a passkey,
-   install the PWA, check the chrome blend in standalone mode — answers the Memex open
-   question about theme-color in PWA mode).
+**Order matters.** The deployed URL isn't known until the first deploy, and three things
+downstream depend on it (`APP_URL`, the Google redirect URI, and the passkey `rpID`). So:
+deploy first with a placeholder, then wire identity to the real URL.
+
+### 1. Log in — `! npx wrangler login`
+Browser OAuth click-through. Everything after this needs it.
+
+### 2. Create the real D1
+```
+npx wrangler d1 create mymacros-db
+```
+Paste the printed `database_id` into `wrangler.jsonc` → `d1_databases[0].database_id`,
+replacing `"local-dev-placeholder"`. **`wrangler deploy` fails until this is a real id.**
+
+Optionally also `npx wrangler r2 bucket create mymacros-photos` — nothing reads it until
+M3, and the binding gets written in #13 alongside the code that uses it, so creating the
+bucket early only saves a trip back to the CLI.
+
+### 3. Set the session secret
+```
+openssl rand -base64 32 | npx wrangler secret put BETTER_AUTH_SECRET
+```
+Not optional — better-auth signs session cookies with it. Local dev has its own value in
+`.dev.vars`; the two are unrelated.
+
+### 4. First deploy, to learn the URL
+```
+npm run deploy
+```
+Prints `https://mymacros.<your-subdomain>.workers.dev`. **Write it down — steps 5–7 all
+need it.** Then set it as `vars.APP_URL` in `wrangler.jsonc` (it currently reads
+`http://localhost:5173`) and deploy again. `APP_URL` drives better-auth's `baseURL`, the
+trusted origin, and the passkey `rpID` — leave it on localhost and Google sign-in redirects
+to the wrong place and passkeys refuse to register.
+
+### 5. Apply the migrations remotely
+```
+npm run db:migrate:remote
+```
+One migration, `0001_schema_v1.sql`, 21 statements. Confirm with
+`curl https://<url>/api/health` → `{"ok":true,"db":true,"migration":"0001_schema_v1.sql"}`.
+
+### 6. Google OAuth client (finishes the credential half of #6)
+Google Cloud Console → **APIs & Services → Credentials → Create credentials → OAuth client
+ID → Web application**. Name it "MyMacros". Then:
+
+| Field | Value |
+|---|---|
+| Authorised JavaScript origins | `https://mymacros.<subdomain>.workers.dev` **and** `http://localhost:5173` |
+| Authorised redirect URIs | `https://mymacros.<subdomain>.workers.dev/api/auth/callback/google` **and** `http://localhost:5173/api/auth/callback/google` |
+
+The `/api/auth/callback/google` path is better-auth's convention (`basePath` + provider) —
+it is not configurable in our setup, so it must be typed exactly. Include the localhost
+entries or Google sign-in only ever works in production. If the consent screen isn't set up
+yet, Google prompts for it first: External, app name "MyMacros", Dave's email for support
+and developer contact, no scopes beyond the defaults, and add Dave as a test user (staying
+in Testing mode is fine for a personal deploy).
+
+Then, with the client ID and secret it hands back:
+```
+npx wrangler secret put GOOGLE_CLIENT_ID
+npx wrangler secret put GOOGLE_CLIENT_SECRET
+npm run deploy
+```
+`GET /api/auth-methods` should flip to `{"google":true,...}` and the sign-in screen grows a
+"Continue with Google" button. It hides itself while the credentials are missing, so that
+response is the check that this step actually worked.
+
+Optionally paste the same pair into `.dev.vars` to get Google sign-in locally too.
+
+### 7. Connect the repo to Workers Builds (#7)
+Cloudflare dashboard → **Workers & Pages → mymacros → Settings → Builds → Connect** →
+GitHub OAuth grant → pick `samsun076/MyMacros`, branch `main`. Build command `npm run
+build`, deploy command `npx wrangler deploy`. Then push an empty commit and watch it build,
+so push-to-deploy is proven rather than assumed.
+
+### 8. `wrangler secret put ANTHROPIC_API_KEY`
+Can slip to M2 — nothing in M1 calls Claude. Setting it now saves a step later.
+
+### 9. Smoke test on the phone
+1. Open the URL in iOS Safari → **Continue with Google** → lands on Today.
+2. **Settings → Add a passkey** → Face ID → the key appears in the list.
+3. Sign out → **Sign in with a passkey** → back in, no Google round-trip.
+4. Share → **Add to Home Screen**, check the icon, launch it standalone.
+5. Check the chrome blend in both modes: in Safari the top chrome should match the page top
+   and the bottom bar should meet the tab bar with no seam; in standalone, note whether
+   `theme-color` is honoured — **this answers the open Memex question about theme-color in
+   PWA mode**, so write down what it actually does.
+
+### Heads-up before Dave registers a passkey
+A passkey is bound to its `rpID` — the hostname in `APP_URL`. One registered against
+`mymacros.<subdomain>.workers.dev` stops working if the app later moves to a custom domain,
+and the local ones registered against `localhost` never work in production. So: **decide
+whether this app is getting a custom domain before step 9**, or accept re-registering
+passkeys after the move. Nothing else in M1 is domain-sensitive.
+
+### Left open on purpose, found during B1
+
+- **Google is currently the only way to create the first account.** Passkey registration
+  requires a live session (better-auth's default, kept deliberately — the alternative lets
+  an unauthenticated request mint a user, i.e. open sign-up on a personal deploy). That's
+  the right call for Dave's deploy, but it means a self-hoster on the OSS path (#26) needs
+  Google credentials just to get in. If passkey-only sign-up is wanted there, it's a real
+  decision with a real threat model — worth its own issue rather than a quiet default.
+- **Fonts come from the Google Fonts CDN**, matching the frozen sketches. Self-hosting them
+  removes a third-party dependency on first paint and makes the PWA offline-safe.
+- **No service worker.** Not needed for iOS Add-to-Home-Screen, which is all #8 promised.
+  Offline caching is its own piece of work, and a half-built one causes stale-asset pain.
+- **Tab bar at 375: "TRENDS SETTINGS" sit tight together.** The app matches
+  `sketches/c2-night-athletic.html` exactly here — verified by a side-by-side crop — so
+  this is inherited from the frozen design, not a port bug. Design call for the #2 thread.
 
 ### Starter prompt (paste verbatim, with Dave at the keyboard)
 

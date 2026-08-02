@@ -38,11 +38,22 @@ npm run check          # tsc --noEmit + wrangler types drift check
 npm run db:migrate     # apply migrations to LOCAL D1 (miniflare)
 npm run db:migrate:remote   # apply to REAL D1 — needs wrangler login
 npm run db:studio      # sqlite3 shell on the local D1 file
-npm run icons          # regenerate PWA icons into public/icons/
+npm run icons          # regenerate PWA icons + manifest from design/tokens.css
+npm run verify:auth    # drive the real passkey ceremony (needs `npm run dev`)
 node tools/shot-matrix.mjs <file.html|url>   # 375/390/428 render matrix
 ```
 
-`.dev.vars` holds local secrets (gitignored) — copy from `.dev.vars.example`.
+`.dev.vars` holds local secrets (gitignored) — **copy it from `.dev.vars.example` before
+anything else**, including before `npm run cf-typegen`: `wrangler types` reads `.dev.vars`
+to type the secret bindings, so regenerating without it silently drops
+`BETTER_AUTH_SECRET` and friends from `Env` and the Worker stops type-checking.
+
+Design QA can shoot the running app, not just the sketches — every screen is behind auth,
+so pass a session cookie:
+
+```bash
+node tools/shot-matrix.mjs --cookie better-auth.session_token=<token> http://localhost:5173/
+```
 
 ## Build rules (from PLAN.md — these are not suggestions)
 
@@ -116,5 +127,14 @@ node tools/shot-matrix.mjs <file.html|url>   # 375/390/428 render matrix
 - Chrome (headless, shot-matrix) reports `env(safe-area-inset-*)` as 0 and
   can't reproduce Safari's chrome tinting — verify those in the iOS Simulator
   or on device.
-- Google OAuth creds and the real D1/R2 bindings are placeholders until
-  Session B2 (see NEXT-STEPS.md). Passkeys work locally without any of that.
+- Google OAuth creds and the real D1 binding are placeholders until Session
+  B2 (see NEXT-STEPS.md); `wrangler deploy` fails until `database_id` is real.
+  Passkeys work locally without any of that.
+- **Signing in locally:** there's no Google yet, and passkey registration
+  needs an existing session, so the sign-in screen has a dev-only
+  email/password button. It's gated on `import.meta.env.DEV`, which Vite
+  bakes to a literal — a production Worker is built with email/password off
+  and no env var can switch it back on. Never make that gate runtime.
+- A missing static asset doesn't 404: `not_found_handling:
+  single-page-application` serves index.html instead, so a mistyped asset
+  path shows up as HTML with the wrong content-type rather than an error.

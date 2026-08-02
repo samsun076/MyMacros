@@ -25,12 +25,12 @@ function check(name, ok, detail = "") {
   console.log(`  ✗ ${name}  ${detail}`);
 }
 
-// Click the first button whose visible text contains `text`.
-const clickButton = (text) => `(() => {
-  const b = [...document.querySelectorAll('button')]
+// Click the first button or link whose visible text contains `text`.
+const click = (text) => `(() => {
+  const el = [...document.querySelectorAll('button, a')]
     .find(el => el.textContent.toLowerCase().includes(${JSON.stringify(text)}.toLowerCase()));
-  if (!b) return false;
-  b.click();
+  if (!el) return false;
+  el.click();
   return true;
 })()`;
 
@@ -80,17 +80,22 @@ await withChrome(async (cdp) => {
   const methods = await evaluate(cdp, sessionId, `fetch('/api/auth-methods').then(r=>r.json())`);
   check("google offered only when configured", methods.google === false, "(not configured yet)");
 
-  if (!(await evaluate(cdp, sessionId, clickButton("dev sign-in")))) {
+  if (!(await evaluate(cdp, sessionId, click("dev sign-in")))) {
     throw new Error("no dev sign-in button — is the server running a dev build?");
   }
-  await waitFor(cdp, sessionId, `document.querySelector('.passkeys') !== null`, {
-    label: "signed-in view",
+  await waitFor(cdp, sessionId, `document.querySelector('.tabbar') !== null`, {
+    label: "the app shell",
     timeout: 20000,
   });
-  check("signed in", true);
+  check("signed in — shell renders with the tab bar", true);
 
-  // ── 2. register a passkey ─────────────────────────────────
-  await waitFor(cdp, sessionId, clickButton("add a passkey"), { label: "add-passkey button" });
+  // ── 2. register a passkey (Settings owns it — registration
+  //       needs a session, so it can't live on the sign-in screen) ──
+  await waitFor(cdp, sessionId, click("settings"), { label: "Settings tab" });
+  await waitFor(cdp, sessionId, `document.querySelector('.passkeys') !== null`, {
+    label: "passkey manager",
+  });
+  await waitFor(cdp, sessionId, click("add a passkey"), { label: "add-passkey button" });
   await waitFor(cdp, sessionId, `document.querySelectorAll('.passkey-list li').length === 1`, {
     label: "passkey to appear in the list",
     timeout: 20000,
@@ -107,7 +112,7 @@ await withChrome(async (cdp) => {
   );
 
   // ── 3. sign out ───────────────────────────────────────────
-  await waitFor(cdp, sessionId, clickButton("sign out"), { label: "sign-out button" });
+  await waitFor(cdp, sessionId, click("sign out"), { label: "sign-out button" });
   await waitFor(cdp, sessionId, `document.querySelector('.signin') !== null`, {
     label: "sign-in screen after sign-out",
     timeout: 20000,
@@ -120,11 +125,11 @@ await withChrome(async (cdp) => {
   check("session revoked — /api/me is 401", afterSignOut === 401, `got ${afterSignOut}`);
 
   // ── 4. sign back in with the passkey alone ────────────────
-  await waitFor(cdp, sessionId, clickButton("sign in with a passkey"), {
+  await waitFor(cdp, sessionId, click("sign in with a passkey"), {
     label: "passkey sign-in button",
   });
-  await waitFor(cdp, sessionId, `document.querySelector('.passkeys') !== null`, {
-    label: "signed-in view via passkey",
+  await waitFor(cdp, sessionId, `document.querySelector('.tabbar') !== null`, {
+    label: "the app shell via passkey",
     timeout: 20000,
   });
   check("signed in with the passkey alone", true);
