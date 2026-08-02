@@ -1,7 +1,9 @@
 # Next steps — session playbook
 
-State as of 2026-08-02: plan locked (PLAN.md), 31 issues across 7 milestones, M0 nearly done
-(v2 mockups adopted as three themes; tweak list waiting on issue #2). This file is the runway:
+State as of 2026-08-02 (evening): plan locked (PLAN.md), 31 issues across 7 milestones.
+**M0 is done** — Session A ran: #31 (shot-matrix tooling), tweak list folded into
+c2-night-athletic, #2 (design/tokens.css + TOKENS.md), #3 (e-log-flow mockup), light-pack
+theme-QA done (one finding filed on #30). **Next up: Session B.** This file is the runway:
 what to run next, on which model, with paste-ready starter prompts.
 
 ## Model guidance (Claude Code sessions)
@@ -14,7 +16,7 @@ what to run next, on which model, with paste-ready starter prompts.
 - Fanned-out subagent work multiplies whichever tier you're on — the split matters most when
   spawning agents (design agents ran ~100–120k tokens each).
 
-## Session A — finish M0, freeze the design (Fable @ high)
+## Session A — finish M0, freeze the design (Fable @ high) — ✅ done 2026-08-02
 
 1. **#31** — build the screenshot-matrix tooling first (375/390/428 renders of any sketch),
    so everything after is verified at 375px (iPhone 13 mini = reference width).

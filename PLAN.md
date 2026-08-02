@@ -72,7 +72,7 @@ The app never talks to Suunto or Garmin directly in v1 — the Mac does, using a
 
 ## Build order (milestones)
 
-1. **M0 Design** — ✅ mockup rounds done (v1 + v2, all three v2s adopted as themes). Remaining: token schema + Night Athletic pack (#2), log-flow mockup (#3), Dave's tweak list folded in
+1. **M0 Design** — ✅ complete. Mockup rounds (v1 + v2, all three v2s adopted as themes); tweak list folded into Night Athletic; token schema + pack in `design/tokens.css` + `design/TOKENS.md` (#2); log-flow mockup `sketches/e-log-flow.html` (#3); screenshot-matrix QA tooling `tools/shot-matrix.mjs` (#31)
 2. **M1 Scaffold** — Workers project, D1 schema (incl. theme + accent columns), auth, PWA shell, push-to-deploy
 3. **M2 Core loop** — text quick-add → confirm sheet → Today screen, built in Night Athletic (proves AI+DB+UI without camera complexity)
 4. **M3 Photo & barcode** — camera + R2 + vision; OpenFoodFacts
