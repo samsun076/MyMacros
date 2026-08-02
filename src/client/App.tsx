@@ -1,23 +1,35 @@
-import { useEffect, useState } from "react";
-import type { Health } from "../shared/api";
+import { PasskeyManager } from "./components/PasskeyManager";
+import { useSession } from "./lib/auth";
+import { SignIn } from "./routes/SignIn";
+import { authClient } from "./lib/auth";
 
-/** Scaffold boot check (#4) — the real shell lands with #8. */
+/** Session gate. The signed-in branch becomes the tab-bar shell with #8. */
 export function App() {
-  const [health, setHealth] = useState<Health | null>(null);
+  const { data: session, isPending } = useSession();
 
-  useEffect(() => {
-    fetch("/api/health")
-      .then((r) => r.json() as Promise<Health>)
-      .then(setHealth)
-      .catch(() => setHealth(null));
-  }, []);
+  if (isPending) {
+    return <main className="splash" aria-busy="true" />;
+  }
+
+  if (!session) {
+    return <SignIn />;
+  }
 
   return (
-    <main className="boot">
-      <span className="eyebrow">MyMacros</span>
-      <p>
-        Worker {health?.ok ? "up" : "…"} · D1 {health?.db ? "connected" : "…"}
-      </p>
+    <main className="frame">
+      <header>
+        <span className="eyebrow">
+          <span className="tick" />
+          Signed in
+        </span>
+        <h1>{session.user.name || session.user.email}</h1>
+      </header>
+
+      <PasskeyManager />
+
+      <button className="btn btn-quiet" onClick={() => void authClient.signOut()}>
+        Sign out
+      </button>
     </main>
   );
 }

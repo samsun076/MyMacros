@@ -18,15 +18,12 @@
 // Limits: Chrome reports env(safe-area-inset-*) as 0 and can't reproduce iOS
 // Safari's chrome tinting — verify those in the Xcode Simulator (tier 2 in #31).
 
-import { spawn } from "node:child_process";
-import { mkdir, writeFile, mkdtemp, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { mkdir, writeFile } from "node:fs/promises";
 import { basename, join, resolve } from "node:path";
 import { glob } from "node:fs/promises";
-
-const CHROME =
-  process.env.CHROME ||
-  "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
+import { connect, launchChrome, openPage, settle } from "./cdp.mjs";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
 
 // width → logical viewport height of the matching device (fold line)
 const DEVICES = { 375: 812, 390: 844, 428: 926 };
@@ -49,101 +46,6 @@ if (files.length === 0) {
 if (files.length === 0) {
   console.error("no input files");
   process.exit(1);
-}
-
-// ── minimal CDP client ───────────────────────────────
-function connect(wsUrl) {
-  const ws = new WebSocket(wsUrl);
-  let id = 0;
-  const pending = new Map();
-  const waiters = [];
-  ws.onmessage = (e) => {
-    const msg = JSON.parse(e.data);
-    if (msg.id && pending.has(msg.id)) {
-      const { res, rej } = pending.get(msg.id);
-      pending.delete(msg.id);
-      msg.error ? rej(new Error(msg.error.message)) : res(msg.result);
-    } else if (msg.method) {
-      for (let i = waiters.length - 1; i >= 0; i--) {
-        const w = waiters[i];
-        if (w.method === msg.method && (!w.sessionId || w.sessionId === msg.sessionId)) {
-          waiters.splice(i, 1);
-          w.res(msg.params);
-        }
-      }
-    }
-  };
-  return new Promise((res, rej) => {
-    ws.onopen = () =>
-      res({
-        send: (method, params = {}, sessionId) =>
-          new Promise((res2, rej2) => {
-            const msgId = ++id;
-            pending.set(msgId, { res: res2, rej: rej2 });
-            ws.send(JSON.stringify({ id: msgId, method, params, sessionId }));
-          }),
-        once: (method, sessionId) =>
-          new Promise((res2) => waiters.push({ method, sessionId, res: res2 })),
-        close: () => ws.close(),
-      });
-    ws.onerror = rej;
-  });
-}
-
-async function launchChrome(profileDir) {
-  const proc = spawn(CHROME, [
-    "--headless=new",
-    "--remote-debugging-port=0",
-    `--user-data-dir=${profileDir}`,
-    "--no-first-run",
-    "--no-default-browser-check",
-    "--hide-scrollbars",
-  ]);
-  const wsUrl = await new Promise((res, rej) => {
-    let buf = "";
-    proc.stderr.on("data", (d) => {
-      buf += d;
-      const m = buf.match(/DevTools listening on (ws:\/\/\S+)/);
-      if (m) res(m[1]);
-    });
-    proc.on("exit", () => rej(new Error("chrome exited before DevTools was ready")));
-    setTimeout(() => rej(new Error("timed out waiting for chrome")), 15000);
-  });
-  return { proc, wsUrl };
-}
-
-async function openPage(cdp, url) {
-  const { targetId } = await cdp.send("Target.createTarget", { url: "about:blank" });
-  const { sessionId } = await cdp.send("Target.attachToTarget", { targetId, flatten: true });
-  await cdp.send("Page.enable", {}, sessionId);
-  await cdp.send("Runtime.enable", {}, sessionId);
-  // deterministic shots: skip entrance animations
-  await cdp.send(
-    "Emulation.setEmulatedMedia",
-    { features: [{ name: "prefers-reduced-motion", value: "reduce" }] },
-    sessionId,
-  );
-  return { targetId, sessionId, navigate: async (u) => {
-    // hash-only moves are same-document (no load event) — reset first
-    let loaded = cdp.once("Page.loadEventFired", sessionId);
-    await cdp.send("Page.navigate", { url: "about:blank" }, sessionId);
-    await loaded;
-    loaded = cdp.once("Page.loadEventFired", sessionId);
-    await cdp.send("Page.navigate", { url: u }, sessionId);
-    await loaded;
-  }};
-}
-
-async function settle(cdp, sessionId) {
-  await cdp.send(
-    "Runtime.evaluate",
-    {
-      expression:
-        "document.fonts.ready.then(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))))",
-      awaitPromise: true,
-    },
-    sessionId,
-  );
 }
 
 async function fullPageShot(cdp, sessionId, width) {
@@ -205,7 +107,7 @@ const { proc, wsUrl } = await launchChrome(profileDir);
 const cdp = await connect(wsUrl);
 
 try {
-  const page = await openPage(cdp, "about:blank");
+  const page = await openPage(cdp);
   for (const file of files) {
     const [path, hash] = file.split("#");
     const name = basename(path, ".html") + (hash ? `-${hash}` : "");

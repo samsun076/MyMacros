@@ -1,5 +1,6 @@
-/* Semantic token pack is the single source of truth (build rule 2) — the
-   sketches are ground truth for what these values mean. */
+/* Semantic token pack is the single source of truth (build rule 2) — never a
+   raw color, font or radius below this import. Ground truth for what the
+   values mean: sketches/c2-night-athletic.html */
 @import "../../../design/tokens.css";
 
 * {
@@ -17,22 +18,245 @@ body {
   color: var(--ink);
   font-family: var(--body-font);
   min-height: 100dvh;
+  display: flex;
+  justify-content: center;
 }
 
-.boot {
-  display: grid;
-  place-content: center;
-  gap: 10px;
-  min-height: 100dvh;
-  text-align: center;
-  color: var(--ink-secondary);
-  font-size: 13px;
+/* iOS Safari paints its top chrome from the document background and ignores
+   theme-color in-browser (field-tested) — match the page top on phones. */
+@media (max-width: 499px) {
+  body {
+    background: var(--bg-top);
+  }
 }
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* ── the app frame ────────────────────────────────────────── */
+
+.frame,
+.signin,
+.splash {
+  position: relative;
+  width: 100%;
+  max-width: 430px;
+  min-height: 100dvh;
+  background: var(--page-surface);
+  padding: calc(14px + env(safe-area-inset-top, 0px)) 22px calc(28px + env(safe-area-inset-bottom, 0px));
+}
+
+@media (min-width: 500px) {
+  .frame,
+  .signin,
+  .splash {
+    border-left: 1px solid var(--line-soft);
+    border-right: 1px solid var(--line-soft);
+  }
+}
+
+/* ── shared bones (ported from the sketch) ────────────────── */
 
 .eyebrow {
   font-size: 10px;
   font-weight: 700;
+  font-stretch: 122%;
   letter-spacing: 0.18em;
   text-transform: uppercase;
   color: var(--ink-muted);
+}
+
+.eyebrow .tick {
+  display: inline-block;
+  width: 14px;
+  height: 3px;
+  border-radius: 1.5px;
+  background: var(--accent);
+  margin-right: 8px;
+  vertical-align: 2px;
+}
+
+.mono {
+  font-family: var(--data-font);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  color: var(--ink-muted);
+}
+
+h1 {
+  font-family: var(--display-font);
+  font-size: 27px;
+  font-weight: 500;
+  line-height: 1.05;
+  letter-spacing: 0.015em;
+  text-transform: uppercase;
+  color: var(--ink-secondary);
+  margin-top: 9px;
+}
+
+h1 span {
+  color: var(--ink-muted);
+  font-weight: 400;
+}
+
+.sec-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 16px;
+}
+
+/* ── buttons ──────────────────────────────────────────────── */
+
+.btn {
+  display: block;
+  width: 100%;
+  padding: 15px 18px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-button);
+  font-family: var(--body-font);
+  font-size: 12px;
+  font-weight: 700;
+  font-stretch: 118%;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: opacity 0.16s ease, transform 0.16s ease;
+}
+
+.btn:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.btn:not(:disabled):active {
+  transform: translateY(1px);
+}
+
+.btn-accent {
+  background: var(--accent);
+  color: var(--on-accent);
+  box-shadow: 0 12px 26px rgba(5, 9, 15, 0.45), inset 0 -2px 0 rgba(10, 16, 26, 0.22);
+}
+
+.btn-quiet {
+  background: var(--surface);
+  border-color: var(--line);
+  color: var(--ink);
+}
+
+.btn-dev {
+  border-style: dashed;
+  color: var(--ink-muted);
+}
+
+.btn-text {
+  background: none;
+  border: none;
+  padding: 4px 0;
+  font-family: var(--body-font);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: var(--ink-muted);
+  cursor: pointer;
+}
+
+.btn-text:not(:disabled):hover {
+  color: var(--accent);
+}
+
+/* ── sign-in ──────────────────────────────────────────────── */
+
+.signin {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 32px;
+}
+
+.signin-head {
+  padding-top: 18vh;
+}
+
+.signin-head h1 {
+  font-size: 40px;
+  line-height: 1.02;
+  color: var(--ink);
+  margin-top: 14px;
+  text-wrap: balance;
+}
+
+.signin-head h1 span {
+  color: var(--accent);
+}
+
+.signin-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: auto;
+}
+
+.signin-error {
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--accent);
+}
+
+.signin-note {
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--ink-muted);
+  text-wrap: pretty;
+}
+
+/* ── passkeys ─────────────────────────────────────────────── */
+
+.passkeys {
+  margin-top: 30px;
+  margin-bottom: 18px;
+}
+
+.passkeys-empty {
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--ink-muted);
+  margin-bottom: 14px;
+}
+
+.passkey-list {
+  list-style: none;
+  margin-bottom: 16px;
+}
+
+.passkey-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 11px 0;
+}
+
+.passkey-list li + li {
+  border-top: 1px solid var(--line-soft);
+}
+
+.passkey-name {
+  display: block;
+  font-size: 13.5px;
+  font-weight: 500;
+  color: var(--ink);
+}
+
+.passkey-meta {
+  display: block;
+  margin-top: 3px;
+  font-size: 9.5px;
+  letter-spacing: 0.06em;
 }

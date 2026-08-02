@@ -15,9 +15,11 @@
     "auth:generate": "npx @better-auth/cli generate --config src/worker/auth.ts",
     "icons": "node tools/make-icons.mjs",
     "shots": "node tools/shot-matrix.mjs",
+    "verify:auth": "node tools/verify-auth.mjs",
     "deploy": "npm run build && wrangler deploy"
   },
   "dependencies": {
+    "@better-auth/passkey": "^1.6.25",
     "better-auth": "^1.6.25",
     "hono": "^4.12.33",
     "kysely": "^0.29.4",

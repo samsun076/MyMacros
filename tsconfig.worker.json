@@ -4,7 +4,8 @@
     "lib": ["ES2023"],
     "module": "ESNext",
     "moduleResolution": "bundler",
-    "types": ["./src/worker/worker-configuration.d.ts"],
+    // vite/client for import.meta.env — the Worker is bundled by Vite too
+    "types": ["./src/worker/worker-configuration.d.ts", "vite/client"],
 
     "strict": true,
     "noUncheckedIndexedAccess": true,

@@ -1,11 +1,18 @@
 import { Hono } from "hono";
+import type { AuthMethods, Health } from "../shared/api";
+import { createAuth } from "./auth";
+import { requireAuth } from "./middleware/auth";
+import me from "./routes/me";
 import type { AppEnv } from "./types";
 
 const app = new Hono<AppEnv>();
 
+// ── public ───────────────────────────────────────────────────
+const open = new Hono<AppEnv>();
+
 /** Liveness + binding check. `migration` is null until `npm run db:migrate`,
  *  which is also how a deploy proves it's talking to a migrated database. */
-app.get("/api/health", async (c) => {
+open.get("/health", async (c) => {
   let db = false;
   let migration: string | null = null;
   try {
@@ -17,8 +24,32 @@ app.get("/api/health", async (c) => {
   } catch {
     db = false;
   }
-  return c.json({ ok: true, db, migration, time: new Date().toISOString() });
+  return c.json<Health>({ ok: true, db, migration, time: new Date().toISOString() });
 });
+
+/** What the sign-in screen is allowed to offer here. */
+open.get("/auth-methods", (c) =>
+  c.json<AuthMethods>({
+    google: Boolean(c.env.GOOGLE_CLIENT_ID && c.env.GOOGLE_CLIENT_SECRET),
+    passkey: true,
+    devEmail: import.meta.env.DEV,
+  }),
+);
+
+// better-auth owns everything under /api/auth: OAuth callbacks, session
+// endpoints, and the passkey register/authenticate ceremony.
+open.on(["GET", "POST"], "/auth/*", (c) => createAuth(c.env).handler(c.req.raw));
+
+// ── authenticated ────────────────────────────────────────────
+// Everything mounted here runs requireAuth first, so no handler below can be
+// reached without a session — per-user isolation is a property of the mount,
+// not of remembering to check in each route.
+const secure = new Hono<AppEnv>();
+secure.use("*", requireAuth);
+secure.route("/me", me);
+
+app.route("/api", open);
+app.route("/api", secure);
 
 // Unmatched /api/* answers in JSON — never the SPA shell, so a typo'd fetch
 // fails loudly instead of parsing index.html as JSON.
