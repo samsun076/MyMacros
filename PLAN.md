@@ -34,6 +34,8 @@ The exception is **motif slots** — 3–4 components that render per-theme vari
 
 **Budget display convention** (settling a mockup discrepancy): base target and earned bonus are always shown *separately* — the meter draws base length plus a visually distinct earned extension. Never silently merge them into one number.
 
+**Focus macro** (decided): the accent color on macro bars marks the *focus macro* — the one the user is actively targeting (default protein, configurable in Settings, per-user in `profiles`). Other macros render neutral. Applies across all themes and all accent choices.
+
 ### Build rules going forward
 
 1. **Build every screen against Night Athletic first.** It's the primary; polish happens here.
