@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#141b26">
+<meta name="theme-color" content="#1a2230">
 <title>MyMacros — Blue Hour Athletic</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -17,6 +17,9 @@
     --bg-low: #10161f;
     --surface: #1c2533;
     --surface-2: #242f40;
+    /* bottom chrome surface — the tab bar + anything iOS Safari samples for
+       its own chrome. Never accent-tinted: the accent is user-switchable. */
+    --chrome: #111720;
     --line: rgba(214,226,240,.10);
     --line-soft: rgba(214,226,240,.06);
     --track: #263041;
@@ -246,7 +249,24 @@
     text-transform: uppercase;
     color: var(--ink-2);
   }
-  .macro-row.lead .lbl { color: var(--accent); }
+  .macro-row.lead .lbl { color: var(--accent); position: relative; }
+  /* focus-macro cue: the same tick that marks "Today" in the masthead marks
+     the macro being targeted (accent = focus, others neutral) */
+  .macro-row.lead .lbl::after {
+    content: "";
+    position: absolute;
+    left: 1px; bottom: -6px;
+    width: 14px; height: 3px;
+    border-radius: 1.5px;
+    background: var(--accent);
+  }
+  .vh {
+    position: absolute;
+    width: 1px; height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
   .mbar { position: relative; height: 6px; border-radius: 3px; background: var(--track); }
   .mbar i {
     position: absolute; top: 0; bottom: 0; left: 0;
@@ -348,7 +368,8 @@
     align-items: flex-end;
     gap: 3px;
     height: 36px;
-    margin-top: 14px;
+    /* full card width on its own row — bleed past the card padding */
+    margin: 14px -15px 0;
   }
   .splits i {
     flex: 1;
@@ -372,12 +393,14 @@
     padding-top: 10px;
     border-top: 1px solid var(--line-soft);
     display: flex;
+    flex-wrap: wrap; /* narrow: the eat-back note drops to its own line */
     justify-content: space-between;
     align-items: baseline;
-    gap: 10px;
+    gap: 6px 10px;
     font-size: 12px;
     color: var(--ink-2);
   }
+  .run-foot .mono { margin-left: auto; }
   .run-foot b { color: var(--accent); font-weight: 700; }
   .run-foot .mono { font-size: 9px; color: var(--muted); letter-spacing: .06em; white-space: nowrap; }
 
@@ -483,13 +506,16 @@
   }
 
   /* ── tab bar ──────────────────────────────────── */
+  /* Safari chrome blend: the tab bar's surface extends through the bottom
+     safe area with no seam or border below it, so iOS Safari tints its own
+     chrome to match. theme-color meta handles the top (--bg-top). */
   .tabbar {
     position: fixed;
     bottom: 0; left: 0; right: 0;
     margin-inline: auto;
     width: 100%;
     max-width: 430px;
-    background: rgba(17,23,32,.86);
+    background: color-mix(in srgb, var(--chrome) 86%, transparent);
     -webkit-backdrop-filter: blur(18px);
     backdrop-filter: blur(18px);
     border-top: 1px solid var(--line);
@@ -550,7 +576,7 @@
     gap: 8px;
     padding: 7px 9px;
     border-radius: 999px;
-    background: rgba(17,23,32,.84);
+    background: color-mix(in srgb, var(--chrome) 84%, transparent);
     -webkit-backdrop-filter: blur(14px);
     backdrop-filter: blur(14px);
     border: 1px solid var(--line);
@@ -570,6 +596,15 @@
   .sw-coral { background: #f88b68; }
   .sw-gold  { background: #dfa848; }
   .sw-mint  { background: #52c4a2; }
+
+  /* ── 375px (iPhone 13 mini): narrower time rail ── */
+  @media (max-width: 389px) {
+    .entry { grid-template-columns: 40px 1fr; gap: 14px; }
+    .entry .when { white-space: normal; line-height: 1.5; }
+    .tl::before { left: 47px; }
+    .entry::after { left: 44.5px; }
+    .run-stats { gap: 16px; }
+  }
 
   /* ── entrance motion ──────────────────────────── */
   @media (prefers-reduced-motion: no-preference) {
@@ -632,7 +667,7 @@
       <span class="mono">GRAMS / TARGET</span>
     </div>
     <div class="macro-row lead">
-      <span class="lbl">Protein</span>
+      <span class="lbl">Protein<span class="vh"> — focus macro</span></span>
       <span class="mbar"><i style="width:58.2%"></i></span>
       <span class="val">96 <span>/ 165 g</span></span>
     </div>
