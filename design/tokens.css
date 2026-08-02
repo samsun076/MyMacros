@@ -1,0 +1,91 @@
+/* MyMacros — semantic design tokens (issue #2)
+ *
+ * One layout, one component tree; a theme is a token pack applied via
+ * data-theme on <html>, plus data-accent for Night Athletic's switchable
+ * accent. Components reference ONLY these semantic names — never raw
+ * colors/fonts/radii (build rule 2). Motif slots (the few components with
+ * per-theme code) are documented in design/TOKENS.md.
+ *
+ * Ground truth: sketches/c2-night-athletic.html (post tweak-list).
+ * Light packs (field-notes, instrument) land with the M5 port (#30).
+ */
+
+:root[data-theme="night-athletic"] {
+  color-scheme: dark;
+
+  /* ── surfaces ─ blue hour, 5:45 AM, not midnight ── */
+  --canvas: #0d1219;            /* behind the app frame (desktop letterbox) */
+  --bg-top: #1a2230;            /* page wash stops… */
+  --bg: #141b26;
+  --bg-bottom: #10161f;
+  /* …composed here so flat themes can swap in a single color */
+  --page-surface:
+    radial-gradient(130% 34% at 50% 0%, var(--accent-glow) 0%, rgba(0,0,0,0) 62%),
+    linear-gradient(180deg, var(--bg-top) 0%, var(--bg) 36%, var(--bg-bottom) 100%);
+
+  --surface: #1c2533;           /* card */
+  --surface-raised: #242f40;    /* card top edge / elevated gradient stop */
+  --chrome: #111720;            /* bottom bar surface; what iOS Safari blends
+                                   with. Never accent-tinted (accent switches
+                                   live). theme-color meta: top = --bg-top,
+                                   bottom chrome = this */
+  --track: #263041;             /* empty meter/bar track */
+  --line: rgba(214,226,240,.10);
+  --line-soft: rgba(214,226,240,.06);
+
+  /* ── ink ─ compressed tiers, no pure white ──────── */
+  --ink: #dfe6ee;
+  --ink-secondary: #9fadc0;
+  --ink-muted: #8a97ac;
+
+  /* ── data marks ─────────────────────────────────── */
+  --mark-neutral: #66748a;      /* non-focus macro bars, weight spark line —
+                                   deliberately recessive; ≥3:1 on --surface */
+  --positive: #4ec77a;          /* trending the right way (weight delta) */
+
+  /* ── accent ─ dawn coral (default); data-accent switches ── */
+  --accent: #f88b68;
+  --accent-soft: rgba(248,139,104,.36);   /* earned-zone hatch, dim marks */
+  --accent-wash: rgba(248,139,104,.09);   /* tinted fills/backgrounds */
+  --accent-glow: rgba(248,139,104,.08);   /* page-top radial */
+  --on-accent: #16202e;                   /* ink on accent surfaces */
+
+  /* ── type ───────────────────────────────────────── */
+  --display-font: "Barlow Condensed", "Arial Narrow", sans-serif;
+  --body-font: "Archivo", "Helvetica Neue", sans-serif;
+  --numeral-font: var(--display-font);    /* big numbers; always with
+                                             font-variant-numeric: tabular-nums */
+  --data-font: "IBM Plex Mono", "SF Mono", monospace; /* timestamps, scales,
+                                             micro-captions */
+
+  /* ── shape & metrics ────────────────────────────── */
+  --radius-card: 14px;
+  --radius-thumb: 11px;         /* meal photo thumbs */
+  --radius-button: 18px;        /* the log button */
+  --radius-mark: 4px;           /* budget meter ends */
+  --meter-height: 18px;         /* budget meter */
+  --macro-bar-height: 6px;
+}
+
+:root[data-theme="night-athletic"][data-accent="gold"] {
+  --accent: #dfa848;
+  --accent-soft: rgba(223,168,72,.36);
+  --accent-wash: rgba(223,168,72,.09);
+  --accent-glow: rgba(223,168,72,.08);
+}
+
+:root[data-theme="night-athletic"][data-accent="mint"] {
+  --accent: #52c4a2;
+  --accent-soft: rgba(82,196,162,.36);
+  --accent-wash: rgba(82,196,162,.09);
+  --accent-glow: rgba(82,196,162,.07);
+}
+
+/* ── light packs: placeholders until the M5 port (#30) ──
+ * :root[data-theme="field-notes"]  — ground truth sketches/d2-field-notes.html
+ *   (warm-ivory ledger, vermilion stamp; --canvas ivory, flat --page-surface)
+ * :root[data-theme="instrument"]   — ground truth sketches/b2-instrument.html
+ *   (bone paper, machined Braun-style dial)
+ * Both are color-scheme: light and have NO data-accent variants — the
+ * switchable accent is a Night Athletic feature.
+ */
