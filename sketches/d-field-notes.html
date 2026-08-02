@@ -1,0 +1,639 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>MyMacros — D · Tactile Field Notes</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Alegreya+Sans:ital,wght@0,400;0,500;0,700;0,800;1,400;1,500&family=Courier+Prime:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
+<style>
+  /* ————————————————————————————————————————————————
+     MYMACROS · DIRECTION D · "TACTILE FIELD NOTES"
+     A daily intake ledger: pale ledger-green paper,
+     iroshizuku inks, hanko-stamp vermilion, dotted
+     leaders, a red margin rule, totals closed with a
+     double rule. Alegreya Sans + Courier Prime.
+     ———————————————————————————————————————————————— */
+  :root{
+    --paper:      #EBEDE2;  /* pale ledger green   */
+    --paper-deep: #E0E3D4;  /* wells, meter tracks */
+    --paper-edge: #D3D7C5;
+    --ink:        #26343A;  /* tsuki-yo blue-black */
+    --ink-soft:   #64716D;
+    --ink-faint:  #8B968F;
+    --rule:       rgba(38,52,58,.14);
+    --pine:       #24513F;  /* notebook cover      */
+    --vermilion:  #C13A28;  /* hanko stamp — accent only */
+    --ink-p:      #1F7A4D;  /* protein  · green ink  (validated) */
+    --ink-c:      #3567C0;  /* carbs    · blue ink   (validated) */
+    --ink-f:      #B03A72;  /* fat      · plum ink   (validated) */
+    --desk:       #171E18;
+    --mono: "Courier Prime", "Courier New", monospace;
+    --sans: "Alegreya Sans", "Gill Sans", system-ui, sans-serif;
+  }
+  *{ margin:0; padding:0; box-sizing:border-box; }
+  html{ -webkit-text-size-adjust:100%; }
+  body{
+    font-family:var(--sans);
+    color:var(--ink);
+    background:var(--desk);
+    min-height:100dvh;
+  }
+
+  /* ——— the page (phone column) ——— */
+  .page{
+    position:relative;
+    width:min(390px,100%);
+    margin:0 auto;
+    min-height:100dvh;
+    background:
+      /* faint fibrous mottle */
+      radial-gradient(120% 60% at 20% 0%, rgba(255,255,255,.35), transparent 60%),
+      radial-gradient(90% 50% at 90% 100%, rgba(38,52,58,.05), transparent 55%),
+      var(--paper);
+    box-shadow: 0 0 0 1px rgba(0,0,0,.35), 0 24px 60px rgba(0,0,0,.5);
+    padding-bottom: calc(118px + env(safe-area-inset-bottom));
+    overflow:hidden;
+  }
+  /* paper grain — pure CSS/SVG data-uri, very quiet */
+  .page::before{
+    content:""; position:absolute; inset:0; pointer-events:none; z-index:0;
+    opacity:.05; mix-blend-mode:multiply;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='240'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='240' height='240' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+  @media (max-width:430px){
+    .page{ box-shadow:none; }
+    body{ background:var(--paper); }
+  }
+  .sheet{ position:relative; z-index:1; }
+
+  /* ——— shared bits ——— */
+  .eyebrow{
+    font-family:var(--mono); font-size:10px; font-weight:700;
+    letter-spacing:.18em; text-transform:uppercase; color:var(--ink-soft);
+  }
+  .mono{ font-family:var(--mono); }
+  .section{
+    padding:18px 20px 20px;
+    border-top:1px solid var(--rule);
+  }
+  .section-head{
+    display:flex; justify-content:space-between; align-items:baseline;
+    margin-bottom:14px;
+  }
+  .section-head .note{
+    font-family:var(--mono); font-size:9.5px; letter-spacing:.08em;
+    color:var(--ink-faint); text-transform:uppercase;
+  }
+
+  /* ——— header ——— */
+  .masthead{
+    padding: calc(14px + env(safe-area-inset-top)) 20px 0;
+  }
+  .topline{
+    display:flex; justify-content:space-between; align-items:center;
+    padding-bottom:10px; border-bottom:2px solid var(--ink);
+  }
+  .topline .brand{
+    font-family:var(--mono); font-weight:700; font-size:11px;
+    letter-spacing:.22em; text-transform:uppercase;
+  }
+  .topline .logno{
+    font-family:var(--mono); font-size:10px; letter-spacing:.12em;
+    color:var(--ink-soft);
+  }
+  .dateblock{
+    display:flex; align-items:flex-end; justify-content:space-between;
+    padding:16px 0 18px;
+  }
+  .dateblock h1{
+    font-size:34px; line-height:1; font-weight:800; letter-spacing:-.01em;
+  }
+  .dateblock h1 .dow{
+    display:block; font-family:var(--mono); font-weight:700; font-size:10.5px;
+    letter-spacing:.26em; text-transform:uppercase; color:var(--vermilion);
+    margin-bottom:7px;
+  }
+  .daycount{
+    text-align:right; font-family:var(--mono); font-size:10px;
+    line-height:1.7; letter-spacing:.1em; color:var(--ink-soft);
+    text-transform:uppercase;
+  }
+  .daycount b{ color:var(--ink); font-weight:700; }
+
+  /* ——— budget ——— */
+  .budget .figures{
+    display:flex; align-items:baseline; gap:10px; margin-bottom:4px;
+  }
+  .budget .big{
+    font-family:var(--mono); font-weight:700; font-size:52px; line-height:1;
+    letter-spacing:-.03em;
+  }
+  .budget .of{
+    font-family:var(--mono); font-size:13px; color:var(--ink-soft); letter-spacing:.02em;
+  }
+  .budget .left{
+    margin-left:auto; text-align:right; font-family:var(--mono);
+    font-size:12px; line-height:1.45; color:var(--ink);
+  }
+  .budget .left b{ font-size:17px; font-weight:700; display:block; }
+  .budget .left span{ font-size:9.5px; letter-spacing:.14em; text-transform:uppercase; color:var(--ink-soft); }
+
+  /* ruler meter: eaten fill + hatched "earned" extension */
+  .ruler{ margin-top:14px; }
+  .ruler .track{
+    position:relative; height:12px;
+    background:var(--paper-deep);
+    border:1px solid var(--rule);
+    border-radius:4px;
+  }
+  .ruler .fill{
+    position:absolute; top:2px; bottom:2px; left:2px;
+    width:calc(57.7% - 2px);
+    background:var(--pine);
+    border-radius:3px;
+    transform-origin:left center;
+  }
+  .ruler .earned{
+    position:absolute; top:2px; bottom:2px; right:2px;
+    width:calc(15.8% - 2px);   /* 340 / 2150 */
+    border-radius:3px;
+    border:1px solid var(--vermilion);
+    background:repeating-linear-gradient(135deg,
+      rgba(193,58,40,.55) 0 1.5px, transparent 1.5px 5px);
+    opacity:.9;
+  }
+  .ruler .ticks{
+    position:relative; height:16px; margin-top:3px;
+    font-family:var(--mono); font-size:8.5px; color:var(--ink-faint);
+    letter-spacing:.04em;
+  }
+  .ruler .ticks i{
+    position:absolute; top:0; transform:translateX(-50%);
+    font-style:normal; text-align:center; line-height:1;
+    padding-top:5px;
+  }
+  .ruler .ticks i::before{
+    content:""; position:absolute; top:0; left:50%; width:1px; height:3.5px;
+    background:var(--ink-faint);
+  }
+  .ruler .ticks i:first-child{ transform:none; }
+  .ruler .ticks i:first-child::before{ left:0; }
+
+  /* hanko-style earned stamp */
+  .stamp{
+    display:inline-block; margin-top:12px;
+    padding:6px 11px 5px;
+    font-family:var(--mono); font-weight:700; font-size:10.5px;
+    letter-spacing:.14em; text-transform:uppercase;
+    color:var(--vermilion);
+    border:2px solid var(--vermilion);
+    border-radius:3px;
+    transform:rotate(-1.6deg);
+    mix-blend-mode:multiply;
+    -webkit-mask-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='40'%3E%3Cfilter id='r'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.55' numOctaves='2' stitchTiles='stitch'/%3E%3CfeComponentTransfer%3E%3CfeFuncA type='discrete' tableValues='0 .5 .9 1 1 1 1 1 1 1 1 1'/%3E%3C/feComponentTransfer%3E%3C/filter%3E%3Crect width='140' height='40' fill='black' filter='url(%23r)'/%3E%3C/svg%3E");
+    mask-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='40'%3E%3Cfilter id='r'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.55' numOctaves='2' stitchTiles='stitch'/%3E%3CfeComponentTransfer%3E%3CfeFuncA type='discrete' tableValues='0 .5 .9 1 1 1 1 1 1 1 1 1'/%3E%3C/feComponentTransfer%3E%3C/filter%3E%3Crect width='140' height='40' fill='black' filter='url(%23r)'/%3E%3C/svg%3E");
+  }
+
+  /* ——— macros ——— */
+  .macro-row{
+    display:grid; grid-template-columns:64px 1fr 84px;
+    align-items:center; gap:12px;
+  }
+  .macro-row + .macro-row{ margin-top:13px; }
+  .macro-row .lab{
+    font-family:var(--mono); font-weight:700; font-size:10px;
+    letter-spacing:.16em; text-transform:uppercase;
+  }
+  .macro-row .bar{
+    position:relative; height:8px;
+    background:var(--paper-deep);
+    border:1px solid var(--rule); border-radius:4px;
+  }
+  .macro-row .bar i{
+    position:absolute; top:1px; bottom:1px; left:1px;
+    border-radius:3px; transform-origin:left center;
+  }
+  .macro-row .val{
+    font-family:var(--mono); font-size:12.5px; text-align:right;
+    color:var(--ink); white-space:nowrap;
+  }
+  .macro-row .val small{ font-size:10px; color:var(--ink-faint); }
+  .m-p .lab{ color:var(--ink-p);} .m-p .bar i{ background:var(--ink-p); width:58.2%; }
+  .m-c .lab{ color:var(--ink-c);} .m-c .bar i{ background:var(--ink-c); width:57.6%; }
+  .m-f .lab{ color:var(--ink-f);} .m-f .bar i{ background:var(--ink-f); width:58.3%; }
+
+  /* ——— entries (the ledger) ——— */
+  .entries-body{
+    position:relative;
+    padding-left:16px;
+  }
+  .entries-body::before{      /* red margin rule */
+    content:""; position:absolute; left:2px; top:-6px; bottom:-2px;
+    width:1.5px; background:var(--vermilion); opacity:.5;
+  }
+  .entry{
+    display:grid; grid-template-columns:46px 1fr; gap:12px;
+    align-items:center;
+    padding:12px 0;
+  }
+  .entry + .entry{ border-top:1px solid var(--rule); }
+  .sketch{
+    width:46px; height:46px;
+    background:#F2F3EA;
+    border:1px solid var(--paper-edge);
+    border-radius:4px;
+    display:flex; align-items:center; justify-content:center;
+    transform:rotate(-1.4deg);
+    box-shadow:1px 1.5px 0 rgba(38,52,58,.10);
+  }
+  .entry:nth-child(2n) .sketch{ transform:rotate(1.2deg); }
+  .sketch svg{ display:block; }
+  .entry .titleline{
+    display:flex; align-items:baseline; gap:8px;
+  }
+  .entry .name{
+    font-weight:700; font-size:15.5px; letter-spacing:.005em;
+  }
+  .entry .leader{
+    flex:1; min-width:14px;
+    border-bottom:2px dotted rgba(38,52,58,.35);
+    transform:translateY(-4px);
+  }
+  .entry .kcal{
+    font-family:var(--mono); font-weight:700; font-size:15px; white-space:nowrap;
+  }
+  .entry .kcal small{ font-weight:400; font-size:10px; color:var(--ink-faint); }
+  .entry .desc{
+    font-size:13px; color:var(--ink-soft); font-style:italic;
+    margin-top:1px; line-height:1.35;
+  }
+  .entry .meta{
+    margin-top:4px;
+    font-family:var(--mono); font-size:9.5px; letter-spacing:.09em;
+    color:var(--ink-faint); text-transform:uppercase;
+  }
+  .entry .meta b{ font-weight:700; }
+  .entry .meta .p{ color:var(--ink-p);} .entry .meta .c{ color:var(--ink-c);} .entry .meta .f{ color:var(--ink-f);}
+
+  /* run entry = a credit line */
+  .entry.run .kcal{ color:var(--vermilion); }
+  .entry.run .sketch{ background:#EFF1E6; }
+  .credit-tag{
+    display:inline-block; margin-top:6px;
+    font-family:var(--mono); font-weight:700; font-size:9px;
+    letter-spacing:.14em; text-transform:uppercase;
+    color:var(--vermilion); border:1.5px solid var(--vermilion);
+    border-radius:2px; padding:2.5px 6px 1.5px;
+    transform:rotate(-1deg);
+    mix-blend-mode:multiply;
+  }
+
+  /* total row — closed with a double rule, like a real ledger */
+  .totals{
+    margin-top:2px; padding-top:9px;
+    border-top:3px double var(--ink);
+    display:flex; align-items:baseline; gap:8px;
+  }
+  .totals .lab{
+    font-family:var(--mono); font-weight:700; font-size:10px;
+    letter-spacing:.18em; text-transform:uppercase;
+  }
+  .totals .leader{
+    flex:1; border-bottom:2px dotted rgba(38,52,58,.35);
+    transform:translateY(-3px);
+  }
+  .totals .sum{ font-family:var(--mono); font-weight:700; font-size:14px; }
+  .totals .sum small{ font-weight:400; font-size:10px; color:var(--ink-faint); }
+
+  /* ——— weight strip ——— */
+  .weight{
+    display:grid; grid-template-columns:1fr auto; gap:6px 16px;
+    align-items:center;
+  }
+  .weight .reading{
+    font-family:var(--mono); font-weight:700; font-size:30px; line-height:1;
+    letter-spacing:-.02em;
+  }
+  .weight .reading small{ font-size:13px; font-weight:400; color:var(--ink-soft); letter-spacing:0; }
+  .weight .delta{
+    margin-top:7px; display:inline-block;
+    font-family:var(--mono); font-weight:700; font-size:10.5px;
+    letter-spacing:.1em; color:var(--pine);
+  }
+  .weight .spark{ grid-row:1 / span 2; align-self:center; }
+  .weight .spark text{
+    font-family:var(--mono); font-size:8px; fill:var(--ink-faint); letter-spacing:.06em;
+  }
+
+  /* ——— daily footnote (hobonichi-style) ——— */
+  .footnote{
+    padding:16px 20px 8px;
+    border-top:1px solid var(--rule);
+    font-style:italic; font-size:12.5px; color:var(--ink-faint);
+    text-align:center;
+  }
+
+  /* ——— tab bar : the notebook cover ——— */
+  .tabbar{
+    position:fixed; bottom:0; left:50%; transform:translateX(-50%);
+    width:min(390px,100%); z-index:10;
+    background:var(--pine);
+    padding: 10px 8px calc(10px + env(safe-area-inset-bottom));
+    display:grid; grid-template-columns:1fr 1fr 92px 1fr 1fr;
+    align-items:center;
+    box-shadow:0 -1px 0 rgba(0,0,0,.18);
+  }
+  .tabbar .logbtn{ grid-column:3; }
+  .tabbar .tab-settings{ grid-column:4 / 6; }
+  .tabbar::before{  /* stitched cover seam */
+    content:""; position:absolute; top:5px; left:10px; right:10px; height:0;
+    border-top:1.5px dashed rgba(235,237,226,.28);
+  }
+  .tab{
+    appearance:none; background:none; border:0; cursor:pointer;
+    display:flex; flex-direction:column; align-items:center; gap:3px;
+    color:#EBEDE2; opacity:.55; padding:4px 0;
+    font-family:var(--mono); font-size:8.5px; font-weight:700;
+    letter-spacing:.18em; text-transform:uppercase;
+  }
+  .tab.active{ opacity:1; }
+  .tab.active::after{
+    content:""; width:14px; height:2px; margin-top:1px;
+    background:#EBEDE2; border-radius:1px;
+  }
+  .tab svg{ display:block; }
+  .tab:focus-visible, .logbtn:focus-visible{
+    outline:2px solid #EBEDE2; outline-offset:3px; border-radius:6px;
+  }
+  .logbtn{
+    appearance:none; border:0; cursor:pointer;
+    justify-self:center;
+    width:58px; height:58px; border-radius:50%;
+    margin-top:-30px;
+    background:var(--vermilion);
+    color:#F6F2E8;
+    box-shadow:
+      0 0 0 3px var(--paper),
+      0 3px 0 rgba(0,0,0,.22),
+      inset 0 -2px 0 rgba(0,0,0,.15);
+    display:flex; align-items:center; justify-content:center;
+    transform:rotate(-3deg);
+    transition:transform .12s ease;
+  }
+  .logbtn:active{ transform:rotate(-3deg) scale(.94); }
+  .logbtn svg{ display:block; }
+
+  /* ——— entrance ——— */
+  @keyframes rise{ from{ opacity:0; transform:translateY(9px);} to{ opacity:1; transform:none;} }
+  @keyframes press{
+    0%{ opacity:0; transform:rotate(-1.6deg) scale(1.25);}
+    62%{ opacity:1; transform:rotate(-1.6deg) scale(.97);}
+    100%{ opacity:1; transform:rotate(-1.6deg) scale(1);}
+  }
+  @keyframes grow{ from{ transform:scaleX(0);} to{ transform:scaleX(1);} }
+  .sheet > *{ animation:rise .5s ease-out backwards; }
+  .sheet > *:nth-child(1){ animation-delay:.02s; }
+  .sheet > *:nth-child(2){ animation-delay:.08s; }
+  .sheet > *:nth-child(3){ animation-delay:.14s; }
+  .sheet > *:nth-child(4){ animation-delay:.20s; }
+  .sheet > *:nth-child(5){ animation-delay:.26s; }
+  .sheet > *:nth-child(6){ animation-delay:.32s; }
+  .stamp{ animation:press .45s cubic-bezier(.2,.9,.3,1.3) .55s backwards; }
+  .ruler .fill, .macro-row .bar i{ animation:grow .7s cubic-bezier(.25,.8,.3,1) .35s backwards; }
+  @media (prefers-reduced-motion:reduce){
+    .sheet > *, .stamp, .ruler .fill, .macro-row .bar i{ animation:none; }
+    .logbtn{ transition:none; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="sheet">
+
+    <!-- ① masthead -->
+    <header class="masthead">
+      <div class="topline">
+        <span class="brand">MyMacros</span>
+        <span class="logno">Intake ledger · No. 213</span>
+      </div>
+      <div class="dateblock">
+        <h1><span class="dow">Friday</span>August 1</h1>
+        <div class="daycount">
+          Day <b>213</b>/365<br>
+          Week 31 · <b>2026</b>
+        </div>
+      </div>
+    </header>
+
+    <!-- ② daily budget -->
+    <section class="section budget" aria-label="Daily calorie budget">
+      <div class="section-head">
+        <span class="eyebrow">Daily budget</span>
+        <span class="note">kcal · adjusted</span>
+      </div>
+      <div class="figures">
+        <span class="big">1,240</span>
+        <span class="of">/ 2,150<br>eaten</span>
+        <span class="left"><span>remaining</span><b>910</b></span>
+      </div>
+      <div class="ruler">
+        <div class="track" role="img" aria-label="1,240 of 2,150 kilocalories eaten; the last 340 of the budget was earned by running">
+          <i class="fill"></i>
+          <i class="earned" title="+340 kcal earned"></i>
+        </div>
+        <div class="ticks" aria-hidden="true">
+          <i style="left:0">0</i>
+          <i style="left:23.3%">500</i>
+          <i style="left:46.5%">1000</i>
+          <i style="left:69.8%">1500</i>
+          <i style="left:93%">2000</i>
+        </div>
+      </div>
+      <span class="stamp">+340 kcal earned · 6.2 mi run</span>
+    </section>
+
+    <!-- ③ macros -->
+    <section class="section" aria-label="Macro progress">
+      <div class="section-head">
+        <span class="eyebrow">Macros</span>
+        <span class="note">grams / target</span>
+      </div>
+      <div class="macro-row m-p">
+        <span class="lab">Protein</span>
+        <span class="bar"><i></i></span>
+        <span class="val">96 <small>/ 165 g</small></span>
+      </div>
+      <div class="macro-row m-c">
+        <span class="lab">Carbs</span>
+        <span class="bar"><i></i></span>
+        <span class="val">118 <small>/ 205 g</small></span>
+      </div>
+      <div class="macro-row m-f">
+        <span class="lab">Fat</span>
+        <span class="bar"><i></i></span>
+        <span class="val">42 <small>/ 72 g</small></span>
+      </div>
+    </section>
+
+    <!-- ④ entries — the ledger -->
+    <section class="section" aria-label="Today's entries">
+      <div class="section-head">
+        <span class="eyebrow">Entries</span>
+        <span class="note">3 meals · 1 run</span>
+      </div>
+      <div class="entries-body">
+
+        <!-- run first: it happened at 6:18 AM and funds the budget -->
+        <article class="entry run">
+          <div class="sketch" aria-hidden="true">
+            <!-- route doodle -->
+            <svg width="34" height="34" viewBox="0 0 34 34" fill="none" stroke="#26343A" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M6 27 C 4 20, 12 21, 13 15 S 8 8, 14 6 22 10, 24 8" stroke-dasharray="3 2.4"/>
+              <circle cx="6" cy="27" r="2.2" fill="#26343A" stroke="none"/>
+              <circle cx="26" cy="7" r="3" fill="none" stroke="#C13A28" stroke-width="1.8"/>
+            </svg>
+          </div>
+          <div>
+            <div class="titleline">
+              <span class="name">Morning run</span>
+              <span class="leader" aria-hidden="true"></span>
+              <span class="kcal">−680 <small>kcal</small></span>
+            </div>
+            <p class="desc">6.2 mi along the river, easy effort</p>
+            <p class="meta">6:18 AM · <b>8:41</b> /mi · suunto</p>
+            <span class="credit-tag">Credit +340 to budget</span>
+          </div>
+        </article>
+
+        <article class="entry">
+          <div class="sketch" aria-hidden="true">
+            <!-- yogurt bowl -->
+            <svg width="34" height="34" viewBox="0 0 34 34" fill="none" stroke="#26343A" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M6 16 h22 c0 7-5 11-11 11 S6 23 6 16 Z"/>
+              <circle cx="13" cy="12" r="1.9"/><circle cx="19" cy="10" r="1.9"/><circle cx="24" cy="13" r="1.9"/>
+              <path d="M9 10 C 9 7, 13 7, 13 4"/>
+            </svg>
+          </div>
+          <div>
+            <div class="titleline">
+              <span class="name">Breakfast</span>
+              <span class="leader" aria-hidden="true"></span>
+              <span class="kcal">410 <small>kcal</small></span>
+            </div>
+            <p class="desc">Greek yogurt, blueberries, granola</p>
+            <p class="meta">7:12 AM · <b class="p">P 26</b> · <b class="c">C 48</b> · <b class="f">F 12</b></p>
+          </div>
+        </article>
+
+        <article class="entry">
+          <div class="sketch" aria-hidden="true">
+            <!-- burrito bowl -->
+            <svg width="34" height="34" viewBox="0 0 34 34" fill="none" stroke="#26343A" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M4 15 h26 c-1 8-6 12-13 12 S5 23 4 15 Z"/>
+              <path d="M8 15 c1-3 4-5 6-4 M15 14 c0-3 3-5 6-4 M22 14 c2-2 5-1 6 1"/>
+              <circle cx="12" cy="20" r="1" fill="#26343A" stroke="none"/>
+              <circle cx="17" cy="22" r="1" fill="#26343A" stroke="none"/>
+              <circle cx="22" cy="20" r="1" fill="#26343A" stroke="none"/>
+            </svg>
+          </div>
+          <div>
+            <div class="titleline">
+              <span class="name">Lunch</span>
+              <span class="leader" aria-hidden="true"></span>
+              <span class="kcal">620 <small>kcal</small></span>
+            </div>
+            <p class="desc">Chipotle chicken bowl, no rice, extra beans</p>
+            <p class="meta">12:38 PM · <b class="p">P 62</b> · <b class="c">C 52</b> · <b class="f">F 22</b></p>
+          </div>
+        </article>
+
+        <article class="entry">
+          <div class="sketch" aria-hidden="true">
+            <!-- apple + jar -->
+            <svg width="34" height="34" viewBox="0 0 34 34" fill="none" stroke="#26343A" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 12 c-4 0-6 4-6 8 s3 9 6 9 c1.5 0 2-1 3-1 s1.5 1 3 1 c3 0 6-5 6-9 s-2-8-6-8 c-2 0-2.5 1-3 1 s-1-1-3-1 Z" transform="scale(.72) translate(3,7)"/>
+              <path d="M15 12 c0-3 1.5-5 4-6" transform="scale(.72) translate(3,7)"/>
+              <rect x="21" y="17" width="9" height="11" rx="1.6"/>
+              <path d="M21 20.5 h9"/>
+            </svg>
+          </div>
+          <div>
+            <div class="titleline">
+              <span class="name">Snack</span>
+              <span class="leader" aria-hidden="true"></span>
+              <span class="kcal">210 <small>kcal</small></span>
+            </div>
+            <p class="desc">Apple + peanut butter</p>
+            <p class="meta">3:05 PM · <b class="p">P 8</b> · <b class="c">C 18</b> · <b class="f">F 8</b></p>
+          </div>
+        </article>
+
+        <div class="totals">
+          <span class="lab">Logged</span>
+          <span class="leader" aria-hidden="true"></span>
+          <span class="sum">1,240 <small>kcal</small></span>
+        </div>
+      </div>
+    </section>
+
+    <!-- ⑤ weight strip -->
+    <section class="section" aria-label="Weight">
+      <div class="section-head">
+        <span class="eyebrow">Morning weigh-in</span>
+        <span class="note">garmin scale · 6:41 AM</span>
+      </div>
+      <div class="weight">
+        <div>
+          <div class="reading">186.2 <small>lb</small></div>
+          <span class="delta">▼ 1.8 lb this month</span>
+        </div>
+        <svg class="spark" width="118" height="46" viewBox="0 0 118 46" aria-label="Weight trend, July: 188.0 down to 186.2 pounds">
+          <polyline points="4,10 20,13 36,11 52,17 68,16 84,22 100,21 114,26"
+            fill="none" stroke="#26343A" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          <circle cx="114" cy="26" r="3" fill="#24513F"/>
+          <text x="4" y="42">JUL 1</text>
+          <text x="114" y="42" text-anchor="end">TODAY</text>
+        </svg>
+      </div>
+    </section>
+
+    <!-- ⑥ daily footnote -->
+    <p class="footnote">Keep honest records — the trend does the rest.</p>
+
+  </div>
+
+  <!-- ⑦ tab bar / notebook cover -->
+  <nav class="tabbar" aria-label="Main">
+    <button class="tab active" aria-current="page">
+      <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="3" y="3" width="14" height="14" rx="2"/>
+        <path d="M3 7.5 h14 M7 3 v-1.5 M13 3 v-1.5"/>
+      </svg>
+      Today
+    </button>
+    <button class="tab">
+      <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M3 15 l4.5-5 3 3 L17 6"/>
+        <path d="M13.5 6 H17 v3.5"/>
+      </svg>
+      Trends
+    </button>
+    <button class="logbtn" aria-label="Log food or activity">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round">
+        <path d="M12 4.5 v15 M4.5 12 h15"/>
+      </svg>
+    </button>
+    <button class="tab tab-settings">
+      <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round">
+        <path d="M4 6.5 h12 M4 13.5 h12"/>
+        <circle cx="8" cy="6.5" r="2" fill="#24513F"/>
+        <circle cx="12.5" cy="13.5" r="2" fill="#24513F"/>
+      </svg>
+      Settings
+    </button>
+  </nav>
+</div>
+</body>
+</html>

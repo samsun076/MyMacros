@@ -1,0 +1,927 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#F6EFE2">
+<title>MyMacros — Editorial</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght,SOFT,WONK@9..144,100..900,0..100,0..1&family=Newsreader:ital,opsz,wght@0,6..72,200..800;1,6..72,200..800&family=Libre+Franklin:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --paper: #F6EFE2;
+    --paper-deep: #EFE6D2;
+    --ink: #261D12;
+    --ink-soft: #6C5F4D;
+    --hairline: #D9CDB6;
+    --spot: #8C2F24;
+    --display: "Fraunces", "Georgia", serif;
+    --text: "Newsreader", "Georgia", serif;
+    --utility: "Libre Franklin", "Helvetica Neue", sans-serif;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  html { -webkit-text-size-adjust: 100%; }
+
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--text);
+    font-size: 16px;
+    line-height: 1.45;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* Desktop: dim the room, let the paper glow */
+  @media (min-width: 480px) {
+    body { background: #181310; padding: 40px 0 0; }
+    .phone {
+      box-shadow: 0 0 0 1px rgba(0,0,0,.5), 0 30px 90px rgba(0,0,0,.75);
+      min-height: 844px;
+    }
+  }
+
+  .phone {
+    max-width: 390px;
+    margin: 0 auto;
+    background:
+      radial-gradient(140% 90% at 50% 0%, rgba(255,252,242,.65), rgba(255,252,242,0) 60%),
+      var(--paper);
+    min-height: 100dvh;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .content {
+    padding: calc(env(safe-area-inset-top, 0px) + 22px) 26px 132px;
+    flex: 1;
+  }
+
+  /* ---------- typographic utilities ---------- */
+
+  .eyebrow {
+    font-family: var(--utility);
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: .22em;
+    text-transform: uppercase;
+    color: var(--ink-soft);
+  }
+
+  .rule { border: 0; border-top: 1px solid var(--hairline); }
+
+  /* Scotch rule: the classic thick-thin broadsheet pair */
+  .scotch {
+    border: 0;
+    border-top: 2.5px solid var(--ink);
+    position: relative;
+    margin-bottom: 3px;
+  }
+  .scotch::after {
+    content: "";
+    position: absolute;
+    left: 0; right: 0; top: 3px;
+    border-top: 1px solid var(--ink);
+  }
+
+  .num { font-variant-numeric: tabular-nums lining-nums; }
+
+  /* ---------- masthead ---------- */
+
+  .masthead { animation: rise .7s cubic-bezier(.2,.7,.2,1) both; }
+
+  .masthead-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    padding-bottom: 9px;
+  }
+  .masthead-row .eyebrow { color: var(--ink); }
+  .folio {
+    font-family: var(--utility);
+    font-size: 10px;
+    font-weight: 500;
+    letter-spacing: .14em;
+    color: var(--ink-soft);
+  }
+  .folio em { font-style: normal; color: var(--spot); }
+
+  .dateline {
+    font-family: var(--display);
+    font-variation-settings: "opsz" 144, "SOFT" 40, "WONK" 1;
+    font-weight: 420;
+    font-size: 40px;
+    line-height: 1.04;
+    letter-spacing: -.012em;
+    padding: 22px 0 6px;
+  }
+  .dateline em {
+    font-style: normal;
+    font-weight: 560;
+  }
+
+  .standfirst {
+    font-family: var(--text);
+    font-style: italic;
+    font-size: 15px;
+    color: var(--ink-soft);
+    padding-bottom: 26px;
+  }
+
+  /* ---------- budget ledger ---------- */
+
+  .budget { animation: rise .7s .08s cubic-bezier(.2,.7,.2,1) both; }
+
+  .section-head {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+    padding: 14px 0 0;
+  }
+  .section-head::after {
+    content: "";
+    flex: 1;
+    border-top: 1px solid var(--hairline);
+    align-self: center;
+  }
+
+  .budget-figure {
+    display: flex;
+    align-items: baseline;
+    gap: 16px;
+    padding: 14px 0 4px;
+  }
+
+  .kcal-hero {
+    font-family: var(--display);
+    font-variation-settings: "opsz" 144, "SOFT" 30, "WONK" 0;
+    font-weight: 360;
+    font-size: 88px;
+    line-height: .9;
+    letter-spacing: -.02em;
+    font-variant-numeric: lining-nums;
+  }
+
+  .kcal-context { padding-bottom: 7px; }
+  .kcal-context .of {
+    display: block;
+    font-family: var(--utility);
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: .18em;
+    text-transform: uppercase;
+    color: var(--ink-soft);
+    padding-bottom: 4px;
+  }
+  .kcal-context .left {
+    display: block;
+    font-family: var(--text);
+    font-style: italic;
+    font-size: 16px;
+    color: var(--ink);
+  }
+  .kcal-context .left .num { font-style: normal; font-family: var(--display); font-weight: 540; font-size: 17px; }
+
+  /* The rule meter — a broadsheet measure, not a ring */
+  .meter { padding: 14px 0 2px; }
+
+  .meter-track {
+    position: relative;
+    height: 16px;
+  }
+  /* baseline hairline across the full measure */
+  .meter-track::before {
+    content: "";
+    position: absolute;
+    left: 0; right: 0; bottom: 5px;
+    border-top: 1px solid var(--ink);
+    opacity: .55;
+  }
+  .meter-fill {
+    position: absolute;
+    left: 0; bottom: 3px;
+    height: 6px;
+    width: 57.7%;
+    background: var(--ink);
+    animation: measure 1s .35s cubic-bezier(.25,.8,.25,1) both;
+    transform-origin: left center;
+  }
+  /* the earned extension: last 340 kcal of the 2,150, hatched in the spot color */
+  .meter-earned {
+    position: absolute;
+    right: 0; bottom: 3px;
+    height: 6px;
+    width: 15.8%;
+    background: repeating-linear-gradient(
+      -55deg,
+      var(--spot) 0 1.5px,
+      transparent 1.5px 4.5px
+    );
+  }
+  /* terminal serifs on the measure */
+  .meter-track .cap {
+    position: absolute;
+    bottom: 1px;
+    width: 1px;
+    height: 10px;
+    background: var(--ink);
+  }
+  .cap-start { left: 0; }
+  .cap-end { right: 0; background: var(--spot); }
+
+  .meter-ticks {
+    position: relative;
+    height: 16px;
+  }
+  .meter-ticks i {
+    position: absolute;
+    top: 0;
+    width: 1px;
+    height: 4px;
+    background: var(--ink);
+    opacity: .4;
+  }
+  .meter-ticks b {
+    position: absolute;
+    top: 5px;
+    transform: translateX(-50%);
+    font-family: var(--utility);
+    font-weight: 500;
+    font-style: normal;
+    font-size: 8.5px;
+    letter-spacing: .06em;
+    color: var(--ink-soft);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .meter-notes {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    padding-top: 8px;
+  }
+  .earned-note {
+    font-family: var(--utility);
+    font-size: 10.5px;
+    font-weight: 600;
+    letter-spacing: .06em;
+    color: var(--spot);
+    display: flex;
+    align-items: center;
+    gap: 7px;
+  }
+  .earned-note svg { display: block; }
+  .eaten-note {
+    font-family: var(--text);
+    font-style: italic;
+    font-size: 13px;
+    color: var(--ink-soft);
+  }
+
+  /* ---------- macros: a three-column table of figures ---------- */
+
+  .macros {
+    animation: rise .7s .16s cubic-bezier(.2,.7,.2,1) both;
+    padding-top: 30px;
+  }
+
+  .macro-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    column-gap: 22px;
+    padding-top: 16px;
+  }
+
+  .macro .eyebrow { letter-spacing: .18em; }
+
+  .macro-fig {
+    padding: 7px 0 8px;
+    font-family: var(--display);
+    font-variant-numeric: lining-nums;
+  }
+  .macro-fig .got {
+    font-variation-settings: "opsz" 90, "SOFT" 30, "WONK" 0;
+    font-weight: 470;
+    font-size: 27px;
+    letter-spacing: -.01em;
+  }
+  .macro-fig .goal {
+    font-family: var(--text);
+    font-size: 13px;
+    color: var(--ink-soft);
+  }
+
+  .macro-meter {
+    position: relative;
+    height: 7px;
+  }
+  .macro-meter::before {
+    content: "";
+    position: absolute;
+    left: 0; right: 0; bottom: 2px;
+    border-top: 1px solid var(--ink);
+    opacity: .35;
+  }
+  .macro-meter i {
+    position: absolute;
+    left: 0; bottom: 1px;
+    height: 3.5px;
+    background: var(--ink);
+    animation: measure 1s .5s cubic-bezier(.25,.8,.25,1) both;
+    transform-origin: left center;
+  }
+
+  /* ---------- the day, plated ---------- */
+
+  .meals {
+    animation: rise .7s .24s cubic-bezier(.2,.7,.2,1) both;
+    padding-top: 34px;
+  }
+
+  .meal { padding-top: 20px; }
+  .meal:first-of-type { padding-top: 16px; }
+
+  /* Kinfolk move: the photograph sits in a paper mat */
+  .plate {
+    background: var(--paper-deep);
+    padding: 9px;
+    box-shadow: inset 0 0 0 1px rgba(38,29,18,.08);
+  }
+  .plate svg {
+    display: block;
+    width: 100%;
+    height: auto;
+  }
+
+  .meal-caption {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    padding: 10px 2px 0;
+  }
+  .meal-slot {
+    font-family: var(--utility);
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: .2em;
+    text-transform: uppercase;
+    color: var(--ink);
+  }
+  .meal-slot span {
+    color: var(--ink-soft);
+    font-weight: 500;
+    letter-spacing: .1em;
+  }
+  .meal-kcal {
+    font-family: var(--display);
+    font-variation-settings: "opsz" 60, "SOFT" 30, "WONK" 0;
+    font-weight: 500;
+    font-size: 19px;
+    font-variant-numeric: lining-nums;
+    white-space: nowrap;
+  }
+  .meal-kcal small {
+    font-family: var(--utility);
+    font-size: 9px;
+    font-weight: 500;
+    letter-spacing: .1em;
+    color: var(--ink-soft);
+    margin-left: 2px;
+  }
+
+  .meal-dish {
+    font-family: var(--text);
+    font-size: 19px;
+    font-weight: 430;
+    line-height: 1.3;
+    padding: 3px 2px 0;
+    max-width: 30ch;
+  }
+
+  /* the run — set as an interstitial pull-quote, not a meal */
+  .run {
+    margin-top: 26px;
+    padding: 16px 2px 18px;
+    border-top: 1px solid var(--hairline);
+    border-bottom: 1px solid var(--hairline);
+  }
+  .run-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+  }
+  .run-head .meal-slot { color: var(--spot); }
+  .run-burn {
+    font-family: var(--display);
+    font-variation-settings: "opsz" 60, "SOFT" 30, "WONK" 0;
+    font-weight: 500;
+    font-size: 19px;
+    color: var(--spot);
+    font-variant-numeric: lining-nums;
+    white-space: nowrap;
+  }
+  .run-burn small {
+    font-family: var(--utility);
+    font-size: 9px;
+    font-weight: 500;
+    letter-spacing: .1em;
+    color: var(--ink-soft);
+    margin-left: 2px;
+  }
+  .run-body {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding-top: 6px;
+  }
+  .run-line {
+    font-family: var(--text);
+    font-style: italic;
+    font-size: 19px;
+    line-height: 1.35;
+  }
+  .run-line .num {
+    font-style: normal;
+    font-family: var(--display);
+    font-variation-settings: "opsz" 60, "SOFT" 30, "WONK" 0;
+    font-weight: 540;
+  }
+  .run-route { flex-shrink: 0; }
+  .run-foot {
+    font-family: var(--utility);
+    font-size: 10.5px;
+    font-weight: 600;
+    letter-spacing: .06em;
+    color: var(--spot);
+    padding-top: 8px;
+  }
+
+  /* ---------- the scale: a colophon strip ---------- */
+
+  .scale {
+    animation: rise .7s .3s cubic-bezier(.2,.7,.2,1) both;
+    margin-top: 36px;
+  }
+  .scale-strip {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    padding: 12px 2px 12px;
+    border-bottom: 1px solid var(--hairline);
+  }
+  .scale-weight {
+    font-family: var(--display);
+    font-variation-settings: "opsz" 90, "SOFT" 30, "WONK" 0;
+    font-weight: 460;
+    font-size: 27px;
+    font-variant-numeric: lining-nums;
+    letter-spacing: -.01em;
+  }
+  .scale-weight small {
+    font-family: var(--utility);
+    font-size: 9px;
+    font-weight: 500;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    color: var(--ink-soft);
+    margin-left: 3px;
+  }
+  .scale-trend {
+    font-family: var(--text);
+    font-style: italic;
+    font-size: 14px;
+    color: var(--ink);
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+  }
+  .scale-trend svg { transform: translateY(1px); }
+  .scale-trend .num { font-style: normal; font-family: var(--display); font-weight: 540; }
+
+  .colophon {
+    text-align: center;
+    font-family: var(--utility);
+    font-size: 9px;
+    font-weight: 500;
+    letter-spacing: .24em;
+    text-transform: uppercase;
+    color: var(--ink-soft);
+    padding-top: 22px;
+  }
+
+  /* ---------- tab bar ---------- */
+
+  .tabbar {
+    position: fixed;
+    bottom: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    width: min(390px, 100%);
+    background: var(--paper);
+    border-top: 1px solid var(--hairline);
+    padding: 10px 10px calc(env(safe-area-inset-bottom, 0px) + 12px);
+    display: flex;
+    align-items: center;
+    z-index: 10;
+  }
+  .tab-group { flex: 1; display: flex; }
+  .tab-group.left .tab { flex: 1; }
+  .tab-group.right { justify-content: center; }
+
+  .tab {
+    appearance: none;
+    background: none;
+    border: 0;
+    font-family: var(--utility);
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: .16em;
+    text-transform: uppercase;
+    color: var(--ink-soft);
+    padding: 12px 6px 6px;
+    position: relative;
+    cursor: pointer;
+    text-align: center;
+  }
+  .tab.is-active { color: var(--ink); }
+  .tab.is-active::before {
+    content: "";
+    position: absolute;
+    top: 2px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 4px;
+    height: 4px;
+    border-radius: 50%;
+    background: var(--spot);
+  }
+  .tab:focus-visible, .log:focus-visible {
+    outline: 2px solid var(--spot);
+    outline-offset: 3px;
+  }
+
+  .log {
+    appearance: none;
+    border: 0;
+    width: 58px;
+    height: 58px;
+    border-radius: 50%;
+    background: var(--spot);
+    color: var(--paper);
+    font-family: var(--display);
+    font-variation-settings: "opsz" 144, "SOFT" 50, "WONK" 0;
+    font-weight: 300;
+    font-size: 33px;
+    line-height: 1;
+    cursor: pointer;
+    flex-shrink: 0;
+    margin-top: -26px;
+    box-shadow:
+      0 0 0 5px var(--paper),
+      0 4px 14px rgba(38,29,18,.28);
+    display: grid;
+    place-items: center;
+    padding-bottom: 3px;
+  }
+  .log:active { transform: translateY(1px); }
+
+  /* ---------- motion ---------- */
+
+  @keyframes rise {
+    from { opacity: 0; transform: translateY(14px); }
+    to   { opacity: 1; transform: none; }
+  }
+  @keyframes measure {
+    from { transform: scaleX(0); }
+    to   { transform: none; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .masthead, .budget, .macros, .meals, .scale,
+    .meter-fill, .macro-meter i { animation: none; }
+  }
+</style>
+</head>
+<body>
+
+<!-- shared grain filter for the plates -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <filter id="grain">
+      <feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2" stitchTiles="stitch" result="n"/>
+      <feColorMatrix in="n" type="matrix"
+        values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0.55 0.55 0.55 0 0"/>
+    </filter>
+  </defs>
+</svg>
+
+<div class="phone">
+  <main class="content">
+
+    <!-- ============ masthead ============ -->
+    <header class="masthead">
+      <div class="masthead-row">
+        <span class="eyebrow">My&thinsp;Macros</span>
+        <span class="folio num">No.&hairsp;213 · <em>2026</em></span>
+      </div>
+      <hr class="scotch">
+      <h1 class="dateline">Friday, <em>August&nbsp;1</em></h1>
+      <p class="standfirst">A good day for eating well — and you ran for it.</p>
+    </header>
+
+    <!-- ============ the budget ============ -->
+    <section class="budget" aria-label="Daily calorie budget">
+      <div class="section-head"><span class="eyebrow">The budget</span></div>
+
+      <div class="budget-figure">
+        <span class="kcal-hero num">1,240</span>
+        <span class="kcal-context">
+          <span class="of">of 2,150 kcal eaten</span>
+          <span class="left"><span class="num">910</span> still on the table</span>
+        </span>
+      </div>
+
+      <div class="meter" role="img"
+           aria-label="1,240 of 2,150 kilocalories eaten. 340 of the budget was earned from a 6.2 mile run.">
+        <div class="meter-track">
+          <i class="cap cap-start"></i>
+          <div class="meter-earned"></div>
+          <div class="meter-fill"></div>
+          <i class="cap cap-end"></i>
+        </div>
+        <div class="meter-ticks" aria-hidden="true">
+          <i style="left:23.26%"></i><b style="left:23.26%">500</b>
+          <i style="left:46.51%"></i><b style="left:46.51%">1,000</b>
+          <i style="left:69.77%"></i><b style="left:69.77%">1,500</b>
+          <i style="left:93.02%"></i><b style="left:93.02%">2,000</b>
+        </div>
+        <div class="meter-notes">
+          <span class="eaten-note">eaten, as of 3:05&nbsp;pm</span>
+          <span class="earned-note num">
+            <svg width="14" height="10" viewBox="0 0 14 10" aria-hidden="true">
+              <path d="M1 8.5 C4 8 4.5 2 7.5 2.5 S10.5 7 13 4" fill="none"
+                    stroke="#8C2F24" stroke-width="1.4" stroke-linecap="round"/>
+            </svg>
+            +340 kcal earned · 6.2 mi run
+          </span>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ macros ============ -->
+    <section class="macros" aria-label="Macronutrient progress">
+      <div class="section-head"><span class="eyebrow">Macros</span></div>
+      <div class="macro-grid">
+        <div class="macro">
+          <span class="eyebrow">Protein</span>
+          <p class="macro-fig num"><span class="got">96</span><span class="goal">&hairsp;/&hairsp;165&thinsp;g</span></p>
+          <div class="macro-meter" role="img" aria-label="Protein 96 of 165 grams">
+            <i style="width:58.2%"></i>
+          </div>
+        </div>
+        <div class="macro">
+          <span class="eyebrow">Carbs</span>
+          <p class="macro-fig num"><span class="got">118</span><span class="goal">&hairsp;/&hairsp;205&thinsp;g</span></p>
+          <div class="macro-meter" role="img" aria-label="Carbohydrates 118 of 205 grams">
+            <i style="width:57.6%"></i>
+          </div>
+        </div>
+        <div class="macro">
+          <span class="eyebrow">Fat</span>
+          <p class="macro-fig num"><span class="got">42</span><span class="goal">&hairsp;/&hairsp;72&thinsp;g</span></p>
+          <div class="macro-meter" role="img" aria-label="Fat 42 of 72 grams">
+            <i style="width:58.3%"></i>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ the day, plated ============ -->
+    <section class="meals" aria-label="Meal timeline">
+      <div class="section-head"><span class="eyebrow">The day, plated</span></div>
+
+      <!-- Breakfast -->
+      <article class="meal">
+        <figure class="plate">
+          <svg viewBox="0 0 400 176" role="img" aria-label="Photo: bowl of Greek yogurt with blueberries and granola">
+            <defs>
+              <linearGradient id="bfbg" x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0" stop-color="#E7D8BB"/>
+                <stop offset="1" stop-color="#DCC9A2"/>
+              </linearGradient>
+              <radialGradient id="bfbowl" cx="0.42" cy="0.34" r="0.85">
+                <stop offset="0" stop-color="#FAF4E6"/>
+                <stop offset="1" stop-color="#EFE5CF"/>
+              </radialGradient>
+            </defs>
+            <rect width="400" height="176" fill="url(#bfbg)"/>
+            <ellipse cx="204" cy="150" rx="120" ry="16" fill="#26120a" opacity=".10"/>
+            <circle cx="200" cy="96" r="82" fill="#EDE1C7"/>
+            <circle cx="200" cy="92" r="74" fill="url(#bfbowl)"/>
+            <path d="M144 76 q30 -20 62 -8 q28 10 52 -4" fill="none" stroke="#E6D9BE" stroke-width="6" stroke-linecap="round"/>
+            <path d="M150 114 q28 16 56 6 q26 -10 46 0" fill="none" stroke="#F0E8D4" stroke-width="6" stroke-linecap="round"/>
+            <path d="M158 100 q42 14 86 2" fill="none" stroke="#C69A4F" stroke-width="2.5" stroke-linecap="round" opacity=".75"/>
+            <g>
+              <circle cx="170" cy="66" r="12"  fill="#3E4462"/>
+              <circle cx="192" cy="57" r="10"  fill="#4A5178"/>
+              <circle cx="182" cy="82" r="11"  fill="#333A59"/>
+              <circle cx="209" cy="68" r="9"   fill="#454C6E"/>
+              <circle cx="163" cy="86" r="8.5" fill="#4A5178"/>
+              <circle cx="201" cy="84" r="8"   fill="#3A4160"/>
+              <circle cx="166" cy="61" r="2.4" fill="#9BA2C4"/>
+              <circle cx="189" cy="53" r="2"   fill="#9BA2C4"/>
+              <circle cx="178" cy="77" r="2"   fill="#8990B4"/>
+              <circle cx="206" cy="64" r="1.7" fill="#9BA2C4"/>
+            </g>
+            <g fill="#B98A45">
+              <rect x="222" y="82" width="11" height="7"  rx="2.5" transform="rotate(18 227 85)"/>
+              <rect x="236" y="76" width="10" height="6.5" rx="2.5" transform="rotate(-12 241 79)" fill="#8F6430"/>
+              <rect x="231" y="94" width="10" height="6.5" rx="2.5" transform="rotate(40 236 97)"/>
+              <rect x="245" y="88" width="9"  height="6"  rx="2"   transform="rotate(6 249 91)"  fill="#C09048"/>
+              <rect x="240" y="103" width="9" height="6"  rx="2"   transform="rotate(-24 244 106)" fill="#8F6430"/>
+              <rect x="222" y="101" width="8" height="5.5" rx="2"  transform="rotate(60 226 104)" fill="#A87A3C"/>
+              <rect x="252" y="99" width="8"  height="5"  rx="2"   transform="rotate(25 256 101)" fill="#8F6430"/>
+            </g>
+            <ellipse cx="150" cy="110" rx="10" ry="4.5" fill="#7D8A57" transform="rotate(-30 150 110)"/>
+            <rect width="400" height="176" filter="url(#grain)" opacity=".14"/>
+          </svg>
+        </figure>
+        <div class="meal-caption">
+          <span class="meal-slot num">Breakfast <span>· 7:12 am</span></span>
+          <span class="meal-kcal num">410<small>KCAL</small></span>
+        </div>
+        <p class="meal-dish">Greek yogurt, blueberries, granola</p>
+      </article>
+
+      <!-- Lunch -->
+      <article class="meal">
+        <figure class="plate">
+          <svg viewBox="0 0 400 176" role="img" aria-label="Photo: chipotle chicken bowl with beans, lettuce and salsa">
+            <defs>
+              <linearGradient id="lubg" x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0" stop-color="#DFCFAC"/>
+                <stop offset="1" stop-color="#D2BE94"/>
+              </linearGradient>
+              <radialGradient id="lubowl" cx="0.45" cy="0.4" r="0.9">
+                <stop offset="0" stop-color="#F2E9D3"/>
+                <stop offset="1" stop-color="#E4D7B9"/>
+              </radialGradient>
+            </defs>
+            <rect width="400" height="176" fill="url(#lubg)"/>
+            <ellipse cx="200" cy="152" rx="126" ry="15" fill="#26120a" opacity=".10"/>
+            <circle cx="200" cy="94" r="84" fill="#CBB58A"/>
+            <circle cx="200" cy="91" r="77" fill="url(#lubowl)"/>
+            <!-- lettuce, top left -->
+            <g fill="#7C8552">
+              <path d="M136 68 q16 -16 36 -6 q-12 18 -36 6z"/>
+              <path d="M158 50 q18 -12 35 -2 q-13 16 -35 2z" fill="#8A9260"/>
+              <path d="M144 88 q15 -12 30 -4 q-10 15 -30 4z" fill="#6D7647"/>
+              <path d="M172 66 q13 -10 26 -3 q-9 13 -26 3z" fill="#8A9260"/>
+            </g>
+            <!-- chicken, top right -->
+            <g fill="#A97C46">
+              <rect x="214" y="48" width="19" height="14" rx="4" transform="rotate(9 223 55)"/>
+              <rect x="236" y="58" width="18" height="13" rx="4" transform="rotate(-13 245 64)" fill="#916636"/>
+              <rect x="218" y="66" width="17" height="13" rx="4" transform="rotate(22 226 72)" fill="#8F6434"/>
+              <rect x="240" y="76" width="16" height="12" rx="4" transform="rotate(4 248 82)"/>
+            </g>
+            <!-- beans, lower left -->
+            <g fill="#46311F">
+              <ellipse cx="160" cy="98"  rx="10" ry="6.5" transform="rotate(-18 160 98)"/>
+              <ellipse cx="178" cy="106" rx="9.5" ry="6"  transform="rotate(20 178 106)" fill="#573E27"/>
+              <ellipse cx="158" cy="114" rx="9"  ry="6"   transform="rotate(5 158 114)"/>
+              <ellipse cx="176" cy="122" rx="9"  ry="5.5" transform="rotate(-12 176 122)" fill="#3C2A1B"/>
+              <ellipse cx="194" cy="114" rx="8.5" ry="5.5" transform="rotate(30 194 114)"/>
+              <ellipse cx="145" cy="104" rx="8"  ry="5.5" transform="rotate(-30 145 104)" fill="#573E27"/>
+            </g>
+            <!-- salsa, lower right -->
+            <g fill="#96382B">
+              <circle cx="232" cy="106" r="12"/>
+              <circle cx="248" cy="96"  r="8" fill="#A54534"/>
+              <circle cx="244" cy="118" r="7" fill="#8A2F23"/>
+              <circle cx="228" cy="98"  r="1.8" fill="#C4715F"/>
+              <circle cx="237" cy="110" r="1.6" fill="#C4715F"/>
+            </g>
+            <!-- cheese, center -->
+            <g fill="#D9BC72">
+              <rect x="198" y="88" width="9" height="4" rx="1.8" transform="rotate(24 202 90)"/>
+              <rect x="208" y="96" width="8" height="3.5" rx="1.6" transform="rotate(-18 212 98)"/>
+              <rect x="198" y="102" width="8" height="3.5" rx="1.6" transform="rotate(50 202 104)"/>
+              <rect x="210" y="106" width="7" height="3" rx="1.5" transform="rotate(10 213 107)"/>
+            </g>
+            <!-- lime -->
+            <g transform="rotate(-20 262 122)">
+              <path d="M262 122 a13 13 0 0 1 13 -13 l0 13 z" fill="#9AA75B"/>
+              <path d="M262 122 a13 13 0 0 1 13 -13" fill="none" stroke="#7F8C48" stroke-width="2.5"/>
+            </g>
+            <rect width="400" height="176" filter="url(#grain)" opacity=".14"/>
+          </svg>
+        </figure>
+        <div class="meal-caption">
+          <span class="meal-slot num">Lunch <span>· 12:38 pm</span></span>
+          <span class="meal-kcal num">620<small>KCAL</small></span>
+        </div>
+        <p class="meal-dish">Chipotle chicken bowl, no rice, extra beans</p>
+      </article>
+
+      <!-- Snack -->
+      <article class="meal">
+        <figure class="plate">
+          <svg viewBox="0 0 400 132" role="img" aria-label="Photo: apple with a small dish of peanut butter">
+            <defs>
+              <linearGradient id="snbg" x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0" stop-color="#E9DCC1"/>
+                <stop offset="1" stop-color="#DECBA6"/>
+              </linearGradient>
+              <radialGradient id="snapple" cx="0.36" cy="0.3" r="0.95">
+                <stop offset="0" stop-color="#B0483A"/>
+                <stop offset="1" stop-color="#84291F"/>
+              </radialGradient>
+            </defs>
+            <rect width="400" height="132" fill="url(#snbg)"/>
+            <ellipse cx="160" cy="112" rx="58" ry="9" fill="#26120a" opacity=".10"/>
+            <ellipse cx="252" cy="114" rx="48" ry="8" fill="#26120a" opacity=".08"/>
+            <!-- apple -->
+            <path d="M160 44 c-24 -8 -44 8 -44 34 c0 22 16 38 28 36 c6 -1 10 -4 16 -4 c6 0 10 3 16 4 c12 2 28 -14 28 -36 c0 -26 -20 -42 -44 -34z" fill="url(#snapple)"/>
+            <ellipse cx="142" cy="62" rx="10" ry="6" fill="#D98A72" opacity=".55" transform="rotate(-28 142 62)"/>
+            <rect x="157" y="26" width="5" height="18" rx="2.5" fill="#5C4326" transform="rotate(8 159 35)"/>
+            <ellipse cx="176" cy="30" rx="13" ry="6" fill="#6F7C4B" transform="rotate(-24 176 30)"/>
+            <!-- peanut butter ramekin -->
+            <path d="M214 92 a38 22 0 0 0 76 0 l0 -14 -76 0 z" fill="#E5D9C0"/>
+            <ellipse cx="252" cy="78" rx="38" ry="12" fill="#D8C9A8"/>
+            <ellipse cx="252" cy="78" rx="31" ry="9" fill="#B27E3F"/>
+            <path d="M232 76 q10 -6 20 0 q10 6 20 -1" fill="none" stroke="#9A6930" stroke-width="3" stroke-linecap="round"/>
+            <!-- apple slices, laid flat -->
+            <g transform="rotate(-8 322 102)">
+              <ellipse cx="322" cy="102" rx="26" ry="10" fill="#EFE3C2"/>
+              <ellipse cx="322" cy="100" rx="26" ry="10" fill="#F4EBCF"/>
+              <ellipse cx="322" cy="100" rx="26" ry="10" fill="none" stroke="#A63A2C" stroke-width="2"/>
+              <circle cx="316" cy="100" r="1.6" fill="#8C6B3F"/>
+              <circle cx="328" cy="99" r="1.6" fill="#8C6B3F"/>
+            </g>
+            <rect width="400" height="132" filter="url(#grain)" opacity=".14"/>
+          </svg>
+        </figure>
+        <div class="meal-caption">
+          <span class="meal-slot num">Snack <span>· 3:05 pm</span></span>
+          <span class="meal-kcal num">210<small>KCAL</small></span>
+        </div>
+        <p class="meal-dish">Apple + peanut butter</p>
+      </article>
+
+      <!-- The run: an interstitial, not a meal -->
+      <aside class="run" aria-label="Run logged today">
+        <div class="run-head">
+          <span class="meal-slot num">The run <span>· this morning</span></span>
+          <span class="run-burn num">&minus;680<small>KCAL</small></span>
+        </div>
+        <div class="run-body">
+          <p class="run-line num"><span class="num">6.2</span> miles at
+            <span class="num">8:41</span> a mile.</p>
+          <svg class="run-route" width="88" height="34" viewBox="0 0 88 34" aria-hidden="true">
+            <path d="M4 28 C14 24 12 10 24 12 S36 26 46 22 S56 4 68 8 S80 20 84 12"
+                  fill="none" stroke="#8C2F24" stroke-width="1.6"
+                  stroke-linecap="round" stroke-dasharray="1 4.5"/>
+            <circle cx="4" cy="28" r="2.6" fill="#8C2F24"/>
+            <circle cx="84" cy="12" r="2.6" fill="none" stroke="#8C2F24" stroke-width="1.5"/>
+          </svg>
+        </div>
+        <p class="run-foot num">Half comes back to the table: +340 kcal, counted above.</p>
+      </aside>
+    </section>
+
+    <!-- ============ the scale ============ -->
+    <section class="scale" aria-label="Weight">
+      <hr class="scotch">
+      <div class="scale-strip">
+        <span class="eyebrow">The scale</span>
+        <span class="scale-weight num">186.2<small>lb</small></span>
+        <span class="scale-trend num">
+          <svg width="9" height="8" viewBox="0 0 9 8" aria-hidden="true">
+            <path d="M4.5 8 L0 1 L9 1 z" fill="#261D12"/>
+          </svg>
+          <span class="num">1.8&thinsp;lb</span>&nbsp;this month
+        </span>
+      </div>
+      <p class="colophon">Set in Fraunces &amp; Newsreader · printed daily</p>
+    </section>
+
+  </main>
+
+  <!-- ============ tab bar ============ -->
+  <nav class="tabbar" aria-label="Primary">
+    <div class="tab-group left">
+      <button class="tab is-active" aria-current="page">Today</button>
+      <button class="tab">Trends</button>
+    </div>
+    <button class="log" aria-label="Log food">+</button>
+    <div class="tab-group right">
+      <button class="tab">Settings</button>
+    </div>
+  </nav>
+</div>
+
+</body>
+</html>

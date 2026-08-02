@@ -1,0 +1,496 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>MyMacros — B · Instrument</title>
+<!--
+  DIRECTION B — "INSTRUMENT"
+  The dieter's cockpit. Braun tuning-scale budget tape, aviation tick
+  gradations, Swiss hairline grid, medical one-indicator-per-sensor macros.
+  Type: Fragment Mono (data) + Instrument Sans (prose). Accent: #BC4A0A.
+-->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fragment+Mono:ital@0;1&family=Instrument+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --paper:   #F5F6F3;  /* lab paper — cool, not cream */
+    --page:    #E2E4DF;
+    --ink:     #17191B;
+    --sub:     #565B57;
+    --faint:   #8A908A;
+    --rule:    #D8DBD3;  /* hairline */
+    --track:   #E4E6E0;
+    --tint:    #EEF0EA;  /* thumbnail plates */
+    --accent:  #BC4A0A;  /* engineered orange — validated ≥3:1 on paper */
+    --accent-deep: #963A06;
+    --mono: 'Fragment Mono', ui-monospace, monospace;
+    --sans: 'Instrument Sans', -apple-system, sans-serif;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html { -webkit-text-size-adjust:100%; }
+  body {
+    background:var(--page);
+    font-family:var(--sans);
+    color:var(--ink);
+    font-size:15px;
+    line-height:1.4;
+    -webkit-font-smoothing:antialiased;
+  }
+  .phone {
+    max-width:390px;
+    margin:0 auto;
+    background:var(--paper);
+    min-height:100dvh;
+    position:relative;
+  }
+  @media (min-width:480px) {
+    .phone { border-left:1px solid #C6C9C2; border-right:1px solid #C6C9C2; }
+  }
+
+  /* ---------- shared primitives ---------- */
+  .cap {
+    font-family:var(--mono);
+    font-size:9.5px;
+    letter-spacing:.14em;
+    text-transform:uppercase;
+    color:var(--sub);
+  }
+  .cap.ink   { color:var(--ink); }
+  .cap.faint { color:var(--faint); }
+  .cap.acc   { color:var(--accent); }
+  .num { font-family:var(--mono); font-variant-numeric:tabular-nums; }
+
+  section { padding:16px 20px 20px; border-top:1px solid var(--rule); }
+  .sec-head {
+    display:flex; justify-content:space-between; align-items:baseline;
+    margin-bottom:14px;
+  }
+
+  /* ---------- header plate ---------- */
+  header.plate {
+    padding:calc(14px + env(safe-area-inset-top)) 20px 14px;
+    border-bottom:1px solid var(--ink);   /* the one strong rule */
+  }
+  .plate-meta {
+    display:flex; justify-content:space-between; align-items:baseline;
+    margin-bottom:10px;
+  }
+  .sync { display:inline-flex; align-items:center; gap:6px; }
+  .sync::before {
+    content:""; width:6px; height:6px; border-radius:50%;
+    border:1.5px solid var(--accent); display:inline-block;
+  }
+  h1 {
+    font-family:var(--sans); font-weight:600;
+    font-size:26px; letter-spacing:-.015em; line-height:1.1;
+  }
+
+  /* ---------- energy / budget tape ---------- */
+  .readout { display:flex; justify-content:space-between; align-items:flex-end; margin-bottom:6px; }
+  .hero {
+    font-family:var(--mono); font-weight:400;
+    font-size:56px; line-height:1; letter-spacing:-.03em;
+    font-variant-numeric:tabular-nums;
+  }
+  .hero-sub { margin-top:6px; }
+  .hero-sub .cap { letter-spacing:.1em; }
+  .readout-right { text-align:right; padding-bottom:4px; }
+  .readout-right .big { font-family:var(--mono); font-size:17px; }
+  .readout-right div + div { margin-top:7px; }
+
+  .tape-wrap { margin-top:16px; }
+  .tape { display:block; width:100%; height:auto; overflow:visible; }
+  .tape text {
+    font-family:var(--mono); font-size:8.5px;
+    letter-spacing:.04em; fill:var(--sub);
+  }
+  .tape text.acc { fill:var(--accent); }
+  .tape text.tiny { font-size:7px; fill:var(--faint); letter-spacing:.12em; }
+
+  .earned-note {
+    margin-top:12px;
+    display:flex; align-items:center; gap:8px;
+  }
+  .swatch {
+    width:14px; height:8px; flex:none;
+    background:repeating-linear-gradient(45deg, var(--accent) 0 1.5px, transparent 1.5px 4.5px);
+    border:1px solid var(--accent);
+  }
+
+  /* ---------- macros ---------- */
+  .macro { display:grid; grid-template-columns:1fr 48px; column-gap:14px; align-items:end; }
+  .macro + .macro { margin-top:15px; }
+  .macro-line1 {
+    display:flex; justify-content:space-between; align-items:baseline;
+    margin-bottom:6px;
+  }
+  .macro-val { font-family:var(--mono); font-size:14px; font-variant-numeric:tabular-nums; }
+  .macro-val .of { color:var(--faint); }
+  .macro-delta {
+    grid-column:2; grid-row:1 / span 2; align-self:end;
+    font-family:var(--mono); font-size:11px; color:var(--faint);
+    text-align:right; padding-bottom:0;
+  }
+  .bar { position:relative; height:4px; background:var(--track); }
+  .bar::after {           /* target end-tick */
+    content:""; position:absolute; right:0; top:-3px;
+    width:1px; height:10px; background:var(--ink);
+  }
+  .bar .fill {
+    position:absolute; inset:0 auto 0 0; width:100%;
+    background:var(--ink); border-radius:0 2px 2px 0;
+    transform-origin:0 50%;
+  }
+  .p .fill { transform:scaleX(.582); }
+  .c .fill { transform:scaleX(.576); }
+  .f .fill { transform:scaleX(.583); }
+
+  /* ---------- log / timeline ---------- */
+  .log { position:relative; padding-bottom:8px; }
+  .log::before {           /* continuous flight-log rule behind rows */
+    content:""; position:absolute; left:76px; top:52px; bottom:16px;
+    width:1px; background:var(--rule);
+  }
+  .entry {
+    position:relative;
+    display:grid; grid-template-columns:44px 40px 1fr auto;
+    column-gap:14px; padding:13px 0;
+  }
+  .entry + .entry { border-top:1px solid var(--rule); }
+  .entry .t { font-family:var(--mono); font-size:13px; line-height:1.2; }
+  .entry .t .mer { display:block; font-size:8.5px; letter-spacing:.12em; color:var(--faint); margin-top:2px; }
+  .thumb {
+    width:40px; height:40px; background:var(--tint);
+    border:1px solid var(--rule); display:block;
+  }
+  .entry .body .slot { display:block; margin-bottom:3px; }
+  .entry .body .desc { font-size:14.5px; font-weight:500; letter-spacing:-.005em; }
+  .entry .body .micro {
+    font-family:var(--mono); font-size:10px; color:var(--faint);
+    margin-top:4px; letter-spacing:.03em;
+  }
+  .entry .kcal {
+    font-family:var(--mono); font-size:15px; text-align:right;
+    font-variant-numeric:tabular-nums; padding-top:1px;
+  }
+  .entry.run .kcal, .entry.run .slot { color:var(--accent); }
+  .entry.run .micro em { font-style:normal; color:var(--accent); }
+  .entry.run .thumb { border-color:var(--accent); background:#F8EFE7; }
+
+  /* ---------- body mass strip ---------- */
+  .mass-row { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+  .mass-num { font-family:var(--mono); font-size:30px; letter-spacing:-.02em; line-height:1; }
+  .mass-num .unit { font-size:11px; letter-spacing:.1em; color:var(--sub); }
+  .mass-delta { font-family:var(--mono); font-size:10.5px; color:var(--sub); margin-top:5px; letter-spacing:.06em; }
+  .spark { display:block; }
+
+  /* ---------- tab bar ---------- */
+  .content-pad { padding-bottom:calc(112px + env(safe-area-inset-bottom)); }
+  nav.tabs {
+    position:fixed; bottom:0; left:50%; transform:translateX(-50%);
+    width:min(390px,100%);
+    background:var(--paper);
+    border-top:1px solid var(--ink);
+    padding:14px 8px calc(12px + env(safe-area-inset-bottom));
+    display:grid; grid-template-columns:1fr 1fr 72px 1fr 1fr;
+    align-items:center;
+  }
+  @media (min-width:480px) {
+    nav.tabs { border-left:1px solid #C6C9C2; border-right:1px solid #C6C9C2; }
+  }
+  nav.tabs a {
+    text-decoration:none; text-align:center; position:relative;
+    padding:8px 0 2px;
+  }
+  nav.tabs a:focus-visible, .log-btn:focus-visible { outline:2px solid var(--accent); outline-offset:3px; }
+  nav.tabs a.today { grid-column:1; grid-row:1; }
+  nav.tabs a.trends { grid-column:2; grid-row:1; }
+  nav.tabs a.settings { grid-column:4 / span 2; grid-row:1; }
+  nav.tabs .log-btn { grid-row:1; }
+  nav.tabs a.active .cap { color:var(--ink); }
+  nav.tabs a.active::before {
+    content:""; position:absolute; top:0; left:50%; transform:translateX(-50%);
+    width:14px; height:2px; background:var(--accent);
+  }
+  .log-btn {
+    grid-column:3;
+    width:56px; height:56px; margin:-38px auto 0;
+    border-radius:50%;
+    background:var(--accent);
+    border:1px solid var(--accent-deep);
+    box-shadow:inset 0 0 0 2px var(--paper), 0 0 0 1px var(--accent-deep);
+    display:flex; align-items:center; justify-content:center;
+    cursor:pointer;
+  }
+  .log-btn svg { display:block; }
+
+  /* ---------- entrance ---------- */
+  @media (prefers-reduced-motion: no-preference) {
+    section, header.plate { animation:rise .5s cubic-bezier(.25,.8,.35,1) both; }
+    section:nth-of-type(1) { animation-delay:.05s; }
+    section:nth-of-type(2) { animation-delay:.12s; }
+    section:nth-of-type(3) { animation-delay:.19s; }
+    section:nth-of-type(4) { animation-delay:.26s; }
+    .tape .consumed { animation:sweep .8s cubic-bezier(.3,.9,.35,1) both .25s; transform-origin:0 12px; }
+    .tape .needle   { transform:translateX(174.3px); animation:settle 1s cubic-bezier(.3,1.25,.4,1) both .3s; }
+    .bar .fill      { animation:sweep .7s cubic-bezier(.3,.9,.35,1) both; }
+    .p .fill { animation-delay:.35s; } .c .fill { animation-delay:.43s; } .f .fill { animation-delay:.51s; }
+  }
+  @keyframes rise  { from { opacity:0; transform:translateY(7px); } }
+  @keyframes sweep { from { transform:scaleX(0); } }
+  @keyframes settle{ from { transform:translateX(8px); } }
+</style>
+</head>
+<body>
+<div class="phone">
+
+  <!-- ======== HEADER PLATE ======== -->
+  <header class="plate">
+    <div class="plate-meta">
+      <span class="cap">MyMacros · Day 213/365</span>
+      <span class="cap sync">Sync 06:12</span>
+    </div>
+    <h1>Friday, August&nbsp;1</h1>
+  </header>
+
+  <div class="content-pad">
+
+  <!-- ======== SEC · ENERGY ======== -->
+  <section>
+    <div class="sec-head">
+      <span class="cap ink">Energy Budget</span>
+      <span class="cap faint">kcal</span>
+    </div>
+
+    <div class="readout">
+      <div>
+        <div class="hero">1,240</div>
+        <div class="hero-sub cap">Consumed · of 2,150 base</div>
+      </div>
+      <div class="readout-right">
+        <div>
+          <span class="big num">1,250</span><br>
+          <span class="cap faint">Remaining</span>
+        </div>
+        <div>
+          <span class="big num">2,490</span><br>
+          <span class="cap faint">Adj target</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Braun tuning-scale tape · 0 → 2,490 kcal · 350px = 2,490 → 0.140562 px/kcal -->
+    <div class="tape-wrap">
+      <svg class="tape" viewBox="0 0 350 48" aria-label="Calorie budget scale: 1,240 consumed of 2,490 adjusted target">
+        <defs>
+          <pattern id="tmin" width="7.028" height="48" patternUnits="userSpaceOnUse">
+            <rect x="0" y="16" width="0.75" height="5" fill="#C9CDC6"/>
+          </pattern>
+          <pattern id="tmed" width="35.14" height="48" patternUnits="userSpaceOnUse">
+            <rect x="0" y="16" width="0.75" height="8" fill="#9AA09A"/>
+          </pattern>
+          <pattern id="hatch" width="4.5" height="4.5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+            <rect width="1.4" height="4.5" fill="#BC4A0A"/>
+          </pattern>
+        </defs>
+
+        <!-- minor + medium gradations -->
+        <rect x="0" y="0" width="350" height="48" fill="url(#tmin)"/>
+        <rect x="0" y="0" width="350" height="48" fill="url(#tmed)"/>
+
+        <!-- major ticks every 500 kcal -->
+        <rect x="0"      y="16" width="1"    height="12" fill="#17191B"/>
+        <rect x="70.3"   y="16" width="0.75" height="12" fill="#17191B"/>
+        <rect x="140.6"  y="16" width="0.75" height="12" fill="#17191B"/>
+        <rect x="210.8"  y="16" width="0.75" height="12" fill="#17191B"/>
+        <rect x="281.1"  y="16" width="0.75" height="12" fill="#17191B"/>
+        <rect x="349"    y="16" width="1"    height="12" fill="#BC4A0A"/>
+
+        <!-- baseline rule -->
+        <rect x="0" y="15" width="350" height="1" fill="#17191B"/>
+
+        <!-- earned extension · 2,150 → 2,490 · hatched -->
+        <rect x="302.2" y="7" width="47.3" height="8" fill="url(#hatch)"/>
+        <rect x="302.2" y="7" width="47.3" height="8" fill="none" stroke="#BC4A0A" stroke-width="0.6"/>
+
+        <!-- base-target bug (aviation style) at 2,150 -->
+        <path d="M302.2 16 l-3.4 5 h6.8 Z" fill="#17191B"/>
+
+        <!-- consumed bar · 0 → 1,240 -->
+        <path class="consumed" d="M0 10 H172.3 A2 2 0 0 1 172.3 14 H0 Z" fill="#17191B"/>
+
+        <!-- needle at 1,240 -->
+        <g class="needle" transform="translate(174.3 0)">
+          <path d="M-3.75 0 H3.75 L0 6 Z" fill="#BC4A0A"/>
+          <rect x="-0.4" y="6" width="0.8" height="22" fill="#BC4A0A"/>
+        </g>
+
+        <!-- scale labels -->
+        <text x="0"     y="38" text-anchor="start">0</text>
+        <text x="70.3"  y="38" text-anchor="middle">500</text>
+        <text x="140.6" y="38" text-anchor="middle">1000</text>
+        <text x="210.8" y="38" text-anchor="middle">1500</text>
+        <text x="302.2" y="38" text-anchor="middle">2150</text>
+        <text x="350"   y="38" text-anchor="end" class="acc">2490</text>
+        <text x="0"     y="47" text-anchor="start"  class="tiny">KCAL</text>
+        <text x="302.2" y="47" text-anchor="middle" class="tiny">BASE</text>
+        <text x="350"   y="47" text-anchor="end"    class="tiny" fill="#BC4A0A">ADJ</text>
+      </svg>
+    </div>
+
+    <div class="earned-note">
+      <span class="swatch" aria-hidden="true"></span>
+      <span class="cap acc">+340 kcal earned · 6.2 mi run</span>
+    </div>
+  </section>
+
+  <!-- ======== SEC · MACRONUTRIENTS ======== -->
+  <section>
+    <div class="sec-head">
+      <span class="cap ink">Macronutrients</span>
+      <span class="cap faint">Eaten / Target · Δ left</span>
+    </div>
+
+    <div class="macro p">
+      <div class="macro-line1">
+        <span class="cap">Protein</span>
+        <span class="macro-val">96 <span class="of">/ 165 g</span></span>
+      </div>
+      <div class="bar"><span class="fill"></span></div>
+      <span class="macro-delta">Δ 69</span>
+    </div>
+
+    <div class="macro c">
+      <div class="macro-line1">
+        <span class="cap">Carbs</span>
+        <span class="macro-val">118 <span class="of">/ 205 g</span></span>
+      </div>
+      <div class="bar"><span class="fill"></span></div>
+      <span class="macro-delta">Δ 87</span>
+    </div>
+
+    <div class="macro f">
+      <div class="macro-line1">
+        <span class="cap">Fat</span>
+        <span class="macro-val">42 <span class="of">/ 72 g</span></span>
+      </div>
+      <div class="bar"><span class="fill"></span></div>
+      <span class="macro-delta">Δ 30</span>
+    </div>
+  </section>
+
+  <!-- ======== SEC · LOG ======== -->
+  <section class="log">
+    <div class="sec-head">
+      <span class="cap ink">Log</span>
+      <span class="cap faint">3 meals · 1 run</span>
+    </div>
+
+    <!-- RUN -->
+    <div class="entry run">
+      <div class="t num">6:04<span class="mer">AM</span></div>
+      <svg class="thumb" viewBox="0 0 40 40" aria-hidden="true">
+        <polyline points="7,30 15,17 22,23 33,9" fill="none" stroke="#BC4A0A" stroke-width="1.5" stroke-linejoin="round"/>
+        <circle cx="7" cy="30" r="2" fill="none" stroke="#BC4A0A" stroke-width="1.25"/>
+        <circle cx="33" cy="9" r="2" fill="#BC4A0A"/>
+      </svg>
+      <div class="body">
+        <span class="cap slot">Run · Outdoor</span>
+        <div class="desc num" style="font-family:var(--mono); font-size:13.5px;">6.2 mi · 8:41 /mi</div>
+        <div class="micro">53:50 · <em>+340 kcal</em> to budget</div>
+      </div>
+      <div class="kcal">−680</div>
+    </div>
+
+    <!-- BREAKFAST -->
+    <div class="entry">
+      <div class="t num">7:12<span class="mer">AM</span></div>
+      <svg class="thumb" viewBox="0 0 40 40" aria-hidden="true">
+        <path d="M8 20 A12 12 0 0 0 32 20 Z" fill="none" stroke="#17191B" stroke-width="1.25" stroke-linejoin="round"/>
+        <circle cx="15" cy="15.5" r="1.7" fill="none" stroke="#17191B" stroke-width="1.1"/>
+        <circle cx="20.5" cy="13" r="1.7" fill="none" stroke="#17191B" stroke-width="1.1"/>
+        <circle cx="26" cy="15.5" r="1.7" fill="none" stroke="#17191B" stroke-width="1.1"/>
+      </svg>
+      <div class="body">
+        <span class="cap slot">Breakfast</span>
+        <div class="desc">Greek yogurt, blueberries, granola</div>
+        <div class="micro">P 28 · C 56 · F 10</div>
+      </div>
+      <div class="kcal">410</div>
+    </div>
+
+    <!-- LUNCH -->
+    <div class="entry">
+      <div class="t num">12:38<span class="mer">PM</span></div>
+      <svg class="thumb" viewBox="0 0 40 40" aria-hidden="true">
+        <circle cx="20" cy="20" r="11.5" fill="none" stroke="#17191B" stroke-width="1.25"/>
+        <line x1="20" y1="20" x2="20" y2="8.5" stroke="#17191B" stroke-width="1"/>
+        <line x1="20" y1="20" x2="30.5" y2="24.5" stroke="#17191B" stroke-width="1"/>
+        <line x1="20" y1="20" x2="11" y2="27" stroke="#17191B" stroke-width="1"/>
+        <ellipse cx="24.5" cy="14.5" rx="2.4" ry="1.5" transform="rotate(30 24.5 14.5)" fill="none" stroke="#17191B" stroke-width="1"/>
+      </svg>
+      <div class="body">
+        <span class="cap slot">Lunch</span>
+        <div class="desc">Chipotle chicken bowl, no rice, extra beans</div>
+        <div class="micro">P 60 · C 38 · F 22</div>
+      </div>
+      <div class="kcal">620</div>
+    </div>
+
+    <!-- SNACK -->
+    <div class="entry">
+      <div class="t num">3:05<span class="mer">PM</span></div>
+      <svg class="thumb" viewBox="0 0 40 40" aria-hidden="true">
+        <circle cx="17" cy="22" r="9.5" fill="none" stroke="#17191B" stroke-width="1.25"/>
+        <path d="M17 12.5 q1.5 -4 5 -5" fill="none" stroke="#17191B" stroke-width="1.1"/>
+        <line x1="17" y1="12.5" x2="17" y2="31.5" stroke="#17191B" stroke-width="0.7" stroke-dasharray="1.5 2"/>
+        <circle cx="31" cy="27" r="3.6" fill="none" stroke="#17191B" stroke-width="1.1"/>
+      </svg>
+      <div class="body">
+        <span class="cap slot">Snack</span>
+        <div class="desc">Apple + peanut butter</div>
+        <div class="micro">P 8 · C 24 · F 10</div>
+      </div>
+      <div class="kcal">210</div>
+    </div>
+  </section>
+
+  <!-- ======== SEC · BODY MASS ======== -->
+  <section>
+    <div class="sec-head">
+      <span class="cap ink">Body Mass</span>
+      <span class="cap faint">Garmin Index · 06:12</span>
+    </div>
+    <div class="mass-row">
+      <div>
+        <div class="mass-num">186.2 <span class="unit">LB</span></div>
+        <div class="mass-delta">▼ 1.8 LB / 30 D</div>
+      </div>
+      <svg class="spark" width="118" height="30" viewBox="0 0 118 30" aria-label="30-day weight trend, declining">
+        <polyline points="1,4 14,9 27,6.5 40,13 53,10.5 66,17.5 79,14.5 92,21.5 105,19 115,25"
+                  fill="none" stroke="#17191B" stroke-width="1.5" stroke-linejoin="round"/>
+        <circle cx="115" cy="21" r="2.5" fill="#BC4A0A"/>
+      </svg>
+    </div>
+  </section>
+
+  </div><!-- /content-pad -->
+
+  <!-- ======== TAB BAR ======== -->
+  <nav class="tabs" aria-label="Primary">
+    <a href="#" class="today active"><span class="cap">Today</span></a>
+    <button class="log-btn" aria-label="Log food or activity">
+      <svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true">
+        <rect x="9" y="2" width="2" height="16" fill="#F5F6F3"/>
+        <rect x="2" y="9" width="16" height="2" fill="#F5F6F3"/>
+      </svg>
+    </button>
+    <a href="#" class="trends"><span class="cap">Trends</span></a>
+    <a href="#" class="settings"><span class="cap">Settings</span></a>
+  </nav>
+
+</div>
+</body>
+</html>
