@@ -1,0 +1,38 @@
+/* Semantic token pack is the single source of truth (build rule 2) — the
+   sketches are ground truth for what these values mean. */
+@import "../../../design/tokens.css";
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  background: var(--canvas);
+  color: var(--ink);
+  font-family: var(--body-font);
+  min-height: 100dvh;
+}
+
+.boot {
+  display: grid;
+  place-content: center;
+  gap: 10px;
+  min-height: 100dvh;
+  text-align: center;
+  color: var(--ink-secondary);
+  font-size: 13px;
+}
+
+.eyebrow {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--ink-muted);
+}

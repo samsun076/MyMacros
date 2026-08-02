@@ -1,0 +1,15 @@
+# Local secrets for `vite dev` / `wrangler dev`. Copy to `.dev.vars` (gitignored).
+# Remotely these are set with `wrangler secret put <NAME>` — see NEXT-STEPS.md (Session B2).
+
+# Signs session cookies. Any long random string locally:
+#   openssl rand -base64 32
+BETTER_AUTH_SECRET="dev-only-secret-change-me"
+
+# Google OAuth — created in Session B2 (Google Cloud Console → Credentials →
+# OAuth client ID → Web application). Leave empty and Google sign-in stays
+# disabled; passkeys work without it.
+GOOGLE_CLIENT_ID=""
+GOOGLE_CLIENT_SECRET=""
+
+# Claude vision/text → macros. Not called until M2.
+ANTHROPIC_API_KEY=""

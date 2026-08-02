@@ -1,0 +1,31 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "mymacros",
+  "main": "./src/worker/index.ts",
+  "compatibility_date": "2026-08-01",
+  // better-auth needs node:crypto / node:buffer
+  "compatibility_flags": ["nodejs_compat"],
+  "assets": {
+    // SPA: unknown paths fall through to index.html so client routing works.
+    // The asset directory is supplied by the Vite plugin — don't set it here.
+    "not_found_handling": "single-page-application",
+    "binding": "ASSETS"
+  },
+  "observability": { "enabled": true },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "mymacros-db",
+      // PLACEHOLDER — the real database is created in Session B2:
+      //   wrangler d1 create mymacros-db  →  paste the id here
+      // Local dev (miniflare) ignores this value entirely.
+      "database_id": "local-dev-placeholder",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "vars": {
+    // Public, non-secret config. Secrets live in .dev.vars locally and in
+    // `wrangler secret put` remotely — see .dev.vars.example.
+    "APP_URL": "http://localhost:5173"
+  }
+}

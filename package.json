@@ -1,0 +1,39 @@
+{
+  "name": "mymacros",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "npm run check && vite build",
+    "preview": "vite preview",
+    "check": "tsc --noEmit -p tsconfig.app.json && tsc --noEmit -p tsconfig.worker.json && tsc --noEmit -p tsconfig.node.json",
+    "cf-typegen": "wrangler types ./src/worker/worker-configuration.d.ts",
+    "db:migrate": "wrangler d1 migrations apply mymacros-db --local",
+    "db:migrate:remote": "wrangler d1 migrations apply mymacros-db --remote",
+    "db:studio": "sqlite3 \"$(find .wrangler/state/v3/d1 -name '*.sqlite' | head -1)\"",
+    "auth:generate": "npx @better-auth/cli generate --config src/worker/auth.ts",
+    "icons": "node tools/make-icons.mjs",
+    "shots": "node tools/shot-matrix.mjs",
+    "deploy": "npm run build && wrangler deploy"
+  },
+  "dependencies": {
+    "better-auth": "^1.6.25",
+    "hono": "^4.12.33",
+    "kysely": "^0.29.4",
+    "kysely-d1": "^0.4.0",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "react-router": "^8.3.0"
+  },
+  "devDependencies": {
+    "@cloudflare/vite-plugin": "^1.50.0",
+    "@types/node": "^24.0.0",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "@vitejs/plugin-react": "^6.0.5",
+    "typescript": "^7.0.2",
+    "vite": "^8.2.0",
+    "wrangler": "^4.118.0"
+  }
+}

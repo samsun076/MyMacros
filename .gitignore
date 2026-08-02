@@ -1,2 +1,8 @@
 .DS_Store
 shots/
+node_modules/
+dist/
+.wrangler/
+.dev.vars
+.env
+*.local
