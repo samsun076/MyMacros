@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>MyMacros — v2 dashboard</title>
+<style>
+  :root { color-scheme: dark; }
+  * { margin: 0; box-sizing: border-box; }
+  body {
+    font: 15px/1.5 -apple-system, system-ui, sans-serif;
+    background: #141416; color: #e8e8ea;
+    padding: 20px max(16px, env(safe-area-inset-left)) max(32px, env(safe-area-inset-bottom));
+  }
+  header { max-width: 1400px; margin: 0 auto 20px; display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+  h1 { font-size: 18px; font-weight: 650; }
+  header .hint { color: #8a8a90; font-size: 13px; }
+  .grid {
+    max-width: 1400px; margin: 0 auto;
+    display: grid; gap: 20px;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  }
+  .card { background: #1c1c1f; border: 1px solid #2a2a2e; border-radius: 14px; overflow: hidden; }
+  .card-head { display: flex; align-items: center; gap: 10px; padding: 12px 14px; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: #555; flex: none; }
+  .dot.ok { background: #4cc38a; }
+  .card-head .name { font-weight: 600; font-size: 15px; flex: 1; min-width: 0; }
+  .toggle { display: flex; border: 1px solid #333; border-radius: 8px; overflow: hidden; flex: none; }
+  .toggle button {
+    all: unset; cursor: pointer; padding: 4px 12px; font-size: 12px; font-weight: 600;
+    color: #9a9aa0;
+  }
+  .toggle button.active { background: #2e2e33; color: #fff; }
+  .open { color: #9a9aa0; font-size: 12px; text-decoration: none; padding: 4px 6px; flex: none; }
+  .open:hover { color: #fff; }
+  .stage { position: relative; width: 100%; background: #0e0e10; }
+  .phone {
+    position: absolute; top: 0; left: 50%;
+    width: 390px; height: 844px;
+    transform-origin: top center;
+    border: none; background: #fff;
+  }
+  .pitch { padding: 10px 14px 12px; color: #9a9aa0; font-size: 12.5px; border-top: 1px solid #26262a; }
+  .pending {
+    position: absolute; inset: 0; display: none; align-items: center; justify-content: center;
+    color: #77777d; font-size: 13px; letter-spacing: 0.04em;
+  }
+  .card.notready .pending { display: flex; }
+  .card.notready iframe { visibility: hidden; }
+</style>
+</head>
+<body>
+<header>
+  <h1>MyMacros — v2 refinements</h1>
+  <span class="hint">toggle v1 ↔ v2 per card · green dot = v2 file is ready · page rechecks every 10s</span>
+</header>
+
+<div class="grid" id="grid"></div>
+
+<script>
+const DIRS = [
+  { key: "b", name: "Instrument", v1: "b-instrument.html", v2: "b2-instrument.html",
+    pitch: "Braun tuning-scale budget as the machined hero — warmer surface, one huge number, deliberate density contrast." },
+  { key: "c", name: "Night Athletic", v1: "c-night-athletic.html", v2: "c2-night-athletic.html",
+    pitch: "Blue-hour dark instead of void-black, compressed contrast, tap the in-page switcher for alternate accent palettes." },
+  { key: "d", name: "Field Notes", v1: "d-field-notes.html", v2: "d2-field-notes.html",
+    pitch: "The ledger kept, the clutter cut — earned-credit stamp as lone hero, brighter paper, remaining-kcal as THE number." },
+];
+
+const grid = document.getElementById("grid");
+
+for (const d of DIRS) {
+  const card = document.createElement("div");
+  card.className = "card notready";
+  card.dataset.key = d.key;
+  card.innerHTML = `
+    <div class="card-head">
+      <span class="dot" id="dot-${d.key}"></span>
+      <span class="name">${d.name}</span>
+      <div class="toggle">
+        <button data-v="v1">v1</button>
+        <button data-v="v2" class="active">v2</button>
+      </div>
+      <a class="open" id="open-${d.key}" href="${d.v2}" target="_blank">open ↗</a>
+    </div>
+    <div class="stage">
+      <iframe class="phone" id="frame-${d.key}" src="${d.v2}" scrolling="yes"></iframe>
+      <div class="pending">v2 still rendering…</div>
+    </div>
+    <div class="pitch">${d.pitch}</div>`;
+  grid.appendChild(card);
+
+  card.querySelectorAll(".toggle button").forEach(btn => {
+    btn.addEventListener("click", () => {
+      card.querySelectorAll(".toggle button").forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+      const src = btn.dataset.v === "v1" ? d.v1 : d.v2;
+      document.getElementById("frame-" + d.key).src = src;
+      document.getElementById("open-" + d.key).href = src;
+      card.classList.toggle("notready", btn.dataset.v === "v2" && !ready[d.key]);
+    });
+  });
+}
+
+// scale phone frames to card width
+function fit() {
+  document.querySelectorAll(".stage").forEach(stage => {
+    const w = stage.clientWidth;
+    const s = Math.min(w / 390, 1);
+    stage.style.height = (844 * s) + "px";
+    const phone = stage.querySelector(".phone");
+    phone.style.transform = `translateX(-50%) scale(${s})`;
+  });
+}
+addEventListener("resize", fit);
+fit();
+
+// poll for v2 readiness
+const ready = {};
+async function check() {
+  for (const d of DIRS) {
+    if (ready[d.key]) continue;
+    try {
+      const r = await fetch(d.v2, { method: "HEAD", cache: "no-store" });
+      if (r.ok) {
+        ready[d.key] = true;
+        document.getElementById("dot-" + d.key).classList.add("ok");
+        const card = document.querySelector(`.card[data-key="${d.key}"]`);
+        const activeV2 = card.querySelector('.toggle button[data-v="v2"]').classList.contains("active");
+        if (activeV2) {
+          card.classList.remove("notready");
+          document.getElementById("frame-" + d.key).src = d.v2 + "?t=" + Date.now();
+        }
+      }
+    } catch {}
+  }
+}
+check();
+setInterval(check, 10000);
+</script>
+</body>
+</html>
