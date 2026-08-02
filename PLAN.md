@@ -41,6 +41,8 @@ The exception is **motif slots** — 3–4 components that render per-theme vari
 3. **New motif slots need a named variant per theme** before the component is considered done (placeholder variants OK until the M5 port).
 4. **Theme QA pass at the end of each milestone** — quick render check of the two light packs; full port + QA lands in M5 (#30).
 5. **Accent-aware accents** — anything colored accent must reference `--accent`, since Night Athletic users can switch it live.
+6. **375px is the reference width** — Dave's phone is an iPhone 13 mini. No design is done until verified at 375 (then 390/428); screenshot matrix tooling in #31.
+7. **Safari chrome blend** — the tab bar's *surface* color (never accent) bleeds through the bottom safe area with no seam, so iOS Safari tints its chrome to match; `theme-color` meta handles the top.
 
 ## V1 scope — the daily loop
 
