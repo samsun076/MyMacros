@@ -124,7 +124,11 @@ async function openPage(cdp, url) {
     sessionId,
   );
   return { targetId, sessionId, navigate: async (u) => {
-    const loaded = cdp.once("Page.loadEventFired", sessionId);
+    // hash-only moves are same-document (no load event) — reset first
+    let loaded = cdp.once("Page.loadEventFired", sessionId);
+    await cdp.send("Page.navigate", { url: "about:blank" }, sessionId);
+    await loaded;
+    loaded = cdp.once("Page.loadEventFired", sessionId);
     await cdp.send("Page.navigate", { url: u }, sessionId);
     await loaded;
   }};
@@ -234,6 +238,8 @@ try {
   }
 } finally {
   cdp.close();
+  const exited = new Promise((res) => proc.on("exit", res));
   proc.kill();
-  await rm(profileDir, { recursive: true, force: true });
+  await exited;
+  await rm(profileDir, { recursive: true, force: true }).catch(() => {});
 }
