@@ -104,6 +104,18 @@ The half that needs Dave's accounts — do it paired; ~15–20 min. Finishes **#
    install the PWA, check the chrome blend in standalone mode — answers the Memex open
    question about theme-color in PWA mode).
 
+### Starter prompt (paste verbatim, with Dave at the keyboard)
+
+```
+Working on MyMacros (~/Projects/MyMacros). Read NEXT-STEPS.md — we're doing
+Session B2 together: the credential/deploy half of M1 (finish #6 and #7).
+I'm here to click OAuth prompts and paste secrets; you drive. Work through
+the B2 checklist in order, one step at a time — tell me exactly what to do
+when it's my turn (use `! <command>` for interactive logins), verify each
+step landed before moving on, and end with the deployed smoke test. Commit
+with "closes #6" / "closes #7" when each is actually done, push when done.
+```
+
 ## Then
 
 - **M2 core loop** (#9–#12) — text quick-add → confirm sheet → Today screen, built in Night
