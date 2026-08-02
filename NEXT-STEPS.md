@@ -185,28 +185,30 @@ Can slip to M2 — nothing in M1 calls Claude. Setting it now saves a step later
    `theme-color` is honoured — **this answers the open Memex question about theme-color in
    PWA mode**, so write down what it actually does.
 
-### Heads-up before Dave registers a passkey
+### Heads-up before Dave registers a passkey — **#34**
 A passkey is bound to its `rpID` — the hostname in `APP_URL`. One registered against
 `mymacros.<subdomain>.workers.dev` stops working if the app later moves to a custom domain,
-and the local ones registered against `localhost` never work in production. So: **decide
-whether this app is getting a custom domain before step 9**, or accept re-registering
-passkeys after the move. Nothing else in M1 is domain-sensitive.
+and the local ones registered against `localhost` never work in production. So: **settle
+#34 before step 9**, or accept re-registering passkeys after the move. Nothing else in M1
+is domain-sensitive.
 
 ### Left open on purpose, found during B1
 
-- **Google is currently the only way to create the first account.** Passkey registration
-  requires a live session (better-auth's default, kept deliberately — the alternative lets
-  an unauthenticated request mint a user, i.e. open sign-up on a personal deploy). That's
-  the right call for Dave's deploy, but it means a self-hoster on the OSS path (#26) needs
-  Google credentials just to get in. If passkey-only sign-up is wanted there, it's a real
-  decision with a real threat model — worth its own issue rather than a quiet default.
-- **Fonts come from the Google Fonts CDN**, matching the frozen sketches. Self-hosting them
-  removes a third-party dependency on first paint and makes the PWA offline-safe.
-- **No service worker.** Not needed for iOS Add-to-Home-Screen, which is all #8 promised.
-  Offline caching is its own piece of work, and a half-built one causes stale-asset pain.
-- **Tab bar at 375: "TRENDS SETTINGS" sit tight together.** The app matches
-  `sketches/c2-night-athletic.html` exactly here — verified by a side-by-side crop — so
-  this is inherited from the frozen design, not a port bug. Design call for the #2 thread.
+All of these are filed — this list is a pointer, not the record. Anything that only lives
+in this file is one rewrite away from being lost, since each session replaces its own
+runway section.
+
+- **#33 — Google is the only way to create the first account.** Passkey registration
+  requires a live session (better-auth's default, kept deliberately). Right for Dave's
+  deploy; it's the OSS path (#26) where it bites, so the decision is filed against M6.
+- **#34 — decide the domain before any passkey is registered.** See above.
+- **#35 — self-host the fonts** instead of the Google Fonts CDN.
+- **Tab bar at 375: "TRENDS SETTINGS" sit tight together.** Raised on the #2 thread with a
+  side-by-side crop showing the app matches the frozen sketch exactly — inherited from the
+  design, not a port bug, so any fix is a deliberate change to it.
+- **No service worker** — deliberately not filed. Not needed for iOS Add-to-Home-Screen,
+  which is all #8 promised, and offline caching isn't scoped anywhere yet; an open issue
+  with no milestone is just noise. Revisit if offline becomes a goal.
 
 ### Starter prompt (paste verbatim, with Dave at the keyboard)
 
