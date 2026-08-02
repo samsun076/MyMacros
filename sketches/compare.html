@@ -41,18 +41,12 @@
     border: none; background: #fff;
   }
   .pitch { padding: 10px 14px 12px; color: #9a9aa0; font-size: 12.5px; border-top: 1px solid #26262a; }
-  .pending {
-    position: absolute; inset: 0; display: none; align-items: center; justify-content: center;
-    color: #77777d; font-size: 13px; letter-spacing: 0.04em;
-  }
-  .card.notready .pending { display: flex; }
-  .card.notready iframe { visibility: hidden; }
 </style>
 </head>
 <body>
 <header>
   <h1>MyMacros — v2 refinements</h1>
-  <span class="hint">toggle v1 ↔ v2 per card · green dot = v2 file is ready · page rechecks every 10s</span>
+  <span class="hint">toggle v1 ↔ v2 per card · scroll inside each phone</span>
 </header>
 
 <div class="grid" id="grid"></div>
@@ -71,11 +65,11 @@ const grid = document.getElementById("grid");
 
 for (const d of DIRS) {
   const card = document.createElement("div");
-  card.className = "card notready";
+  card.className = "card";
   card.dataset.key = d.key;
   card.innerHTML = `
     <div class="card-head">
-      <span class="dot" id="dot-${d.key}"></span>
+      <span class="dot ok"></span>
       <span class="name">${d.name}</span>
       <div class="toggle">
         <button data-v="v1">v1</button>
@@ -85,7 +79,6 @@ for (const d of DIRS) {
     </div>
     <div class="stage">
       <iframe class="phone" id="frame-${d.key}" src="${d.v2}" scrolling="yes"></iframe>
-      <div class="pending">v2 still rendering…</div>
     </div>
     <div class="pitch">${d.pitch}</div>`;
   grid.appendChild(card);
@@ -97,7 +90,6 @@ for (const d of DIRS) {
       const src = btn.dataset.v === "v1" ? d.v1 : d.v2;
       document.getElementById("frame-" + d.key).src = src;
       document.getElementById("open-" + d.key).href = src;
-      card.classList.toggle("notready", btn.dataset.v === "v2" && !ready[d.key]);
     });
   });
 }
@@ -114,29 +106,6 @@ function fit() {
 }
 addEventListener("resize", fit);
 fit();
-
-// poll for v2 readiness
-const ready = {};
-async function check() {
-  for (const d of DIRS) {
-    if (ready[d.key]) continue;
-    try {
-      const r = await fetch(d.v2, { method: "HEAD", cache: "no-store" });
-      if (r.ok) {
-        ready[d.key] = true;
-        document.getElementById("dot-" + d.key).classList.add("ok");
-        const card = document.querySelector(`.card[data-key="${d.key}"]`);
-        const activeV2 = card.querySelector('.toggle button[data-v="v2"]').classList.contains("active");
-        if (activeV2) {
-          card.classList.remove("notready");
-          document.getElementById("frame-" + d.key).src = d.v2 + "?t=" + Date.now();
-        }
-      }
-    } catch {}
-  }
-}
-check();
-setInterval(check, 10000);
 </script>
 </body>
 </html>
