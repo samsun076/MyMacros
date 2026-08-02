@@ -18,7 +18,29 @@ Built for weight loss, built for one user first (Dave), but shaped so other peop
 | Logging inputs | Photo (meal or label) · **barcode → OpenFoodFacts** (free, exact) · **AI text quick-add** ("chipotle bowl, no rice") · favorites/recents. Every AI entry is editable before saving |
 | Auth | Google sign-in + passkeys via better-auth. No passwords |
 | Ambition | Personal-first but **multi-user-shaped** (real auth, per-user data isolation). SaaS vs open-source decision deferred until the app is proven |
-| Design | **iOS-ish but not Apple cosplay** — native-feeling interactions (bottom tabs, sheets, safe areas) with its own personality. Direction chosen from HTML mockups, not words |
+| Design | **Three themes, one app** (decided from the v2 mockup round — see Theming below). Native-feeling mobile interactions (bottom tabs, sheets, safe areas). Editorial direction rejected as AI-slop-adjacent |
+
+## Theming
+
+All three v2 mockup directions ship as **user-selectable themes** (Settings → per-user in `profiles`):
+
+- **Night Athletic** — *primary + default + dark theme.* Blue-hour dark world with a user-selectable accent: **dawn coral / warm gold / mint** (the accent is itself a per-user setting). Ground truth: `sketches/c2-night-athletic.html`.
+- **Field Notes** — light theme. Warm-ivory daily ledger, vermilion stamp as hero. `sketches/d2-field-notes.html`.
+- **Instrument** — light theme. Bone paper, machined Braun-style dial. `sketches/b2-instrument.html`.
+
+Why it's cheap: all three converged on the same skeleton (remaining-kcal hero, budget meter with a physically-extended earned zone, one shared meal+run timeline, tab bar). One layout, one component tree; themes are **semantic token packs** (CSS custom properties + `data-theme`): surfaces, inks, accent, fonts, radii.
+
+The exception is **motif slots** — 3–4 components that render per-theme variants rather than re-skin: the earned-kcal annotation (rubber stamp / machined groove / hatched fuel zone), the budget meter, the log button, timeline row chrome. These are the only components with per-theme code.
+
+**Budget display convention** (settling a mockup discrepancy): base target and earned bonus are always shown *separately* — the meter draws base length plus a visually distinct earned extension. Never silently merge them into one number.
+
+### Build rules going forward
+
+1. **Build every screen against Night Athletic first.** It's the primary; polish happens here.
+2. **Never hardcode a color/font/radius** — everything through semantic tokens, so the light packs stay portable.
+3. **New motif slots need a named variant per theme** before the component is considered done (placeholder variants OK until the M5 port).
+4. **Theme QA pass at the end of each milestone** — quick render check of the two light packs; full port + QA lands in M5 (#30).
+5. **Accent-aware accents** — anything colored accent must reference `--accent`, since Night Athletic users can switch it live.
 
 ## V1 scope — the daily loop
 
@@ -46,10 +68,10 @@ The app never talks to Suunto or Garmin directly in v1 — the Mac does, using a
 
 ## Build order (milestones)
 
-1. **M0 Design** — 3–4 throwaway HTML mockup directions → pick → design tokens
-2. **M1 Scaffold** — Workers project, D1 schema, auth, PWA shell, push-to-deploy
-3. **M2 Core loop** — text quick-add → confirm sheet → Today screen (proves AI+DB+UI without camera complexity)
+1. **M0 Design** — ✅ mockup rounds done (v1 + v2, all three v2s adopted as themes). Remaining: token schema + Night Athletic pack (#2), log-flow mockup (#3), Dave's tweak list folded in
+2. **M1 Scaffold** — Workers project, D1 schema (incl. theme + accent columns), auth, PWA shell, push-to-deploy
+3. **M2 Core loop** — text quick-add → confirm sheet → Today screen, built in Night Athletic (proves AI+DB+UI without camera complexity)
 4. **M3 Photo & barcode** — camera + R2 + vision; OpenFoodFacts
 5. **M4 Budget engine** — TDEE onboarding, weight sync, runs sync, eat-back
-6. **M5 Trends & polish** — trends screen, settings, micro-interactions, install prompt
+6. **M5 Trends & polish** — trends screen, settings (incl. theme switcher + accent picker #29), Field Notes + Instrument theme ports (#30), micro-interactions, install prompt
 7. **M6 OSS-ready (backlog)** — settings BYOK, agent-install directives, direct Suunto OAuth
