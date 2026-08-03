@@ -116,13 +116,41 @@ it, any Google account that finds the URL gets an account — and from M2, spend
 deployment's `ANTHROPIC_API_KEY`. Roughly fifteen lines. The fuller claim mechanism for
 self-hosters (#33's second half) is not needed today and shouldn't be built here.
 
-### 1. Log in — `! npx wrangler login`
-Browser OAuth click-through. Everything after this needs it.
+### 0.5. Doppler project for this app's secrets
+Secrets live in Doppler and are *pushed* to Cloudflare — Doppler is never consulted at
+runtime. The app reads plain `env` bindings and has no idea Doppler exists, which is what
+keeps a self-hoster on `wrangler secret put` with no extra account.
 
-### 1b. Make sure `debrief.run` is a zone on this Cloudflare account
-The custom domain has to be Cloudflare-managed DNS. If `debrief.run` is already there,
-nothing to do. If not: dashboard → Add a site → follow the nameserver change at the
-registrar, and wait for it to go active before step 4.
+Create a **separate `mymacros` project** rather than adding to `program-cf`. That one holds
+infrastructure credentials — tokens that can edit DNS and buy domains — and this app's
+secrets have a different blast radius and rotation schedule. Rotating a leaked app key
+shouldn't mean touching anything that can move the domains.
+
+Local dev then regenerates `.dev.vars` from Doppler instead of being hand-edited:
+```
+doppler secrets download -p mymacros -c dev --no-file --format env > .dev.vars
+```
+Keep `APP_URL` and `PASSKEY_RP_ID` in the dev config — they're local overrides of the
+production values in `wrangler.jsonc`, not secrets, but `.dev.vars` is where they belong.
+
+### 1. Log in — `! npx wrangler login`
+Browser OAuth click-through.
+
+**The existing `program-cf` token can't be reused — checked.** It's valid and active, but it
+returns `Authentication error` on both Workers Scripts and D1, and can enumerate no zones or
+accounts, so it's DNS-scoped. If a non-interactive login is wanted later (useful for CI),
+mint a new token with *Workers Scripts:Edit*, *D1:Edit*, *Workers R2 Storage:Edit* and
+*Account Settings:Read*, and store it in the `mymacros` Doppler project — then
+`doppler run -- npx wrangler deploy` needs no browser at all.
+
+### 1b. Confirm `debrief.run` is a zone on this Cloudflare account
+The custom domain needs Cloudflare-managed DNS. **This could not be verified via API** — the
+`program-cf` token lacks `Zone:Read`, so it lists zero zones whether or not they exist.
+Check the dashboard by eye. Dave believes it's already there (debrief.run is live), in which
+case there's nothing to do.
+
+If it isn't: dashboard → Add a site → change nameservers at the registrar → wait for active.
+That's the only step here with unbounded latency, so confirm it before starting.
 
 ### 2. Create the real D1
 ```
@@ -136,11 +164,19 @@ M3, and the binding gets written in #13 alongside the code that uses it, so crea
 bucket early only saves a trip back to the CLI.
 
 ### 3. Set the session secret
+Generate it into Doppler, so the record lives there rather than only in Cloudflare:
 ```
-openssl rand -base64 32 | npx wrangler secret put BETTER_AUTH_SECRET
+openssl rand -base64 32 | doppler secrets set BETTER_AUTH_SECRET -p mymacros -c prd
 ```
-Not optional — better-auth signs session cookies with it. Local dev has its own value in
-`.dev.vars`; the two are unrelated.
+Not optional — better-auth signs session cookies with it. Local dev has its own throwaway
+value; the two are unrelated and the local one needn't be in Doppler at all.
+
+Push everything Doppler holds into the Worker in one shot (repeat this after any secret
+changes — Workers Builds deploys from Cloudflare's CI and will never run `doppler`):
+```
+doppler secrets download -p mymacros -c prd --format json --no-file \
+  | npx wrangler secret bulk
+```
 
 ### 4. Deploy, then attach the custom domain
 ```
@@ -181,12 +217,14 @@ and developer contact, no scopes beyond the defaults. Then **click Publish app**
 request email/profile/openid, which are non-sensitive, so publishing needs no Google review
 and removes Testing mode's 100-test-user cap and weekly refresh-token expiry.
 
-Then, with the client ID and secret it hands back:
+Then, with the client ID and secret it hands back — into Doppler, then pushed to Cloudflare:
 ```
-npx wrangler secret put GOOGLE_CLIENT_ID
-npx wrangler secret put GOOGLE_CLIENT_SECRET
+doppler secrets set GOOGLE_CLIENT_ID GOOGLE_CLIENT_SECRET -p mymacros -c prd
+doppler secrets download -p mymacros -c prd --format json --no-file | npx wrangler secret bulk
 npm run deploy
 ```
+Put the same pair in the `dev` config too and regenerate `.dev.vars` to get Google sign-in
+working locally.
 `GET /api/auth-methods` should flip to `{"google":true,...}` and the sign-in screen grows a
 "Continue with Google" button. It hides itself while the credentials are missing, so that
 response is the check that this step actually worked.
@@ -199,8 +237,10 @@ GitHub OAuth grant → pick `samsun076/MyMacros`, branch `main`. Build command `
 build`, deploy command `npx wrangler deploy`. Then push an empty commit and watch it build,
 so push-to-deploy is proven rather than assumed.
 
-### 8. `wrangler secret put ANTHROPIC_API_KEY`
-Can slip to M2 — nothing in M1 calls Claude. Setting it now saves a step later.
+### 8. `ANTHROPIC_API_KEY`
+`doppler secrets set ANTHROPIC_API_KEY -p mymacros -c prd`, then the same `secret bulk`
+push. Can slip to M2 — nothing in M1 calls Claude — but it's the only secret that costs
+money, so it's the one most worth having a single home for.
 
 ### 9. Smoke test on the phone
 
