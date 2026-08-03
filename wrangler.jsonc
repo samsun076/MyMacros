@@ -12,14 +12,29 @@
     "binding": "ASSETS"
   },
   "observability": { "enabled": true },
+
+  // The app is served from its custom domain only. Cloudflare creates the DNS
+  // record in the debrief.run zone and issues the certificate itself.
+  //
+  // workers.dev is off deliberately, and specifically because of this
+  // deployment's rpID: a passkey's rpID must be the origin's host or a parent
+  // of it, and `debrief.run` is not a parent of `*.workers.dev`, so passkeys
+  // would refuse there. It is not a general objection to workers.dev — a
+  // self-hoster who sets no PASSKEY_RP_ID gets the hostname as its own rpID
+  // and passkeys work there with no domain at all.
+  //
+  // Declared here rather than clicked in the dashboard so Workers Builds
+  // reapplies it on every deploy instead of drifting away from it (#7).
+  "routes": [{ "pattern": "fuel.debrief.run", "custom_domain": true }],
+  "workers_dev": false,
   "d1_databases": [
     {
       "binding": "DB",
       "database_name": "mymacros-db",
-      // PLACEHOLDER — the real database is created in Session B2:
-      //   wrangler d1 create mymacros-db  →  paste the id here
+      // The real database, created in Session B2. Not a secret — a database
+      // id is useless without credentials for the account that owns it.
       // Local dev (miniflare) ignores this value entirely.
-      "database_id": "local-dev-placeholder",
+      "database_id": "4cf59eaf-8cfe-4c44-b599-d038018fcaed",
       "migrations_dir": "migrations"
     }
   ],
