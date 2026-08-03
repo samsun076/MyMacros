@@ -1,5 +1,6 @@
 import { passkey } from "@better-auth/passkey";
 import { betterAuth } from "better-auth";
+import { APIError } from "better-auth/api";
 import { D1Dialect } from "kysely-d1";
 import { createDb } from "./db";
 
@@ -98,6 +99,24 @@ export function createAuth(env: Env) {
     databaseHooks: {
       user: {
         create: {
+          // Who is allowed to exist here (#33). Without this, anyone who
+          // reaches the URL and clicks Continue with Google gets an account —
+          // and from M2, spends this deployment's ANTHROPIC_API_KEY.
+          //
+          // Creation only: an address removed from the list later keeps its
+          // existing account and sessions. Revoking access is a different job
+          // (delete the user; the cascade takes their data with it).
+          before: async (user) => {
+            if (!emailAllowed(env, user.email)) {
+              throw new APIError("FORBIDDEN", {
+                // On the Google path better-auth turns this into the `error`
+                // query param on its error page, joining spaces with
+                // underscores — so keep it a short sentence that survives that.
+                message: "This email is not allowed on this deployment",
+              });
+            }
+          },
+
           // Every user has a profile from the moment they exist, so no route
           // ever has to cope with a half-created account.
           after: async (user) => {
@@ -143,6 +162,27 @@ function passkeyRpId(env: Env, hostname: string): string {
     );
   }
   return configured;
+}
+
+/** Whether `email` may create an account on this deployment (#33).
+ *
+ *  `ALLOWED_EMAILS` is a comma-separated list, matched case-insensitively —
+ *  the minimum slice of the sign-up problem: no new infrastructure, and it
+ *  works from the first deploy. The claim flow #33 describes (Cloudflare
+ *  Access on a first-run route, first person through becomes the owner)
+ *  replaces this later; it is not needed while the list has one entry.
+ *
+ *  **Empty or unset refuses everyone.** A guard that defaults to "allow" is
+ *  the hole it was written to close: a deploy that forgets the var would look
+ *  fine and be open. This way it's shut, loudly, and the fix is one secret.
+ */
+function emailAllowed(env: Env, email: string | null | undefined): boolean {
+  const allowed = (env.ALLOWED_EMAILS ?? "")
+    .split(",")
+    .map((entry) => entry.trim().toLowerCase())
+    .filter(Boolean);
+  const candidate = email?.trim().toLowerCase();
+  return Boolean(candidate) && allowed.includes(candidate!);
 }
 
 export type Auth = ReturnType<typeof createAuth>;

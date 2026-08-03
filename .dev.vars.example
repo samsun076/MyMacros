@@ -13,6 +13,13 @@ APP_URL="http://localhost:5173"
 PASSKEY_RP_ID="localhost"
 
 
+# Who may create an account here — comma-separated, case-insensitive (#33).
+# EMPTY OR UNSET REFUSES EVERYONE, deliberately: a deployment that forgets
+# this would otherwise let any Google account that finds the URL sign up, and
+# from M2 spend its ANTHROPIC_API_KEY. Existing accounts are unaffected by
+# changes here; this only gates creation.
+ALLOWED_EMAILS="dev@mymacros.local"
+
 # Signs session cookies. Any long random string locally:
 #   openssl rand -base64 32
 BETTER_AUTH_SECRET="dev-only-secret-change-me"
