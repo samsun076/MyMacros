@@ -96,12 +96,23 @@ The half that needs Dave's accounts — do it paired; ~20–30 min. Finishes **#
 and closes M1. Everything below is blocked on a login or a console only Dave can reach;
 nothing here is code that could have been written in B1.
 
-**Order matters.** The deployed URL isn't known until the first deploy, and three things
-downstream depend on it (`APP_URL`, the Google redirect URI, and the passkey `rpID`). So:
-deploy first with a placeholder, then wire identity to the real URL.
+**The URL is already decided: `https://fuel.debrief.run`** (#34). That's a change from the
+earlier plan of deploying to `workers.dev` first and learning the URL — everything identity-
+related is now known up front, so `APP_URL` and `PASSKEY_RP_ID` are already committed in
+`wrangler.jsonc` and the Google console can be filled in before the first deploy rather than
+after. `.dev.vars` overrides both locally, so local dev keeps pointing at `localhost:5173`.
+
+**Passkeys bind to `debrief.run`, not `fuel.debrief.run`** — deliberate, so one credential
+covers every `*.debrief.run` app as they appear. It cannot be changed after anyone enrols
+without forcing them all to re-enrol.
 
 ### 1. Log in — `! npx wrangler login`
 Browser OAuth click-through. Everything after this needs it.
+
+### 1b. Make sure `debrief.run` is a zone on this Cloudflare account
+The custom domain has to be Cloudflare-managed DNS. If `debrief.run` is already there,
+nothing to do. If not: dashboard → Add a site → follow the nameserver change at the
+registrar, and wait for it to go active before step 4.
 
 ### 2. Create the real D1
 ```
@@ -121,22 +132,25 @@ openssl rand -base64 32 | npx wrangler secret put BETTER_AUTH_SECRET
 Not optional — better-auth signs session cookies with it. Local dev has its own value in
 `.dev.vars`; the two are unrelated.
 
-### 4. First deploy, to learn the URL
+### 4. Deploy, then attach the custom domain
 ```
 npm run deploy
 ```
-Prints `https://mymacros.<your-subdomain>.workers.dev`. **Write it down — steps 5–7 all
-need it.** Then set it as `vars.APP_URL` in `wrangler.jsonc` (it currently reads
-`http://localhost:5173`) and deploy again. `APP_URL` drives better-auth's `baseURL`, the
-trusted origin, and the passkey `rpID` — leave it on localhost and Google sign-in redirects
-to the wrong place and passkeys refuse to register.
+Then dashboard → Workers & Pages → **mymacros** → Settings → Domains & Routes → **Add
+custom domain** → `fuel.debrief.run`. Cloudflare creates the DNS record and issues the
+certificate itself; give it a minute, then `curl https://fuel.debrief.run/api/health`.
+
+The `workers.dev` URL keeps working alongside it. Worth disabling it in Settings once the
+custom domain is live — otherwise the app answers on a hostname where passkeys can't work
+(the rpID is `debrief.run`, which `workers.dev` is not a subdomain of), which is a confusing
+failure to hit later.
 
 ### 5. Apply the migrations remotely
 ```
 npm run db:migrate:remote
 ```
 One migration, `0001_schema_v1.sql`, 21 statements. Confirm with
-`curl https://<url>/api/health` → `{"ok":true,"db":true,"migration":"0001_schema_v1.sql"}`.
+`curl https://fuel.debrief.run/api/health` → `{"ok":true,"db":true,"migration":"0001_schema_v1.sql"}`.
 
 ### 6. Google OAuth client (finishes the credential half of #6)
 Google Cloud Console → **APIs & Services → Credentials → Create credentials → OAuth client
@@ -144,15 +158,16 @@ ID → Web application**. Name it "MyMacros". Then:
 
 | Field | Value |
 |---|---|
-| Authorised JavaScript origins | `https://mymacros.<subdomain>.workers.dev` **and** `http://localhost:5173` |
-| Authorised redirect URIs | `https://mymacros.<subdomain>.workers.dev/api/auth/callback/google` **and** `http://localhost:5173/api/auth/callback/google` |
+| Authorised JavaScript origins | `https://fuel.debrief.run` **and** `http://localhost:5173` |
+| Authorised redirect URIs | `https://fuel.debrief.run/api/auth/callback/google` **and** `http://localhost:5173/api/auth/callback/google` |
 
 The `/api/auth/callback/google` path is better-auth's convention (`basePath` + provider) —
 it is not configurable in our setup, so it must be typed exactly. Include the localhost
 entries or Google sign-in only ever works in production. If the consent screen isn't set up
 yet, Google prompts for it first: External, app name "MyMacros", Dave's email for support
-and developer contact, no scopes beyond the defaults, and add Dave as a test user (staying
-in Testing mode is fine for a personal deploy).
+and developer contact, no scopes beyond the defaults. Then **click Publish app**: we only
+request email/profile/openid, which are non-sensitive, so publishing needs no Google review
+and removes Testing mode's 100-test-user cap and weekly refresh-token expiry.
 
 Then, with the client ID and secret it hands back:
 ```
@@ -176,7 +191,7 @@ so push-to-deploy is proven rather than assumed.
 Can slip to M2 — nothing in M1 calls Claude. Setting it now saves a step later.
 
 ### 9. Smoke test on the phone
-1. Open the URL in iOS Safari → **Continue with Google** → lands on Today.
+1. Open `https://fuel.debrief.run` in iOS Safari → **Continue with Google** → lands on Today.
 2. **Settings → Add a passkey** → Face ID → the key appears in the list.
 3. Sign out → **Sign in with a passkey** → back in, no Google round-trip.
 4. Share → **Add to Home Screen**, check the icon, launch it standalone.
@@ -185,12 +200,12 @@ Can slip to M2 — nothing in M1 calls Claude. Setting it now saves a step later
    `theme-color` is honoured — **this answers the open Memex question about theme-color in
    PWA mode**, so write down what it actually does.
 
-### Heads-up before Dave registers a passkey — **#34**
-A passkey is bound to its `rpID` — the hostname in `APP_URL`. One registered against
-`mymacros.<subdomain>.workers.dev` stops working if the app later moves to a custom domain,
-and the local ones registered against `localhost` never work in production. So: **settle
-#34 before step 9**, or accept re-registering passkeys after the move. Nothing else in M1
-is domain-sensitive.
+### Settled: the domain and the passkey scope — **#34**
+`fuel.debrief.run`, with passkeys bound to `debrief.run` so one credential covers every
+`*.debrief.run` app as they appear — MyMacros already consumes debrief's run data, and a
+shared login is the obvious next step. Both values live in `wrangler.jsonc`; `.dev.vars`
+overrides them locally. Neither can change after anyone enrols without forcing a re-enrol,
+which is why it was settled before the first production passkey rather than after.
 
 ### Left open on purpose, found during B1
 
@@ -201,7 +216,8 @@ runway section.
 - **#33 — Google is the only way to create the first account.** Passkey registration
   requires a live session (better-auth's default, kept deliberately). Right for Dave's
   deploy; it's the OSS path (#26) where it bites, so the decision is filed against M6.
-- **#34 — decide the domain before any passkey is registered.** See above.
+- **#34 — settled:** `fuel.debrief.run`, passkey rpID `debrief.run`. Closes once the custom
+  domain is actually attached in B2 step 4.
 - **#35 — self-host the fonts** instead of the Google Fonts CDN.
 - **Tab bar at 375: "TRENDS SETTINGS" sit tight together.** Raised on the #2 thread with a
   side-by-side crop showing the app matches the frozen sketch exactly — inherited from the

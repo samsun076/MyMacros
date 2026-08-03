@@ -1,5 +1,17 @@
-# Local secrets for `vite dev` / `wrangler dev`. Copy to `.dev.vars` (gitignored).
-# Remotely these are set with `wrangler secret put <NAME>` — see NEXT-STEPS.md (Session B2).
+# Local secrets and local overrides for `vite dev` / `wrangler dev`.
+# Copy to `.dev.vars` (gitignored).
+#
+# Values here take precedence over the `vars` block in wrangler.jsonc, which
+# holds the PRODUCTION values — that's how one config serves both without a
+# second wrangler environment. Secrets are set remotely with
+# `wrangler secret put <NAME>` — see NEXT-STEPS.md (Session B2).
+
+# Local overrides of the production vars. Without these you'd be running the
+# dev server as though it were fuel.debrief.run, and both Google's redirect
+# and the passkey rpID would refuse.
+APP_URL="http://localhost:5173"
+PASSKEY_RP_ID="localhost"
+
 
 # Signs session cookies. Any long random string locally:
 #   openssl rand -base64 32

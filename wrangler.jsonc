@@ -24,8 +24,16 @@
     }
   ],
   "vars": {
-    // Public, non-secret config. Secrets live in .dev.vars locally and in
-    // `wrangler secret put` remotely — see .dev.vars.example.
-    "APP_URL": "http://localhost:5173"
+    // Public, non-secret config — these are the PRODUCTION values. Local dev
+    // overrides them from .dev.vars, which takes precedence over this block,
+    // so there's no second environment to keep in sync. Secrets live in
+    // .dev.vars locally and `wrangler secret put` remotely — see
+    // .dev.vars.example.
+    "APP_URL": "https://fuel.debrief.run",
+
+    // Passkeys bind to this domain, not the app's own hostname, so one
+    // credential covers every *.debrief.run app as they appear (#34).
+    // Changing it later forces everyone to re-enrol — see src/worker/auth.ts.
+    "PASSKEY_RP_ID": "debrief.run"
   }
 }

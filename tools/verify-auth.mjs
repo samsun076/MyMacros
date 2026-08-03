@@ -95,6 +95,28 @@ await withChrome(async (cdp) => {
   await waitFor(cdp, sessionId, `document.querySelector('.passkeys') !== null`, {
     label: "passkey manager",
   });
+
+  // Each run gets a brand-new virtual authenticator, so rows left in the
+  // database by earlier runs are credentials nothing can satisfy. Clear them
+  // first or "the list has one entry" passes without anything being
+  // registered — and clearing them exercises delete-passkey for free.
+  for (let i = 0; i < 10; i++) {
+    const remaining = await evaluate(
+      cdp,
+      sessionId,
+      `document.querySelectorAll('.passkey-list li').length`,
+    );
+    if (remaining === 0) break;
+    await evaluate(cdp, sessionId, click("remove"));
+    await waitFor(cdp, sessionId, `document.querySelectorAll('.passkey-list li').length < ${remaining}`, {
+      label: "a stale passkey to be removed",
+    });
+  }
+  check(
+    "starts from an empty passkey list",
+    (await evaluate(cdp, sessionId, `document.querySelectorAll('.passkey-list li').length`)) === 0,
+  );
+
   await waitFor(cdp, sessionId, click("add a passkey"), { label: "add-passkey button" });
   await waitFor(cdp, sessionId, `document.querySelectorAll('.passkey-list li').length === 1`, {
     label: "passkey to appear in the list",

@@ -29,6 +29,7 @@ export function createAuth(env: Env) {
   const appUrl: string = env.APP_URL;
   const { hostname, origin } = new URL(appUrl);
   const googleConfigured = Boolean(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET);
+  const rpID = passkeyRpId(env, hostname);
 
   return betterAuth({
     appName: "MyMacros",
@@ -62,7 +63,7 @@ export function createAuth(env: Env) {
 
     plugins: [
       passkey({
-        rpID: hostname,
+        rpID,
         rpName: "MyMacros",
         origin,
         schema: { passkey: { modelName: "passkeys" } },
@@ -114,6 +115,34 @@ export function createAuth(env: Env) {
       database: { generateId: () => crypto.randomUUID() },
     },
   });
+}
+
+/** Which domain passkeys are bound to.
+ *
+ *  Defaults to the app's own hostname — the tightest possible scope, and what
+ *  a self-hoster gets with no configuration. Setting `PASSKEY_RP_ID` to a
+ *  parent domain widens it deliberately: `debrief.run` on this deployment, so
+ *  one passkey can sign into every `*.debrief.run` app as they appear.
+ *
+ *  **This is effectively irreversible.** Credentials are bound to the rpID
+ *  they were created under, so narrowing or widening it later forces everyone
+ *  to re-enrol. Decided in #34.
+ *
+ *  WebAuthn only permits an rpID that the origin's hostname equals or is a
+ *  subdomain of; anything else fails in the browser with a message about
+ *  registrable domain suffixes, long after the misconfiguration. Fail here
+ *  instead, where the reason is obvious.
+ */
+function passkeyRpId(env: Env, hostname: string): string {
+  const configured = env.PASSKEY_RP_ID?.trim();
+  if (!configured) return hostname;
+  if (hostname !== configured && !hostname.endsWith(`.${configured}`)) {
+    throw new Error(
+      `PASSKEY_RP_ID "${configured}" is not valid for host "${hostname}" — ` +
+        `it must be that host or a parent domain of it.`,
+    );
+  }
+  return configured;
 }
 
 export type Auth = ReturnType<typeof createAuth>;
