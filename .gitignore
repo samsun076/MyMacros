@@ -6,3 +6,10 @@ dist/
 .dev.vars
 .env
 *.local
+
+# Google OAuth client credentials. The canonical copy lives in the mymacros
+# Doppler project; these are the console's download and a tidied copy of it,
+# kept for reference only. The pattern is deliberately broad: Google names
+# its download after the client id, and that file must never be committed.
+google-oauth-client.json
+client_secret_*.json
