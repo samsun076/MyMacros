@@ -80,3 +80,11 @@ The app never talks to Suunto or Garmin directly in v1 — the Mac does, using a
 5. **M4 Budget engine** — TDEE onboarding, weight sync, runs sync, eat-back
 6. **M5 Trends & polish** — trends screen, settings (incl. theme switcher + accent picker #29), Field Notes + Instrument theme ports (#30), micro-interactions, install prompt
 7. **M6 OSS-ready (backlog)** — settings BYOK, agent-install directives, direct Suunto OAuth
+
+**Someday, unscheduled:** two-way debrief integration. Today the flow is one-way — debrief's
+pipeline pushes runs into MyMacros. The interesting direction is back: debrief showing what
+was eaten before a run ("you ran this fasted", "you'd had 1,200 kcal"), so pre-run fueling
+can be read against performance — a question neither app can answer alone. Deliberately not
+an issue and not on a milestone: revisit only once the daily loop is fully working and
+there's real data on both sides. The passkey rpID is already scoped to `debrief.run` so a
+shared login stays available if this ever happens.
