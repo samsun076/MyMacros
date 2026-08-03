@@ -141,9 +141,11 @@ custom domain** → `fuel.debrief.run`. Cloudflare creates the DNS record and is
 certificate itself; give it a minute, then `curl https://fuel.debrief.run/api/health`.
 
 The `workers.dev` URL keeps working alongside it. Worth disabling it in Settings once the
-custom domain is live — otherwise the app answers on a hostname where passkeys can't work
-(the rpID is `debrief.run`, which `workers.dev` is not a subdomain of), which is a confusing
-failure to hit later.
+custom domain is live — **because of this deployment's rpID specifically**, not because
+`workers.dev` is unsuitable in general. A passkey's rpID must be the hostname or a parent of
+it; we claim `debrief.run`, which is not a parent of `*.workers.dev`, so passkeys refuse
+there. A self-hoster who sets no `PASSKEY_RP_ID` gets the hostname as its own rpID and
+passkeys work on `workers.dev` fine, with no domain at all.
 
 ### 5. Apply the migrations remotely
 ```
