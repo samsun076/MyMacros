@@ -16,6 +16,7 @@ Built for weight loss, built for one user first (Dave), but shaped so other peop
 | Budget model | **TDEE (Mifflin-St Jeor) + chosen deficit**, protein-forward macro split. Targets recompute as logged weight drops |
 | Eat-back | **Configurable partial** (default 50%) of run calories added to the day's budget, shown transparently ("+320 kcal from your 6mi run") |
 | Logging inputs | Photo (meal or label) · **barcode → OpenFoodFacts** (free, exact) · **AI text quick-add** ("chipotle bowl, no rice") · favorites/recents. Every AI entry is editable before saving |
+| Platform | **Capture is mobile, review is both.** Photographing, scanning and quick-adding a meal happen on the phone — nobody photographs a restaurant plate from a desk. Desktop is a review surface (today, trends, history, fixing a past entry) and never grows a log flow. Mobile stays the reference experience and 375px stays the design gate |
 | Auth | Google sign-in + passkeys via better-auth. No passwords |
 | Ambition | Personal-first but **multi-user-shaped** (real auth, per-user data isolation). SaaS vs open-source decision deferred until the app is proven |
 | Design | **Three themes, one app** (decided from the v2 mockup round — see Theming below). Native-feeling mobile interactions (bottom tabs, sheets, safe areas). Editorial direction rejected as AI-slop-adjacent |

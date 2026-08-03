@@ -67,8 +67,15 @@ export function createAuth(env: Env) {
         origin,
         schema: { passkey: { modelName: "passkeys" } },
         authenticatorSelection: {
-          // Platform authenticator = Face ID / Touch ID on the phone that's
-          // running the PWA, which is the whole point.
+          // Platform authenticator = Face ID / Touch ID / Android biometrics on
+          // the device running the PWA. Deliberate, and not a limitation to
+          // "fix": capture is mobile (PLAN.md), so a passkey belongs on the
+          // phone you log meals with, never on a desktop you review from.
+          //
+          // This constrains REGISTRATION only. Signing in still offers the
+          // cross-device QR flow, which is exactly how the desktop review
+          // session is meant to work — scan with the phone, no credential
+          // ever stored on the desktop.
           authenticatorAttachment: "platform",
           residentKey: "preferred",
           userVerification: "preferred",
