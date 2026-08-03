@@ -191,6 +191,13 @@ so push-to-deploy is proven rather than assumed.
 Can slip to M2 — nothing in M1 calls Claude. Setting it now saves a step later.
 
 ### 9. Smoke test on the phone
+
+> **Don't share the URL yet — #33.** Until its allowlist lands, any Google account that
+> reaches `fuel.debrief.run` can create an account, and from M2 those accounts spend the
+> deployment's `ANTHROPIC_API_KEY`. Fine while the hostname is unknown to anyone else;
+> not fine the moment it's posted anywhere. It's a ~15-line guard — worth doing straight
+> after this session, before M2 puts a paid API behind the door.
+
 1. Open `https://fuel.debrief.run` in iOS Safari → **Continue with Google** → lands on Today.
 2. **Settings → Add a passkey** → Face ID → the key appears in the list.
 3. Sign out → **Sign in with a passkey** → back in, no Google round-trip.
@@ -213,9 +220,8 @@ All of these are filed — this list is a pointer, not the record. Anything that
 in this file is one rewrite away from being lost, since each session replaces its own
 runway section.
 
-- **#33 — Google is the only way to create the first account.** Passkey registration
-  requires a live session (better-auth's default, kept deliberately). Right for Dave's
-  deploy; it's the OSS path (#26) where it bites, so the decision is filed against M6.
+- **#33 — nothing restricts who can create an account.** Reframed and moved to M1: this
+  stops being hypothetical the moment the domain is live. See the warning in step 9.
 - **#34 — settled:** `fuel.debrief.run`, passkey rpID `debrief.run`. Closes once the custom
   domain is actually attached in B2 step 4.
 - **#35 — self-host the fonts** instead of the Google Fonts CDN.
