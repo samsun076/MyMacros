@@ -106,6 +106,16 @@ after. `.dev.vars` overrides both locally, so local dev keeps pointing at `local
 covers every `*.debrief.run` app as they appear. It cannot be changed after anyone enrols
 without forcing them all to re-enrol.
 
+### 0. The one code change: shut the open door (#33)
+Do this first, so the app is never publicly reachable without it. Everything else in B2 is
+console work; this is the only code.
+
+A `databaseHooks.user.create.before` in `src/worker/auth.ts` that refuses any user whose
+email isn't in an `ALLOWED_EMAILS` var, plus that var set to Dave's Google address. Without
+it, any Google account that finds the URL gets an account — and from M2, spends the
+deployment's `ANTHROPIC_API_KEY`. Roughly fifteen lines. The fuller claim mechanism for
+self-hosters (#33's second half) is not needed today and shouldn't be built here.
+
 ### 1. Log in — `! npx wrangler login`
 Browser OAuth click-through. Everything after this needs it.
 
@@ -194,11 +204,9 @@ Can slip to M2 — nothing in M1 calls Claude. Setting it now saves a step later
 
 ### 9. Smoke test on the phone
 
-> **Don't share the URL yet — #33.** Until its allowlist lands, any Google account that
-> reaches `fuel.debrief.run` can create an account, and from M2 those accounts spend the
-> deployment's `ANTHROPIC_API_KEY`. Fine while the hostname is unknown to anyone else;
-> not fine the moment it's posted anywhere. It's a ~15-line guard — worth doing straight
-> after this session, before M2 puts a paid API behind the door.
+> Assumes step 0's allowlist is in place. If it was skipped, don't share the URL — any
+> Google account that reaches `fuel.debrief.run` can create an account, and from M2 those
+> accounts spend the deployment's `ANTHROPIC_API_KEY`.
 
 1. Open `https://fuel.debrief.run` in iOS Safari → **Continue with Google** → lands on Today.
 2. **Settings → Add a passkey** → Face ID → the key appears in the list.
@@ -237,13 +245,21 @@ runway section.
 ### Starter prompt (paste verbatim, with Dave at the keyboard)
 
 ```
-Working on MyMacros (~/Projects/MyMacros). Read NEXT-STEPS.md — we're doing
-Session B2 together: the credential/deploy half of M1 (finish #6 and #7).
-I'm here to click OAuth prompts and paste secrets; you drive. Work through
-the B2 checklist in order, one step at a time — tell me exactly what to do
-when it's my turn (use `! <command>` for interactive logins), verify each
-step landed before moving on, and end with the deployed smoke test. Commit
-with "closes #6" / "closes #7" when each is actually done, push when done.
+Working on MyMacros (~/Projects/MyMacros). Read CLAUDE.md and NEXT-STEPS.md —
+we're doing Session B2 together: the credential/deploy half of M1. It closes
+#6, #7 and #34, and lands step 0 of #33. I'm here to click OAuth prompts and
+paste secrets; you drive.
+
+Work the B2 checklist in order, one step at a time. Tell me exactly what to
+do when it's my turn (use `! <command>` for anything interactive), and verify
+each step actually landed before moving on — don't take a command exiting 0
+as proof. Deploy target is https://fuel.debrief.run; passkeys are scoped to
+debrief.run on purpose, so don't "fix" that.
+
+End with the smoke test on my phone, and write down what theme-color does in
+standalone mode — that's an open question we've never answered. Commit per
+issue with "closes #N" only where the issue is genuinely finished, push when
+done, and update the Then section of NEXT-STEPS.md for M2.
 ```
 
 ## Then
