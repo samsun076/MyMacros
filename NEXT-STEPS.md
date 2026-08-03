@@ -116,22 +116,31 @@ it, any Google account that finds the URL gets an account — and from M2, spend
 deployment's `ANTHROPIC_API_KEY`. Roughly fifteen lines. The fuller claim mechanism for
 self-hosters (#33's second half) is not needed today and shouldn't be built here.
 
-### 0.5. Doppler project for this app's secrets
+### 0.5. Doppler — ✅ already done, nothing to do in the session
 Secrets live in Doppler and are *pushed* to Cloudflare — Doppler is never consulted at
 runtime. The app reads plain `env` bindings and has no idea Doppler exists, which is what
 keeps a self-hoster on `wrangler secret put` with no extra account.
 
-Create a **separate `mymacros` project** rather than adding to `program-cf`. That one holds
-infrastructure credentials — tokens that can edit DNS and buy domains — and this app's
-secrets have a different blast radius and rotation schedule. Rotating a leaked app key
-shouldn't mean touching anything that can move the domains.
+The **`mymacros` project exists**, separate from `program-cf` (which holds tokens that can
+edit DNS and buy domains — different blast radius, different rotation). Populated:
 
-Local dev then regenerates `.dev.vars` from Doppler instead of being hand-edited:
+- `dev` — `APP_URL=http://localhost:5173`, `PASSKEY_RP_ID=localhost`, a throwaway
+  `BETTER_AUTH_SECRET`, and empty `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` /
+  `ANTHROPIC_API_KEY` waiting to be filled.
+- `prd` — a real `BETTER_AUTH_SECRET`, generated. Nothing else yet.
+
+`.dev.vars` is now generated rather than hand-edited, and local dev is verified working from
+it (passkey ceremony green):
 ```
-doppler secrets download -p mymacros -c dev --no-file --format env > .dev.vars
+doppler secrets download -p mymacros -c dev --no-file --format env | grep -v '^DOPPLER_' > .dev.vars
 ```
-Keep `APP_URL` and `PASSKEY_RP_ID` in the dev config — they're local overrides of the
-production values in `wrangler.jsonc`, not secrets, but `.dev.vars` is where they belong.
+
+**Always filter `DOPPLER_*`.** Doppler injects `DOPPLER_PROJECT`, `DOPPLER_CONFIG` and
+`DOPPLER_ENVIRONMENT` into every config. Unfiltered they become bindings in
+`worker-configuration.d.ts` locally, and real Worker secrets in production.
+
+**Never put `APP_URL` or `PASSKEY_RP_ID` in `prd`.** Those are `vars` in `wrangler.jsonc`;
+pushing them as secrets too would leave two sources for one name.
 
 ### 1. Log in — `! npx wrangler login`
 Browser OAuth click-through.
@@ -163,18 +172,15 @@ Optionally also `npx wrangler r2 bucket create mymacros-photos` — nothing read
 M3, and the binding gets written in #13 alongside the code that uses it, so creating the
 bucket early only saves a trip back to the CLI.
 
-### 3. Set the session secret
-Generate it into Doppler, so the record lives there rather than only in Cloudflare:
-```
-openssl rand -base64 32 | doppler secrets set BETTER_AUTH_SECRET -p mymacros -c prd
-```
-Not optional — better-auth signs session cookies with it. Local dev has its own throwaway
-value; the two are unrelated and the local one needn't be in Doppler at all.
+### 3. Push the secrets Doppler already holds
+`BETTER_AUTH_SECRET` is **already generated** in `mymacros/prd` — better-auth signs session
+cookies with it. Local dev has its own throwaway value; the two are unrelated.
 
 Push everything Doppler holds into the Worker in one shot (repeat this after any secret
 changes — Workers Builds deploys from Cloudflare's CI and will never run `doppler`):
 ```
 doppler secrets download -p mymacros -c prd --format json --no-file \
+  | jq 'with_entries(select(.key | startswith("DOPPLER_") | not))' \
   | npx wrangler secret bulk
 ```
 
@@ -220,7 +226,8 @@ and removes Testing mode's 100-test-user cap and weekly refresh-token expiry.
 Then, with the client ID and secret it hands back — into Doppler, then pushed to Cloudflare:
 ```
 doppler secrets set GOOGLE_CLIENT_ID GOOGLE_CLIENT_SECRET -p mymacros -c prd
-doppler secrets download -p mymacros -c prd --format json --no-file | npx wrangler secret bulk
+doppler secrets download -p mymacros -c prd --format json --no-file \
+  | jq 'with_entries(select(.key | startswith("DOPPLER_") | not))' | npx wrangler secret bulk
 npm run deploy
 ```
 Put the same pair in the `dev` config too and regenerate `.dev.vars` to get Google sign-in
