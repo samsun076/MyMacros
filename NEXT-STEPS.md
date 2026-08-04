@@ -432,7 +432,9 @@ belongs there.
 Read in this order: PLAN.md (locked decisions), CLAUDE.md (build rules,
 conventions, gotchas), NEXT-STEPS.md, design/TOKENS.md, then the code —
 src/worker, src/client, src/shared, migrations, tools. Then `git log --stat`
-for the M1 sessions and `gh issue list --state all` across every milestone.
+for the M1 sessions and `gh issue list --state all --limit 100` across every
+milestone — the default caps at 30 results and there are more issues than
+that, so an unflagged listing silently drops the newest ones.
 Also read ~/Memex/agent-inbox/2026-08-04_mymacros-b2-oauth-callback-debug.md
 for the last session's learnings.
 
@@ -453,7 +455,10 @@ Assess four things:
    colors/fonts/radii instead of tokens, accent literals that should be
    `--accent`, motif slots with no named variant, and whether every API route
    is genuinely per-user isolated via `c.var.user` — is there any path to a
-   DB query not scoped by userId?
+   DB query not scoped by userId? This is mechanical compliance: greppable
+   facts, like a literal where a token should be or a variant name that
+   doesn't exist. Whether the rendered app *looks* right is C2's
+   design-fidelity question — don't open it here.
 2. Is anything in the documentation false, stale, or asserted without
    evidence? CLAUDE.md was corrected once this way already (the theme-color
    claim). Flag anything stated as fact that was never verified.
@@ -464,7 +469,10 @@ Assess four things:
 4. Is M2 (#9-#12) ready to run unattended? What's underspecified, what
    decisions would an autonomous session have to invent, and what should be
    settled first? Treat this as PROVISIONAL — C2 reviews the architecture and
-   could change the answer, so say what your verdict depends on.
+   could change the answer, so say what your verdict depends on. The verdict
+   itself goes in your summary, not an issue; file issues only for the
+   underspecified decisions you uncover, since those need settling regardless
+   of what C2 concludes.
 
 Don't "fix" these, they're deliberate: passkeys scoped to `debrief.run` (#34);
 `workers_dev: false`; `run_worker_first: ["/api/*"]`; ALLOWED_EMAILS failing
@@ -472,10 +480,15 @@ closed on empty; dev email sign-in gated on `import.meta.env.DEV` as a
 build-time literal.
 
 Deliverable: file substantive findings as GitHub issues (new, or comments on
-existing) rather than prose, fix anything trivially and safely fixable with a
-commit per issue, and give me a short summary of what you filed, what you
-fixed, and what you'd do first. Propose Memex wiki updates rather than writing
-them. Push when done.
+existing) rather than prose — bundle micro-findings of the same kind into one
+issue (all token literals together, say); a finding gets its own issue only
+when it needs its own discussion. Fix anything trivially and safely fixable
+with a commit per issue — trivial means `npm run check` and
+`npm run verify:routing` stay green. Give me a short summary of what you
+filed, what you fixed, and what you'd do first. Propose Memex wiki updates
+rather than writing them. Push when done — and since push deploys, finish by
+re-running `npm run verify:routing -- https://fuel.debrief.run` after the
+build lands, so the session verifies what it actually shipped.
 ```
 
 ### C2 starter prompt — judgment (Fable @ high)
