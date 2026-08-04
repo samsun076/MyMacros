@@ -1,14 +1,12 @@
 # Next steps — session playbook
 
-State as of 2026-08-04 (morning): plan locked (PLAN.md), 33 issues across 7 milestones.
-**M0 is done** — Session A ran: #31 (shot-matrix tooling), tweak list folded into
-c2-night-athletic, #2 (design/tokens.css + TOKENS.md), #3 (e-log-flow mockup), light-pack
-theme-QA done (one finding filed on #30). **Session B1 is done** — #4, #5 (local D1), #8
-and the code half of #6 all landed; project CLAUDE.md written. **Session B2 is done** —
-**M1 is closed**: the app is live at https://fuel.debrief.run, signed into with Google and
-a real passkey on device. **Next up: two review sessions — C1 (audit) and C2 (judgment) —
-then D builds the M2 core loop.** This file is the runway: what to run next, on which
-model, with paste-ready starter prompts.
+State as of 2026-08-04 (evening): plan locked (PLAN.md), M0 and M1 done, the app live at
+https://fuel.debrief.run. **Both review sessions have run**: C1 (audit) filed #40–#47 and
+fixed #40/#41/#42; C2 (judgment) verified design fidelity by eye against the frozen
+sketches (verdict: faithful, no unfiled drift), signed off the architecture for M2–M6,
+signed off the motif registry on #43, and filed #48 (client data layer — the one decision
+to land before #11). **Next up: Session D builds the M2 core loop (#9–#12).** This file is
+the runway: what to run next, on which model, with paste-ready starter prompts.
 
 ## Model guidance (Claude Code sessions)
 
@@ -354,276 +352,156 @@ done, and update the Then section of NEXT-STEPS.md for M2.
 
 </details>
 
-## Then — two review sessions, then build M2
 
-M1 is closed and the app is real, which makes this the cheapest moment to check the
-foundation before M2 builds on top of it. Two review passes first, split by **what it costs
-to judge**, then the build session.
+## Sessions C1 + C2 — the two reviews — ✅ done 2026-08-04
 
-| | Session | Model | Answers |
+| | Session | Model | Verdict |
 |---|---|---|---|
-| **C1** | ✅ **done 2026-08-04** — audit | Opus 5 @ xhigh | Filed #40–#46; fixed #40/#41/#42; settled #43/#44 with Dave |
-| **C2** | Judgment — design fidelity and architecture | Fable @ high | Unverifiable things: does it drift from the sketches in ways that matter, would you build M2 on this |
-| **D** | Build the M2 core loop (#9–#12) | Opus 5 @ xhigh, or one autonomous Fable run | — |
+| **C1** | Audit | Opus 5 @ xhigh | Filed #40–#46; fixed #40/#41/#42; #43/#44 settled with Dave; Dave filed #47 (test infra, M4) after |
+| **C2** | Judgment | Fable @ high | **Design fidelity: faithful.** Verified by eye at 375/390/428 — tab bar pixel-identical to the sketch, header type verbatim (both 27px), sign-in/settings coherent with the system; no drift found beyond what's filed (#46). **Architecture: build on it.** One decision filed as #48 (client data layer + `GET /api/day/:date`), to land at the start of D. Motif registry signed off on #43 — not reopened. `db.ts` hand-mirror and hand-rolled validators judged fine to live with at this scale |
 
-### What C1 settled, so C2 doesn't reopen it
+What C2 checked and how, so nobody re-does it: rendered the signed-in app locally
+(recipe preserved in the D prompt below), opened the PNGs and compared against
+`sketches/c2-night-athletic.html` crops side by side — chrome, header, buttons, type.
+`npm run check` and `npm run verify:routing -- https://fuel.debrief.run` both green.
 
-- **Motif slots use a registry** (#43, closed): `src/client/motifs/<theme>/`, a `MotifSet` type
-  requiring all four slots, `MOTIFS: Record<Theme, MotifSet>` — so a missing variant is a compile
-  error rather than a thing to remember. **CSS-only re-skinning is ruled out by evidence**, not
-  opinion: the three frozen sketches don't share a DOM for the budget meter (Night Athletic is
-  three stacked divs, Instrument is an `<svg>` Braun tape, Field Notes is a bar plus a separate
-  stamp). C2 may challenge the registry as architecture — reopen #43 if so — but shouldn't
-  re-litigate whether CSS alone could do it.
-- **`logged_on`** (#44, closed): client-supplied local date, **midnight cutoff**, phone writes
-  `profiles.timezone` on first log, set once and never recomputed on edit.
-- **M2 target**: a real `target_kcal` column on `profiles` (base target; the sketch's hero shows
-  base + earned = adjusted). **Meal slot**: derived from the clock, editable on the confirm sheet.
-- **Verified, don't re-audit**: per-user isolation (probed adversarially — injected `user_id` and
-  `created_at` are dropped, writes land only on the session user's row), token discipline, routing.
+## Session D — build M2, the core loop (Opus 5 @ xhigh, or one autonomous Fable run)
 
-**C2 must run before D.** Its architecture question is "the last cheap moment to change the
-foundation," and that stops being true the moment M2 code lands on top. C1's verdict on
-whether M2 is ready to run unattended is therefore *provisional* until C2 reports.
+Issues **#9–#12** plus the groundwork C1/C2 settled. Everything below is decided —
+nothing for the session to invent. Read the issue comments; they carry the decisions.
 
-C1 and C2 are independent of each other and could run in either order, or in parallel —
-neither reads the other's output. Sequential is simpler, and C1 first means C2 isn't
-distracted by findings C1 already filed.
+### 0. Prerequisite (Dave, ~2 min, before the session)
 
-### Do this before D (not before the reviews)
+`ANTHROPIC_API_KEY` into Doppler (`prd` **and** `dev`), pushed to the Worker, and
+`.dev.vars` regenerated — commands in CLAUDE.md `## Secrets`. It's the only secret that
+costs money and M2 cannot be verified end-to-end without it. Everything else is code.
 
-1. **`ANTHROPIC_API_KEY`** — deliberately deferred from B2, and M2 is where it's first used.
-   It's the only secret that costs money.
-   ```bash
-   read -rs KEY && doppler secrets set ANTHROPIC_API_KEY="$KEY" -p mymacros -c prd \
-     --no-interactive --silent && unset KEY
-   doppler secrets download -p mymacros -c prd --format json --no-file \
-     | jq 'with_entries(select(.key | startswith("DOPPLER_") | not))' | npx wrangler secret bulk
-   ```
-   Put it in the `dev` config too, then regenerate `.dev.vars`. **Always filter `DOPPLER_*`.**
-2. **Load the `claude-api` skill** before writing anything that calls Claude — model ids and
-   pricing change, and PLAN.md's "Claude Sonnet 5" should be confirmed current rather than
-   copied forward.
-3. **Deploys are automatic.** Push to `main` builds and deploys via Workers Builds (proven
-   in B2, ~40s). Don't `npm run deploy` by hand unless testing something uncommitted.
+### Order of work (dependencies, not preference)
 
-### Guardrails that now exist and shouldn't be broken
+1. **#48 first** — the typed API client (`src/client/lib/api.ts`), refetch-on-mount
+   policy, and `GET /api/day/:date` returning `{ logs, totals, target_kcal, run: null }`.
+   It's the pattern every M2 screen copies, so it exists before any screen does.
+2. **Motif registry** (settled on #43) — `src/client/motifs/` with `MotifSet` requiring
+   all four slots, `MOTIFS: Record<Theme, MotifSet>`, placeholders re-exporting Night
+   Athletic. Move the existing `.log-btn` in as the first variant so the convention
+   predates the meter and timeline row rather than being retrofitted onto them.
+3. **Migration 0002** (append-only, new file): `profiles.target_kcal` (settled on
+   #45/#11 — the base target lives in a real column; M4 changes how it's calculated,
+   not where it lives).
+4. **#9** — `POST /api/analyze/text` → `claude-sonnet-5` structured output. **Load the
+   `claude-api` skill before writing this.** Settled on #45: official `@anthropic-ai/sdk`
+   (add the dependency), thinking disabled or low effort (Sonnet 5 thinks by default;
+   PLAN.md promises the happy path under ~10s), `additionalProperties: false` on every
+   schema object, and range-check `confidence` in our code — structured outputs silently
+   drop numeric bounds.
+5. **#10** — confirm sheet + `POST /api/food-logs`. Settled on #44/#10: `logged_on` is
+   the client's local date, midnight cutoff, set once and never recomputed on edit; the
+   client writes `profiles.timezone` on first log; `meal_slot` derives from the clock
+   (<11 breakfast · <16 lunch · <21 dinner · else snack), displayed on the sheet,
+   editable — the sketch designs no picker control, so derived-and-displayed is the
+   port and any picker is a deliberate addition. Extract `routes/me.ts`'s validator
+   helpers (`isNum`/`oneOf`/`isDay`/`pct`) into a shared worker module here instead of
+   copy-pasting them into the second route.
+6. **#11** — the Today screen, ported **literally** from the frozen sketches (see the
+   comments on #11): adjusted target as the hero denominator with the base/earned
+   arithmetic in the aria-label; the `.earned` meter layer renders at zero width in M2
+   rather than being omitted; `BASE … ▸` labelled on the scale; macro targets derived
+   from the adjusted total; focus macro carries accent + the screen-reader suffix. This
+   issue adds two motif slots (budget meter, timeline row) — they go in the registry,
+   and `BudgetMeter` takes the earned data so each theme decides whether the earned
+   mark lives inside its box or beside it (see the C2 note on #43).
+7. **#12** — favorites/recents, one-tap re-log at the current slot (same clock
+   derivation as #10).
+
+### The design gate (every screen, before its issue closes)
+
+Shot-matrix at 375/390/428 and **look at the PNGs** — never infer fidelity from CSS.
+The signed-in local recipe, verified end to end in C2 (dev user exists; sign-up is the
+fallback on a reset DB; better-auth 403s without the Origin header):
+
+```
+npm run dev                      # in another terminal, then:
+
+CREDS='{"email":"dev@mymacros.local","password":"dev-password-not-for-production"}'
+curl -s -X POST localhost:5173/api/auth/sign-in/email \
+  -H 'content-type: application/json' -H 'Origin: http://localhost:5173' \
+  -c /tmp/mm.txt -d "$CREDS" > /dev/null
+grep -q session_token /tmp/mm.txt || curl -s -X POST \
+  localhost:5173/api/auth/sign-up/email -H 'content-type: application/json' \
+  -H 'Origin: http://localhost:5173' -c /tmp/mm.txt \
+  -d "${CREDS%\}},\"name\":\"Dev\"}" > /dev/null
+TOKEN=$(grep session_token /tmp/mm.txt | awk '{print $7}')
+
+node tools/shot-matrix.mjs --cookie "better-auth.session_token=$TOKEN" \
+  http://localhost:5173/ http://localhost:5173/settings
+```
+
+Gotcha found in C2: shot-matrix names outputs by URL path, so a signed-**out** shot of
+`/` overwrites the signed-in `app-home@*.png`. Copy aside anything you need to keep
+before re-shooting the same path in a different auth state.
+
+Sanity-check `curl -s localhost:5173/api/health` first — `{"db":false,"migration":null}`
+means run `npm run db:migrate` (see the CLAUDE.md gotcha about `database_id`).
+
+### Guardrails that exist and shouldn't be broken
 
 - **`npm run verify:routing -- https://fuel.debrief.run`** after any change to the
-  `wrangler.jsonc` assets config or to route mounting. It guards the bug that ate most of B2.
-- **Every new API route is per-user isolated** — `c.var.user` from `requireAuth`, never a
-  userId from the body or query.
-- **`ALLOWED_EMAILS` fails closed.** Any new sign-up path inherits the guard automatically
-  because it hooks user *creation*, not a particular provider.
-- **Test browser-facing routes the way a browser asks for them.** Anything reached by
-  navigation rather than `fetch()` needs `Accept: text/html`; curl's default proves nothing.
+  `wrangler.jsonc` assets config or route mounting — and after the final push, since
+  push deploys (~40s via Workers Builds; don't `npm run deploy` by hand).
+- **Every new API route is per-user isolated** — mount under the `secure` sub-app,
+  read `c.var.user`, never a userId from body or query.
+- **`ALLOWED_EMAILS` fails closed**; new sign-up paths inherit it via the user-create hook.
+- **Test browser-facing routes the way a browser asks for them** — `Accept: text/html`
+  + `Sec-Fetch-Mode: navigate` for anything reached by navigation.
+- **`npm run check` green before every commit** — it's what makes the motif registry's
+  missing-variant guarantee real.
 
-### Deliberate — don't let a review "fix" these
+### Deliberate — don't let a session "fix" these
 
-Passkeys scoped to `debrief.run` rather than the app host (#34) · `workers_dev: false` ·
+Passkeys scoped to `debrief.run` (#34) · `workers_dev: false` ·
 `run_worker_first: ["/api/*"]` · `ALLOWED_EMAILS` failing closed on empty · dev email
-sign-in gated on `import.meta.env.DEV` as a build-time literal.
+sign-in gated on `import.meta.env.DEV` as a build-time literal · no service worker
+(deliberate non-decision, reasoning on #42) · refetch-on-mount with no client cache
+(#48 — add invalidation only when something hurts).
 
-### Carried-over UI work, not blocking M2
+### Carried over, not blocking M2
 
-**#38** (standalone tab bar leaves the bottom safe area uncovered) and **#39** (what
-`theme-color` does in standalone) both moved to **M5**, where the render check already
-schedules a device pass — one session settles both. **#33** moved to **M6** with the OSS
-work. Also open: **#30** light packs, **#35** self-hosted fonts, and the 375px
-"TRENDS SETTINGS" spacing noted on #2's thread.
+**#38/#39** (standalone chrome, theme-color) → M5's device pass · **#30** light packs +
+**#35** self-hosted fonts + **#46** tab-label spacing → M5 · **#47** test infra → stand
+up before M4's budget math, not before M2 · **#33** claim flow → M6.
 
-### C1 starter prompt — audit (Opus 5 @ xhigh)
-
-```
-Working on MyMacros (~/Projects/MyMacros, github.com/samsun076/MyMacros).
-M0 and M1 are complete: the app is live at https://fuel.debrief.run on
-Cloudflare Workers + D1, with Google sign-in and passkeys working on device.
-Push to main auto-deploys via Workers Builds.
-
-This is Session C1: an AUDIT, not a build, and not a design review. Do not
-start implementing M2. A separate session (C2) covers design fidelity and
-architecture — leave those alone and say so if you trip over something that
-belongs there.
-
-Read in this order: PLAN.md (locked decisions), CLAUDE.md (build rules,
-conventions, gotchas), NEXT-STEPS.md, design/TOKENS.md, then the code —
-src/worker, src/client, src/shared, migrations, tools. Then `git log --stat`
-for the M1 sessions and `gh issue list --state all --limit 100` across every
-milestone — the default caps at 30 results and there are more issues than
-that, so an unflagged listing silently drops the newest ones.
-Also read ~/Memex/agent-inbox/2026-08-04_mymacros-b2-oauth-callback-debug.md
-for the last session's learnings.
-
-VERIFY, DON'T TRUST. The last session lost ~40 minutes to a bug that every
-check passed through: curl defaults to `Accept: */*`, which was the one
-request shape that worked, so a broken OAuth callback returned a healthy 302
-to every probe while real browsers got HTML. Then the same class of mistake
-repeated — `wrangler tail` was used as a control when `run_worker_first` had
-already made it blind to that request type. So exercise things rather than
-reading them, and for anything a browser reaches by navigation send
-`Accept: text/html` + `Sec-Fetch-Mode: navigate`. Both
-`npm run verify:routing -- https://fuel.debrief.run` and `npm run check`
-should pass; tell me if they don't.
-
-Assess four things:
-
-1. Does the code honour the build rules in CLAUDE.md/PLAN.md? Hardcoded
-   colors/fonts/radii instead of tokens, accent literals that should be
-   `--accent`, motif slots with no named variant, and whether every API route
-   is genuinely per-user isolated via `c.var.user` — is there any path to a
-   DB query not scoped by userId? This is mechanical compliance: greppable
-   facts, like a literal where a token should be or a variant name that
-   doesn't exist. Whether the rendered app *looks* right is C2's
-   design-fidelity question — don't open it here.
-2. Is anything in the documentation false, stale, or asserted without
-   evidence? CLAUDE.md was corrected once this way already (the theme-color
-   claim). Flag anything stated as fact that was never verified.
-3. Are the open issues correctly scoped and milestoned, and is anything
-   important tracked nowhere? Issues are the durable record — NEXT-STEPS.md
-   is rewritten each session, so anything living only there is one rewrite
-   from being lost.
-4. Is M2 (#9-#12) ready to run unattended? What's underspecified, what
-   decisions would an autonomous session have to invent, and what should be
-   settled first? Treat this as PROVISIONAL — C2 reviews the architecture and
-   could change the answer, so say what your verdict depends on. The verdict
-   itself goes in your summary, not an issue; file issues only for the
-   underspecified decisions you uncover, since those need settling regardless
-   of what C2 concludes.
-
-Don't "fix" these, they're deliberate: passkeys scoped to `debrief.run` (#34);
-`workers_dev: false`; `run_worker_first: ["/api/*"]`; ALLOWED_EMAILS failing
-closed on empty; dev email sign-in gated on `import.meta.env.DEV` as a
-build-time literal.
-
-Deliverable: file substantive findings as GitHub issues (new, or comments on
-existing) rather than prose — bundle micro-findings of the same kind into one
-issue (all token literals together, say); a finding gets its own issue only
-when it needs its own discussion. Fix anything trivially and safely fixable
-with a commit per issue — trivial means `npm run check` and
-`npm run verify:routing` stay green. Give me a short summary of what you
-filed, what you fixed, and what you'd do first. Propose Memex wiki updates
-rather than writing them. Push when done — and since push deploys, finish by
-re-running `npm run verify:routing -- https://fuel.debrief.run` after the
-build lands, so the session verifies what it actually shipped.
-```
-
-### C2 starter prompt — judgment (Fable @ high)
+### Starter prompt (paste verbatim)
 
 ```
 Working on MyMacros (~/Projects/MyMacros, github.com/samsun076/MyMacros).
-M0 and M1 are complete: the app is live at https://fuel.debrief.run on
-Cloudflare Workers + D1. Push to main auto-deploys via Workers Builds.
+M0/M1 are done, the app is live at https://fuel.debrief.run, and both review
+sessions (C1 audit, C2 judgment) have signed off the foundation. This is
+Session D: build the M2 core loop, issues #9-#12.
 
-This is Session C2: JUDGMENT, on the two questions that have no green check.
-Do not start implementing M2. This is the last cheap moment to change the
-foundation, so it runs before any M2 code lands.
+Read CLAUDE.md, PLAN.md (Theming + Build rules), design/TOKENS.md, then
+`gh issue view --comments` for #9, #10, #11, #12, #43, #44, #45, #48 — the
+comments carry every settled decision; nothing is yours to invent. Follow
+the "Order of work" in NEXT-STEPS.md's Session D section: #48's API client
+and day endpoint first, then the motif registry (per #43), then migration
+0002 (profiles.target_kcal), then #9 → #10 → #11 → #12.
 
-Session C1 already audited correctness and documentation. Read `gh issue view`
-for #40-#46 and `git log` since 4625078 before anything else, so you don't
-redo it. Do NOT re-audit these — they were verified by exercising them, not
-by reading: per-user isolation (probed adversarially — injected user_id and
-created_at are dropped by the allowlist, writes land only on the session
-user's row), token discipline (no raw colors/fonts/radii left in src/),
-routing (`npm run verify:routing` green against production), and the
-ALLOWED_EMAILS guard.
+Load the claude-api skill before writing the Claude call (#9). Load the
+frontend-design skill before building screens. Port the Today screen and
+confirm sheet literally from sketches/e-log-flow.html and
+sketches/c2-night-athletic.html — sketches are frozen ground truth; never
+edit them to match the app.
 
-These are SETTLED — implement-time decisions, not open questions:
-- Motif slots use a registry (#43, closed): src/client/motifs/<theme>/, a
-  MotifSet type requiring all four slots, MOTIFS: Record<Theme, MotifSet>, so
-  a missing variant is a compile error. CSS-only re-skinning was ruled out by
-  evidence — the three sketches genuinely don't share a DOM for the budget
-  meter (Night Athletic: three stacked divs; Instrument: an <svg> Braun tape;
-  Field Notes: a bar plus a separate stamp element). You MAY challenge the
-  registry as component architecture — reopen #43 with your reasoning if you
-  do — but don't re-litigate whether CSS alone could work.
-- logged_on (#44, closed): client-supplied local date, midnight cutoff, phone
-  writes profiles.timezone on first log, set once and never recomputed.
-- M2 target: a real target_kcal column. Meal slot: derived from the clock,
-  editable on the confirm sheet. Both on #45/#11/#10.
+Verify every screen at 375/390/428 with the signed-in shot-matrix recipe in
+NEXT-STEPS.md and LOOK at the PNGs. npm run check must stay green. Don't
+break the guardrails or "fix" the deliberate list in NEXT-STEPS.md.
 
-Read PLAN.md (especially Theming and Build rules), CLAUDE.md, design/TOKENS.md
-and the sketches/ directory, then the code in src/. Load the frontend-design
-skill before the design work.
+ANTHROPIC_API_KEY should already be in the environment (I push it before
+this session) — if /api/analyze/text can't reach Claude, stop and tell me
+rather than stubbing it silently.
 
-1. DESIGN FIDELITY. Render the app at 375/390/428 and compare against
-   sketches/. 375 (iPhone 13 mini) is the reference width. Sketches are FROZEN
-   GROUND TRUTH: port from them, never edit them to match the app.
-
-   Shoot LOCAL, not production — no real session token needed. The snippet
-   below is verified working end to end (a dev user already exists in the
-   local D1, so it signs in; the sign-up is the fallback on a reset database).
-   better-auth 403s a missing Origin header, so don't drop it:
-
-     npm run dev                      # in another terminal, then:
-
-     CREDS='{"email":"dev@mymacros.local","password":"dev-password-not-for-production"}'
-     curl -s -X POST localhost:5173/api/auth/sign-in/email \
-       -H 'content-type: application/json' -H 'Origin: http://localhost:5173' \
-       -c /tmp/mm.txt -d "$CREDS" > /dev/null
-     grep -q session_token /tmp/mm.txt || curl -s -X POST \
-       localhost:5173/api/auth/sign-up/email -H 'content-type: application/json' \
-       -H 'Origin: http://localhost:5173' -c /tmp/mm.txt \
-       -d "${CREDS%\}},\"name\":\"Dev\"}" > /dev/null
-     TOKEN=$(grep session_token /tmp/mm.txt | awk '{print $7}')
-
-     node tools/shot-matrix.mjs --cookie "better-auth.session_token=$TOKEN" \
-       http://localhost:5173/ http://localhost:5173/settings
-
-   Sanity-check `curl -s localhost:5173/api/health` first — if it says
-   {"db":false,"migration":null} run `npm run db:migrate` (see the CLAUDE.md
-   gotcha about database_id and the local sqlite file).
-
-   Then OPEN the PNGs and LOOK at them. Do not infer fidelity from reading CSS
-   — that is exactly the mistake this project keeps paying for.
-
-   Distinguish real drift from deliberate divergence, and say which drift
-   actually matters versus which is invisible to a user. Already filed, don't
-   re-file: #46, the tab bar at 375 with "TRENDS SETTINGS" sitting tight
-   together — inherited from the sketch, so any fix is a deliberate change to
-   ground truth. Note most screens are still Placeholder components; judge
-   what exists (sign-in, settings, tab bar, the shell) rather than grading
-   absent screens.
-
-   Headless Chrome reports env(safe-area-inset-*) as 0 and can't reproduce iOS
-   chrome tinting, so the Safari blend and standalone chrome are out of reach
-   here — #38 and #39 cover those, scheduled for M5's device pass.
-
-2. ARCHITECTURE. Would you build M2-M6 on this foundation? Look at the worker
-   route structure, the D1 schema and its migration path, the auth wiring, the
-   client's state and data-fetching approach, and the shared types across the
-   wire. Where will this hurt at M3 (photos, R2), M4 (the budget engine), or
-   M5 (three theme packs)? Be specific about what you'd change now versus what
-   is fine to live with — a rewrite proposal I won't act on is worth less than
-   two changes I will.
-
-   Specific things worth your judgment, surfaced but not resolved by C1: the
-   client fetches with bare fetch() in useEffect and has no shared cache, which
-   M2 makes real; there is no zod-style runtime validation of wire types, only
-   hand-rolled validators in routes/me.ts; db.ts is a hand-maintained mirror of
-   the migration SQL; and food_logs has no per-day aggregate path yet.
-
-   Constraints that aren't up for review: no state-management library, no
-   component library, no CSS framework; tokens plus plain stylesheets. Free
-   tier throughout. Night Athletic is the primary theme; light packs port in
-   M5. Money-free, but multi-user-shaped from day one.
-
-Deliberate — don't "fix" these: passkeys scoped to debrief.run (#34);
-workers_dev: false; run_worker_first: ["/api/*"]; ALLOWED_EMAILS failing closed
-on empty; dev email sign-in gated on import.meta.env.DEV as a build-time
-literal.
-
-VERIFY, DON'T TRUST — the house rule that cost B2 40 minutes and C1 found four
-more instances of. Exercise things rather than reading them; for anything a
-browser reaches by navigation send Accept: text/html + Sec-Fetch-Mode:
-navigate. `npm run check` and `npm run verify:routing -- https://fuel.debrief.run`
-should both pass; tell me if they don't. See wiki/topics/verification-discipline.md
-in the Memex vault.
-
-Deliverable: file findings as GitHub issues with clear severity and milestone,
-then rewrite the "Then" section of NEXT-STEPS.md as the Session D runway
-(building M2, #9-#12) incorporating whatever you found. Give me a short
-summary of what you filed and what you'd change first. Propose Memex wiki
-updates rather than writing them. Commit per issue with "closes #N" only where
-genuinely finished, push when done — and since push deploys, re-run
-`npm run verify:routing -- https://fuel.debrief.run` after the build lands.
+Commit per issue, "closes #N" only where the issue is genuinely finished,
+push when done (push deploys), and finish by re-running
+npm run verify:routing -- https://fuel.debrief.run after the build lands,
+plus one end-to-end quick-add against production. Rewrite the Session D
+section of NEXT-STEPS.md as the M3 runway before you stop.
 ```
