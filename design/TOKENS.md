@@ -22,7 +22,8 @@ forks a component, with the sole exception of the motif slots below.
 | `--positive` | "Trending the right way" (e.g. weight delta on a cut) |
 | `--accent` + `--accent-soft/-wash/-glow`, `--on-accent` | The one hero color; soft = hatch/dim marks, wash = tinted fills, glow = page-top radial, on-accent = ink on accent |
 | `--display-font` / `--body-font` / `--numeral-font` / `--data-font` | Numerals always set `font-variant-numeric: tabular-nums`; data-font is timestamps/scales/micro-captions |
-| `--radius-card/-thumb/-button/-mark` | Shape scale |
+| `--radius-card/-thumb/-button/-mark/-pill` | Shape scale; `-pill` is fully-rounded ends (accent tick, chips) |
+| `--shadow-lift` | The accent buttons' lift (log button, primary action) — drop plus inset bottom highlight. A theme's *material*, not a constant: Night Athletic's deep blue-black drop means nothing on Field Notes' ivory paper, so each pack sets its own |
 | `--meter-height` / `--macro-bar-height` | Meter metrics |
 | `--tabbar-height` | Bottom chrome height, excluding the safe area. Screens pad their bottom by it so the fixed bar never covers content |
 

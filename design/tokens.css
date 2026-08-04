@@ -66,7 +66,16 @@
   --radius-card: 14px;
   --radius-thumb: 11px;         /* meal photo thumbs */
   --radius-button: 18px;        /* the log button */
-  --radius-mark: 4px;           /* budget meter ends */
+  --radius-mark: 4px;           /* budget meter ends, focus rings */
+  --radius-pill: 999px;         /* fully-rounded ends (accent tick, chips) */
+
+  /* Lift for the accent buttons — the log button and the primary action.
+     A theme's material, not a constant: Night Athletic's deep blue-black
+     drop has no meaning on Field Notes' ivory paper, so each pack sets its
+     own. Inset edge is the bottom highlight, part of the same treatment. */
+  --shadow-lift:
+    0 12px 26px rgba(5, 9, 15, 0.45),
+    inset 0 -2px 0 rgba(10, 16, 26, 0.22);
   --meter-height: 18px;         /* budget meter */
   --macro-bar-height: 6px;
   --tabbar-height: 62px;        /* bottom chrome, excluding the safe area —
