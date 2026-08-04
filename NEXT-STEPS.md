@@ -362,9 +362,25 @@ to judge**, then the build session.
 
 | | Session | Model | Answers |
 |---|---|---|---|
-| **C1** | Audit — is it correct, and is it honestly described? | Opus 5 @ xhigh | Verifiable things: token discipline, per-user isolation, stale docs, issue hygiene |
+| **C1** | ✅ **done 2026-08-04** — audit | Opus 5 @ xhigh | Filed #40–#46; fixed #40/#41/#42; settled #43/#44 with Dave |
 | **C2** | Judgment — design fidelity and architecture | Fable @ high | Unverifiable things: does it drift from the sketches in ways that matter, would you build M2 on this |
 | **D** | Build the M2 core loop (#9–#12) | Opus 5 @ xhigh, or one autonomous Fable run | — |
+
+### What C1 settled, so C2 doesn't reopen it
+
+- **Motif slots use a registry** (#43, closed): `src/client/motifs/<theme>/`, a `MotifSet` type
+  requiring all four slots, `MOTIFS: Record<Theme, MotifSet>` — so a missing variant is a compile
+  error rather than a thing to remember. **CSS-only re-skinning is ruled out by evidence**, not
+  opinion: the three frozen sketches don't share a DOM for the budget meter (Night Athletic is
+  three stacked divs, Instrument is an `<svg>` Braun tape, Field Notes is a bar plus a separate
+  stamp). C2 may challenge the registry as architecture — reopen #43 if so — but shouldn't
+  re-litigate whether CSS alone could do it.
+- **`logged_on`** (#44, closed): client-supplied local date, **midnight cutoff**, phone writes
+  `profiles.timezone` on first log, set once and never recomputed on edit.
+- **M2 target**: a real `target_kcal` column on `profiles` (base target; the sketch's hero shows
+  base + earned = adjusted). **Meal slot**: derived from the clock, editable on the confirm sheet.
+- **Verified, don't re-audit**: per-user isolation (probed adversarially — injected `user_id` and
+  `created_at` are dropped, writes land only on the session user's row), token discipline, routing.
 
 **C2 must run before D.** Its architecture question is "the last cheap moment to change the
 foundation," and that stops being true the moment M2 code lands on top. C1's verdict on
@@ -496,30 +512,81 @@ build lands, so the session verifies what it actually shipped.
 ```
 Working on MyMacros (~/Projects/MyMacros, github.com/samsun076/MyMacros).
 M0 and M1 are complete: the app is live at https://fuel.debrief.run on
-Cloudflare Workers + D1. Session C1 audited correctness and documentation
-separately — read its issues and commits first so you don't redo it.
+Cloudflare Workers + D1. Push to main auto-deploys via Workers Builds.
 
 This is Session C2: JUDGMENT, on the two questions that have no green check.
 Do not start implementing M2. This is the last cheap moment to change the
 foundation, so it runs before any M2 code lands.
 
+Session C1 already audited correctness and documentation. Read `gh issue view`
+for #40-#46 and `git log` since 4625078 before anything else, so you don't
+redo it. Do NOT re-audit these — they were verified by exercising them, not
+by reading: per-user isolation (probed adversarially — injected user_id and
+created_at are dropped by the allowlist, writes land only on the session
+user's row), token discipline (no raw colors/fonts/radii left in src/),
+routing (`npm run verify:routing` green against production), and the
+ALLOWED_EMAILS guard.
+
+These are SETTLED — implement-time decisions, not open questions:
+- Motif slots use a registry (#43, closed): src/client/motifs/<theme>/, a
+  MotifSet type requiring all four slots, MOTIFS: Record<Theme, MotifSet>, so
+  a missing variant is a compile error. CSS-only re-skinning was ruled out by
+  evidence — the three sketches genuinely don't share a DOM for the budget
+  meter (Night Athletic: three stacked divs; Instrument: an <svg> Braun tape;
+  Field Notes: a bar plus a separate stamp element). You MAY challenge the
+  registry as component architecture — reopen #43 with your reasoning if you
+  do — but don't re-litigate whether CSS alone could work.
+- logged_on (#44, closed): client-supplied local date, midnight cutoff, phone
+  writes profiles.timezone on first log, set once and never recomputed.
+- M2 target: a real target_kcal column. Meal slot: derived from the clock,
+  editable on the confirm sheet. Both on #45/#11/#10.
+
 Read PLAN.md (especially Theming and Build rules), CLAUDE.md, design/TOKENS.md
 and the sketches/ directory, then the code in src/. Load the frontend-design
 skill before the design work.
 
-1. DESIGN FIDELITY. Render the live app at 375/390/428 with
-   tools/shot-matrix.mjs — it takes a session cookie, see CLAUDE.md — and
-   compare against sketches/. 375 (iPhone 13 mini) is the reference width.
-   Sketches are FROZEN GROUND TRUTH: port from them, never edit them to match
-   the app. Distinguish real drift from deliberate divergence, and say which
-   drift actually matters versus which is invisible to a user. Known and
-   already filed: the tab bar at 375 has "TRENDS SETTINGS" sitting tight
-   together, which is inherited from the sketch, not a port bug.
+1. DESIGN FIDELITY. Render the app at 375/390/428 and compare against
+   sketches/. 375 (iPhone 13 mini) is the reference width. Sketches are FROZEN
+   GROUND TRUTH: port from them, never edit them to match the app.
 
-   Note that headless Chrome reports env(safe-area-inset-*) as 0 and cannot
-   reproduce iOS chrome tinting, so anything about the Safari blend or the
-   standalone chrome is out of reach here — #38 and #39 cover those and are
-   scheduled for M5's device pass.
+   Shoot LOCAL, not production — no real session token needed. The snippet
+   below is verified working end to end (a dev user already exists in the
+   local D1, so it signs in; the sign-up is the fallback on a reset database).
+   better-auth 403s a missing Origin header, so don't drop it:
+
+     npm run dev                      # in another terminal, then:
+
+     CREDS='{"email":"dev@mymacros.local","password":"dev-password-not-for-production"}'
+     curl -s -X POST localhost:5173/api/auth/sign-in/email \
+       -H 'content-type: application/json' -H 'Origin: http://localhost:5173' \
+       -c /tmp/mm.txt -d "$CREDS" > /dev/null
+     grep -q session_token /tmp/mm.txt || curl -s -X POST \
+       localhost:5173/api/auth/sign-up/email -H 'content-type: application/json' \
+       -H 'Origin: http://localhost:5173' -c /tmp/mm.txt \
+       -d "${CREDS%\}},\"name\":\"Dev\"}" > /dev/null
+     TOKEN=$(grep session_token /tmp/mm.txt | awk '{print $7}')
+
+     node tools/shot-matrix.mjs --cookie "better-auth.session_token=$TOKEN" \
+       http://localhost:5173/ http://localhost:5173/settings
+
+   Sanity-check `curl -s localhost:5173/api/health` first — if it says
+   {"db":false,"migration":null} run `npm run db:migrate` (see the CLAUDE.md
+   gotcha about database_id and the local sqlite file).
+
+   Then OPEN the PNGs and LOOK at them. Do not infer fidelity from reading CSS
+   — that is exactly the mistake this project keeps paying for.
+
+   Distinguish real drift from deliberate divergence, and say which drift
+   actually matters versus which is invisible to a user. Already filed, don't
+   re-file: #46, the tab bar at 375 with "TRENDS SETTINGS" sitting tight
+   together — inherited from the sketch, so any fix is a deliberate change to
+   ground truth. Note most screens are still Placeholder components; judge
+   what exists (sign-in, settings, tab bar, the shell) rather than grading
+   absent screens.
+
+   Headless Chrome reports env(safe-area-inset-*) as 0 and can't reproduce iOS
+   chrome tinting, so the Safari blend and standalone chrome are out of reach
+   here — #38 and #39 cover those, scheduled for M5's device pass.
 
 2. ARCHITECTURE. Would you build M2-M6 on this foundation? Look at the worker
    route structure, the D1 schema and its migration path, the auth wiring, the
@@ -529,15 +596,34 @@ skill before the design work.
    is fine to live with — a rewrite proposal I won't act on is worth less than
    two changes I will.
 
+   Specific things worth your judgment, surfaced but not resolved by C1: the
+   client fetches with bare fetch() in useEffect and has no shared cache, which
+   M2 makes real; there is no zod-style runtime validation of wire types, only
+   hand-rolled validators in routes/me.ts; db.ts is a hand-maintained mirror of
+   the migration SQL; and food_logs has no per-day aggregate path yet.
+
    Constraints that aren't up for review: no state-management library, no
    component library, no CSS framework; tokens plus plain stylesheets. Free
    tier throughout. Night Athletic is the primary theme; light packs port in
    M5. Money-free, but multi-user-shaped from day one.
+
+Deliberate — don't "fix" these: passkeys scoped to debrief.run (#34);
+workers_dev: false; run_worker_first: ["/api/*"]; ALLOWED_EMAILS failing closed
+on empty; dev email sign-in gated on import.meta.env.DEV as a build-time
+literal.
+
+VERIFY, DON'T TRUST — the house rule that cost B2 40 minutes and C1 found four
+more instances of. Exercise things rather than reading them; for anything a
+browser reaches by navigation send Accept: text/html + Sec-Fetch-Mode:
+navigate. `npm run check` and `npm run verify:routing -- https://fuel.debrief.run`
+should both pass; tell me if they don't. See wiki/topics/verification-discipline.md
+in the Memex vault.
 
 Deliverable: file findings as GitHub issues with clear severity and milestone,
 then rewrite the "Then" section of NEXT-STEPS.md as the Session D runway
 (building M2, #9-#12) incorporating whatever you found. Give me a short
 summary of what you filed and what you'd change first. Propose Memex wiki
 updates rather than writing them. Commit per issue with "closes #N" only where
-genuinely finished, push when done.
+genuinely finished, push when done — and since push deploys, re-run
+`npm run verify:routing -- https://fuel.debrief.run` after the build lands.
 ```
