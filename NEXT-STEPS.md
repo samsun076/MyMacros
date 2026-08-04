@@ -116,9 +116,18 @@ What differed from the checklist below, worth carrying forward:
   freshly-pushed secret intermittently isn't there. Redeploy to recycle, then re-check
   several times before believing it.
 
-Left open: **#38** (tab bar doesn't cover the bottom safe area in standalone — visible on
-device only, and it self-corrects after the first scroll) and **#39** (what `theme-color`
-actually does in standalone — three contrast runs defeated by iOS manifest caching).
+Left open, and **moved out of M1 so the milestone could close** (rationale is on each issue):
+
+- **#38 → M5** — the tab bar doesn't cover the bottom safe area in standalone; it
+  self-corrects after the first scroll. Not M1's job: #8 delivered as far as its tooling
+  reached, and headless Chrome reports `env(safe-area-inset-*)` as 0, so it cannot see this
+  class of defect at all. Needs a device or the iOS Simulator, alongside M5's render check.
+- **#39 → M5** — what `theme-color` actually does in standalone; three contrast runs were
+  defeated by iOS manifest caching. Parked with #38 so one device session settles both. It
+  only starts to matter in M5: today `theme_color`, `--bg-top` and the body background are
+  all `#1a2230`, and the light packs (#30) are where those values first diverge.
+- **#33 → M6** — the urgent half (`ALLOWED_EMAILS`) shipped here; what remains is the claim
+  route and session-less passkey registration, which exist to serve self-hosters (#26).
 
 <details>
 <summary>The original B2 checklist, kept for reference</summary>
