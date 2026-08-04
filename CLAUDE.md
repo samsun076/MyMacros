@@ -89,7 +89,20 @@ node tools/shot-matrix.mjs --cookie better-auth.session_token=<token> http://loc
   `backdrop-filter`, no border below it, extended through
   `env(safe-area-inset-bottom)`.
 - `--chrome` is **never accent-tinted** (the accent switches live).
-- `theme-color` meta stays at `--bg-top` for the standalone/PWA case.
+- `theme-color` meta stays at `--bg-top` for the standalone/PWA case — but
+  **what it actually does there is unverified** (#39). Measured on device:
+  at the top of a standalone launch the page gradient runs continuously to
+  y=0, so `apple-mobile-web-app-status-bar-style: black-translucent` plus
+  `viewport-fit=cover` are what put content under the status bar —
+  `theme-color` paints nothing there. The bottom inset is still unattributed
+  because `theme_color`, `--bg-top` and the body background are all
+  `#1a2230`; only a contrast test can separate them, and every attempt so
+  far was defeated by iOS manifest caching. Don't state what `theme-color`
+  does in standalone until #39 is closed.
+- **Standalone is not Safari.** In standalone the app owns the full screen,
+  so the tab bar must cover the bottom safe area itself; Safari hides that
+  case behind its own bottom bar. There is an open seam defect there (#38),
+  found only on device.
 
 ## Data & auth conventions
 
