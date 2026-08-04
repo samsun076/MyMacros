@@ -56,6 +56,33 @@ so pass a session cookie:
 node tools/shot-matrix.mjs --cookie better-auth.session_token=<token> http://localhost:5173/
 ```
 
+## Secrets
+
+Canonical home is the **`mymacros` Doppler project** (`dev` and `prd` configs);
+Doppler is never consulted at runtime — secrets are *pushed* to Cloudflare and
+the Worker just reads plain `env` bindings, which is what keeps a self-hoster
+on `wrangler secret put` with no extra account.
+
+```bash
+# regenerate local .dev.vars from the dev config
+doppler secrets download -p mymacros -c dev --no-file --format env | grep -v '^DOPPLER_' > .dev.vars
+
+# push prd secrets to the Worker (repeat after ANY secret change — Workers
+# Builds deploys from Cloudflare's CI and will never run doppler)
+doppler secrets download -p mymacros -c prd --format json --no-file \
+  | jq 'with_entries(select(.key | startswith("DOPPLER_") | not))' | npx wrangler secret bulk
+```
+
+- **Always filter `DOPPLER_*`.** Doppler injects `DOPPLER_PROJECT`/`_CONFIG`/
+  `_ENVIRONMENT` into every config; unfiltered they become bindings in
+  `worker-configuration.d.ts` locally and real Worker secrets in production.
+- **Never put `APP_URL` or `PASSKEY_RP_ID` in `prd`.** They're `vars` in
+  `wrangler.jsonc`; pushing them as secrets too leaves two sources for one name.
+- **Secret pushes lag by up to a minute.** Old isolates keep serving the
+  previous env, so a freshly-pushed secret is intermittently absent (measured:
+  2/12 requests served a stale value). Redeploy to recycle isolates, then
+  sample several times before believing a secret landed.
+
 ## Build rules (from PLAN.md — these are not suggestions)
 
 1. **Night Athletic first.** It's the primary/default dark theme; polish
