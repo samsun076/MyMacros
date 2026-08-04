@@ -6,8 +6,9 @@ c2-night-athletic, #2 (design/tokens.css + TOKENS.md), #3 (e-log-flow mockup), l
 theme-QA done (one finding filed on #30). **Session B1 is done** — #4, #5 (local D1), #8
 and the code half of #6 all landed; project CLAUDE.md written. **Session B2 is done** —
 **M1 is closed**: the app is live at https://fuel.debrief.run, signed into with Google and
-a real passkey on device. **Next up: M2, the core loop.** This file is the runway: what to
-run next, on which model, with paste-ready starter prompts.
+a real passkey on device. **Next up: two review sessions — C1 (audit) and C2 (judgment) —
+then D builds the M2 core loop.** This file is the runway: what to run next, on which
+model, with paste-ready starter prompts.
 
 ## Model guidance (Claude Code sessions)
 
@@ -353,19 +354,30 @@ done, and update the Then section of NEXT-STEPS.md for M2.
 
 </details>
 
-## Then — Session C, the M2 core loop
+## Then — two review sessions, then build M2
 
-M1 is closed, so the next session is the first one that builds something Dave *uses*:
-**#9–#12** — text quick-add → Claude parses it into macros → editable confirm sheet →
-Today screen showing the day's totals. Night Athletic, verified at 375 first.
+M1 is closed and the app is real, which makes this the cheapest moment to check the
+foundation before M2 builds on top of it. Two review passes first, split by **what it costs
+to judge**, then the build session.
 
-This is the first session with **no credential blockers**, so it can run unattended. Good
-candidate for a single autonomous Fable @ high run, or Opus 5 @ xhigh issue by issue.
+| | Session | Model | Answers |
+|---|---|---|---|
+| **C1** | Audit — is it correct, and is it honestly described? | Opus 5 @ xhigh | Verifiable things: token discipline, per-user isolation, stale docs, issue hygiene |
+| **C2** | Judgment — design fidelity and architecture | Fable @ high | Unverifiable things: does it drift from the sketches in ways that matter, would you build M2 on this |
+| **D** | Build the M2 core loop (#9–#12) | Opus 5 @ xhigh, or one autonomous Fable run | — |
 
-### Do this first, before any M2 code
+**C2 must run before D.** Its architecture question is "the last cheap moment to change the
+foundation," and that stops being true the moment M2 code lands on top. C1's verdict on
+whether M2 is ready to run unattended is therefore *provisional* until C2 reports.
 
-1. **`ANTHROPIC_API_KEY`** — deliberately deferred from B2, and M2 is where it's first
-   used. It's the only secret that costs money.
+C1 and C2 are independent of each other and could run in either order, or in parallel —
+neither reads the other's output. Sequential is simpler, and C1 first means C2 isn't
+distracted by findings C1 already filed.
+
+### Do this before D (not before the reviews)
+
+1. **`ANTHROPIC_API_KEY`** — deliberately deferred from B2, and M2 is where it's first used.
+   It's the only secret that costs money.
    ```bash
    read -rs KEY && doppler secrets set ANTHROPIC_API_KEY="$KEY" -p mymacros -c prd \
      --no-interactive --silent && unset KEY
@@ -376,13 +388,13 @@ candidate for a single autonomous Fable @ high run, or Opus 5 @ xhigh issue by i
 2. **Load the `claude-api` skill** before writing anything that calls Claude — model ids and
    pricing change, and PLAN.md's "Claude Sonnet 5" should be confirmed current rather than
    copied forward.
-3. **Deploys are automatic now.** Push to `main` builds and deploys via Workers Builds
-   (proven in B2, ~40s). Don't `npm run deploy` by hand unless testing something uncommitted.
+3. **Deploys are automatic.** Push to `main` builds and deploys via Workers Builds (proven
+   in B2, ~40s). Don't `npm run deploy` by hand unless testing something uncommitted.
 
 ### Guardrails that now exist and shouldn't be broken
 
-- **`npm run verify:routing -- https://fuel.debrief.run`** after any change to `wrangler.jsonc`
-  assets config or to route mounting. It guards the bug that ate most of B2.
+- **`npm run verify:routing -- https://fuel.debrief.run`** after any change to the
+  `wrangler.jsonc` assets config or to route mounting. It guards the bug that ate most of B2.
 - **Every new API route is per-user isolated** — `c.var.user` from `requireAuth`, never a
   userId from the body or query.
 - **`ALLOWED_EMAILS` fails closed.** Any new sign-up path inherits the guard automatically
@@ -390,34 +402,129 @@ candidate for a single autonomous Fable @ high run, or Opus 5 @ xhigh issue by i
 - **Test browser-facing routes the way a browser asks for them.** Anything reached by
   navigation rather than `fetch()` needs `Accept: text/html`; curl's default proves nothing.
 
+### Deliberate — don't let a review "fix" these
+
+Passkeys scoped to `debrief.run` rather than the app host (#34) · `workers_dev: false` ·
+`run_worker_first: ["/api/*"]` · `ALLOWED_EMAILS` failing closed on empty · dev email
+sign-in gated on `import.meta.env.DEV` as a build-time literal.
+
 ### Carried-over UI work, not blocking M2
 
-- **#38** — standalone tab bar leaves the bottom safe area uncovered. Fix needs a device or
-  the iOS Simulator; headless Chrome reports the insets as 0 and cannot see it.
-- **#39** — the `theme-color` question, still open with a written method for answering it.
-- **#30** light packs, **#35** self-hosted fonts, and the 375px "TRENDS SETTINGS" spacing
-  noted on #2's thread.
-- Keep feeding design tweaks onto issue #2's thread until tokens freeze; after that, tweaks
-  become normal issues.
+**#38** (standalone tab bar leaves the bottom safe area uncovered) and **#39** (what
+`theme-color` does in standalone) both moved to **M5**, where the render check already
+schedules a device pass — one session settles both. **#33** moved to **M6** with the OSS
+work. Also open: **#30** light packs, **#35** self-hosted fonts, and the 375px
+"TRENDS SETTINGS" spacing noted on #2's thread.
 
-### Starter prompt (paste verbatim)
+### C1 starter prompt — audit (Opus 5 @ xhigh)
 
 ```
-Working on MyMacros (~/Projects/MyMacros). Read CLAUDE.md and NEXT-STEPS.md,
-then run Session C: the M2 core loop, issues #9–#12. M1 is done and the app is
-live at https://fuel.debrief.run — push to main auto-deploys, so commit and
-push per issue rather than deploying by hand.
+Working on MyMacros (~/Projects/MyMacros, github.com/samsun076/MyMacros).
+M0 and M1 are complete: the app is live at https://fuel.debrief.run on
+Cloudflare Workers + D1, with Google sign-in and passkeys working on device.
+Push to main auto-deploys via Workers Builds.
 
-Start by putting ANTHROPIC_API_KEY into Doppler (mymacros/prd and dev) and
-pushing it to the Worker — the commands are in NEXT-STEPS. Load the claude-api
-skill before writing anything that calls Claude, and confirm the current model
-id rather than trusting PLAN.md's.
+This is Session C1: an AUDIT, not a build, and not a design review. Do not
+start implementing M2. A separate session (C2) covers design fidelity and
+architecture — leave those alone and say so if you trip over something that
+belongs there.
 
-Then build text quick-add → Claude parses to macros → editable confirm sheet →
-Today totals, in Night Athletic, verified at 375 with tools/shot-matrix.mjs
-before 390/428. Every route per-user isolated via requireAuth.
+Read in this order: PLAN.md (locked decisions), CLAUDE.md (build rules,
+conventions, gotchas), NEXT-STEPS.md, design/TOKENS.md, then the code —
+src/worker, src/client, src/shared, migrations, tools. Then `git log --stat`
+for the M1 sessions and `gh issue list --state all` across every milestone.
+Also read ~/Memex/agent-inbox/2026-08-04_mymacros-b2-oauth-callback-debug.md
+for the last session's learnings.
 
-Run `npm run verify:routing -- https://fuel.debrief.run` if you touch the
-assets config or route mounting. Commit per issue with "closes #N" only where
-the issue is genuinely finished, push when done.
+VERIFY, DON'T TRUST. The last session lost ~40 minutes to a bug that every
+check passed through: curl defaults to `Accept: */*`, which was the one
+request shape that worked, so a broken OAuth callback returned a healthy 302
+to every probe while real browsers got HTML. Then the same class of mistake
+repeated — `wrangler tail` was used as a control when `run_worker_first` had
+already made it blind to that request type. So exercise things rather than
+reading them, and for anything a browser reaches by navigation send
+`Accept: text/html` + `Sec-Fetch-Mode: navigate`. Both
+`npm run verify:routing -- https://fuel.debrief.run` and `npm run check`
+should pass; tell me if they don't.
+
+Assess four things:
+
+1. Does the code honour the build rules in CLAUDE.md/PLAN.md? Hardcoded
+   colors/fonts/radii instead of tokens, accent literals that should be
+   `--accent`, motif slots with no named variant, and whether every API route
+   is genuinely per-user isolated via `c.var.user` — is there any path to a
+   DB query not scoped by userId?
+2. Is anything in the documentation false, stale, or asserted without
+   evidence? CLAUDE.md was corrected once this way already (the theme-color
+   claim). Flag anything stated as fact that was never verified.
+3. Are the open issues correctly scoped and milestoned, and is anything
+   important tracked nowhere? Issues are the durable record — NEXT-STEPS.md
+   is rewritten each session, so anything living only there is one rewrite
+   from being lost.
+4. Is M2 (#9-#12) ready to run unattended? What's underspecified, what
+   decisions would an autonomous session have to invent, and what should be
+   settled first? Treat this as PROVISIONAL — C2 reviews the architecture and
+   could change the answer, so say what your verdict depends on.
+
+Don't "fix" these, they're deliberate: passkeys scoped to `debrief.run` (#34);
+`workers_dev: false`; `run_worker_first: ["/api/*"]`; ALLOWED_EMAILS failing
+closed on empty; dev email sign-in gated on `import.meta.env.DEV` as a
+build-time literal.
+
+Deliverable: file substantive findings as GitHub issues (new, or comments on
+existing) rather than prose, fix anything trivially and safely fixable with a
+commit per issue, and give me a short summary of what you filed, what you
+fixed, and what you'd do first. Propose Memex wiki updates rather than writing
+them. Push when done.
+```
+
+### C2 starter prompt — judgment (Fable @ high)
+
+```
+Working on MyMacros (~/Projects/MyMacros, github.com/samsun076/MyMacros).
+M0 and M1 are complete: the app is live at https://fuel.debrief.run on
+Cloudflare Workers + D1. Session C1 audited correctness and documentation
+separately — read its issues and commits first so you don't redo it.
+
+This is Session C2: JUDGMENT, on the two questions that have no green check.
+Do not start implementing M2. This is the last cheap moment to change the
+foundation, so it runs before any M2 code lands.
+
+Read PLAN.md (especially Theming and Build rules), CLAUDE.md, design/TOKENS.md
+and the sketches/ directory, then the code in src/. Load the frontend-design
+skill before the design work.
+
+1. DESIGN FIDELITY. Render the live app at 375/390/428 with
+   tools/shot-matrix.mjs — it takes a session cookie, see CLAUDE.md — and
+   compare against sketches/. 375 (iPhone 13 mini) is the reference width.
+   Sketches are FROZEN GROUND TRUTH: port from them, never edit them to match
+   the app. Distinguish real drift from deliberate divergence, and say which
+   drift actually matters versus which is invisible to a user. Known and
+   already filed: the tab bar at 375 has "TRENDS SETTINGS" sitting tight
+   together, which is inherited from the sketch, not a port bug.
+
+   Note that headless Chrome reports env(safe-area-inset-*) as 0 and cannot
+   reproduce iOS chrome tinting, so anything about the Safari blend or the
+   standalone chrome is out of reach here — #38 and #39 cover those and are
+   scheduled for M5's device pass.
+
+2. ARCHITECTURE. Would you build M2-M6 on this foundation? Look at the worker
+   route structure, the D1 schema and its migration path, the auth wiring, the
+   client's state and data-fetching approach, and the shared types across the
+   wire. Where will this hurt at M3 (photos, R2), M4 (the budget engine), or
+   M5 (three theme packs)? Be specific about what you'd change now versus what
+   is fine to live with — a rewrite proposal I won't act on is worth less than
+   two changes I will.
+
+   Constraints that aren't up for review: no state-management library, no
+   component library, no CSS framework; tokens plus plain stylesheets. Free
+   tier throughout. Night Athletic is the primary theme; light packs port in
+   M5. Money-free, but multi-user-shaped from day one.
+
+Deliverable: file findings as GitHub issues with clear severity and milestone,
+then rewrite the "Then" section of NEXT-STEPS.md as the Session D runway
+(building M2, #9-#12) incorporating whatever you found. Give me a short
+summary of what you filed and what you'd change first. Propose Memex wiki
+updates rather than writing them. Commit per issue with "closes #N" only where
+genuinely finished, push when done.
 ```
