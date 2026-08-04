@@ -11,8 +11,13 @@
       content="Photograph your food, AI fills in the macros, and your daily calorie budget breathes with your running."
     />
 
-    <!-- Ignored by iOS Safari in-browser (it tints from the body background
-         instead — see design/TOKENS.md), honoured in standalone/PWA mode.
+    <!-- Ignored by iOS Safari in-browser — it tints from the body background
+         instead (field-tested; see design/TOKENS.md). What it does in
+         standalone/PWA mode is UNVERIFIED and is open question #39: measured
+         on device, the page gradient runs to y=0 there, so black-translucent
+         + viewport-fit=cover are what put content under the status bar, and
+         theme-color paints nothing at the top. Set to --bg-top on the theory
+         that it matters somewhere; don't state that it does until #39 closes.
          main.tsx keeps it in sync with --bg-top when the theme changes. -->
     <meta name="theme-color" content="#1a2230" />
 

@@ -62,8 +62,10 @@ function manifest(t) {
     scope: "/",
     display: "standalone",
     orientation: "portrait",
-    // the splash behind the app frame, and the chrome tint iOS uses in
-    // standalone mode (where theme-color IS honoured — unlike in-browser)
+    // background_color is the launch splash. theme_color is set to --bg-top
+    // so the manifest can't disagree with the token pack — but what iOS does
+    // with it in standalone is unverified (#39), and all three candidates are
+    // the same colour today, so nothing here proves anything either way.
     background_color: t.canvas,
     theme_color: t.bgTop,
     icons: [

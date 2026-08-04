@@ -43,7 +43,14 @@
       "database_name": "mymacros-db",
       // The real database, created in Session B2. Not a secret — a database
       // id is useless without credentials for the account that owns it.
-      // Local dev (miniflare) ignores this value entirely.
+      //
+      // Local dev does NOT ignore this value: miniflare names the local
+      // sqlite file after it, so changing it silently swaps local dev onto a
+      // different, empty, unmigrated database. That is what happened when
+      // this replaced "local-dev-placeholder" — the B1-era local data is
+      // still on disk under the old id's filename. If /api/health starts
+      // answering {"db":false,"migration":null} after touching this line,
+      // that's the cause: re-run `npm run db:migrate`.
       "database_id": "4cf59eaf-8cfe-4c44-b599-d038018fcaed",
       "migrations_dir": "migrations"
     }

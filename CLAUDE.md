@@ -164,7 +164,13 @@ doppler secrets download -p mymacros -c prd --format json --no-file \
 
 - `wrangler dev` and the Vite plugin share one local D1 at
   `.wrangler/state/v3/d1/` — `npm run db:migrate` targets it, and deleting
-  that directory is the reset button.
+  that directory is the reset button. **Which** sqlite file they share is
+  keyed by `d1_databases[0].database_id` in `wrangler.jsonc`, so changing that
+  id silently repoints local dev at a fresh, empty, unmigrated database (the
+  old one stays on disk under the previous id's filename). Verified by
+  experiment, not assumed. `GET /api/health` is the tell:
+  `{"db":false,"migration":null}` means you're on an unmigrated file — run
+  `npm run db:migrate`.
 - Chrome (headless, shot-matrix) reports `env(safe-area-inset-*)` as 0 and
   can't reproduce Safari's chrome tinting — verify those in the iOS Simulator
   or on device.

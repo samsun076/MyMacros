@@ -15,9 +15,10 @@ createRoot(root).render(
 );
 
 /** Keep <meta name="theme-color"> equal to --bg-top for whichever theme is
- *  active. It's ignored by iOS Safari in-browser but honoured in standalone
- *  mode, and the theme is a per-user setting that can change at runtime
- *  (#29), so it can't be a static value in the HTML. */
+ *  active. iOS Safari ignores it in-browser (it tints from the body
+ *  background); whether standalone mode honours it is unverified — #39. The
+ *  sync exists regardless because the theme is a per-user setting that can
+ *  change at runtime (#29), so it can't be a static value in the HTML. */
 function syncThemeColor() {
   const bgTop = getComputedStyle(document.documentElement).getPropertyValue("--bg-top").trim();
   if (!bgTop) return;
