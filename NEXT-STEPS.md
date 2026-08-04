@@ -1,12 +1,13 @@
 # Next steps — session playbook
 
-State as of 2026-08-02 (night): plan locked (PLAN.md), 31 issues across 7 milestones.
+State as of 2026-08-04 (morning): plan locked (PLAN.md), 33 issues across 7 milestones.
 **M0 is done** — Session A ran: #31 (shot-matrix tooling), tweak list folded into
 c2-night-athletic, #2 (design/tokens.css + TOKENS.md), #3 (e-log-flow mockup), light-pack
 theme-QA done (one finding filed on #30). **Session B1 is done** — #4, #5 (local D1), #8
-and the code half of #6 all landed; project CLAUDE.md written. **Next up: Session B2**,
-the credentials-and-deploy half — everything left in M1 needs Dave's accounts. This file
-is the runway: what to run next, on which model, with paste-ready starter prompts.
+and the code half of #6 all landed; project CLAUDE.md written. **Session B2 is done** —
+**M1 is closed**: the app is live at https://fuel.debrief.run, signed into with Google and
+a real passkey on device. **Next up: M2, the core loop.** This file is the runway: what to
+run next, on which model, with paste-ready starter prompts.
 
 ## Model guidance (Claude Code sessions)
 
@@ -89,6 +90,38 @@ stub it, and finish by updating the Session B2 checklist in NEXT-STEPS.md
 with exactly what's pending. Commit per issue ("closes #N" only where the
 issue is fully done — #6 stays open for B2), push when done.
 ```
+
+## Session B2 — M1 credentials & deploy — ✅ done 2026-08-03/04
+
+**Landed:** #6, #7, #34 closed; step 0 of #33 (the `ALLOWED_EMAILS` guard). The app is live
+on the custom domain, migrated, and signed into with Google plus an enrolled passkey.
+
+What differed from the checklist below, worth carrying forward:
+
+- **`wrangler login` wasn't needed** — already authenticated, and that OAuth token *can*
+  read zones, so `debrief.run` was confirmed on the account by API rather than by eye.
+  It cannot read DNS records or the Builds API, so those stayed manual.
+- **No `workers.dev` subdomain existed**, so the first deploy failed for want of any route
+  at all. Rather than register one to then disable it, the custom domain is declared in
+  `wrangler.jsonc` as `routes: [{ pattern: "fuel.debrief.run", custom_domain: true }]` with
+  `workers_dev: false` — so Workers Builds reapplies it instead of drifting.
+- **R2 is not enabled on the account**, so `mymacros-photos` was not created. Nothing reads
+  it until M3; enable it with the code that uses it (#13).
+- **Google OAuth lives in its own Cloud project** (`mymacros-504422`, published), not the
+  shared `n8n automations` one. The first client created there was deleted.
+- **The OAuth callback was silently swallowed** by the SPA asset router — see the gotchas in
+  CLAUDE.md, `assets.run_worker_first`, and `npm run verify:routing`. This cost most of the
+  session and is the single most reusable thing learned.
+- **Secret pushes lag by up to a minute.** Old isolates keep serving the previous env, so a
+  freshly-pushed secret intermittently isn't there. Redeploy to recycle, then re-check
+  several times before believing it.
+
+Left open: **#38** (tab bar doesn't cover the bottom safe area in standalone — visible on
+device only, and it self-corrects after the first scroll) and **#39** (what `theme-color`
+actually does in standalone — three contrast runs defeated by iOS manifest caching).
+
+<details>
+<summary>The original B2 checklist, kept for reference</summary>
 
 ## Session B2 — M1 credentials & deploy, together (Opus 5 @ xhigh, Dave present)
 
@@ -309,9 +342,73 @@ issue with "closes #N" only where the issue is genuinely finished, push when
 done, and update the Then section of NEXT-STEPS.md for M2.
 ```
 
-## Then
+</details>
 
-- **M2 core loop** (#9–#12) — text quick-add → confirm sheet → Today screen, built in Night
-  Athletic. Candidate for a single autonomous Fable run once the scaffold is solid.
+## Then — Session C, the M2 core loop
+
+M1 is closed, so the next session is the first one that builds something Dave *uses*:
+**#9–#12** — text quick-add → Claude parses it into macros → editable confirm sheet →
+Today screen showing the day's totals. Night Athletic, verified at 375 first.
+
+This is the first session with **no credential blockers**, so it can run unattended. Good
+candidate for a single autonomous Fable @ high run, or Opus 5 @ xhigh issue by issue.
+
+### Do this first, before any M2 code
+
+1. **`ANTHROPIC_API_KEY`** — deliberately deferred from B2, and M2 is where it's first
+   used. It's the only secret that costs money.
+   ```bash
+   read -rs KEY && doppler secrets set ANTHROPIC_API_KEY="$KEY" -p mymacros -c prd \
+     --no-interactive --silent && unset KEY
+   doppler secrets download -p mymacros -c prd --format json --no-file \
+     | jq 'with_entries(select(.key | startswith("DOPPLER_") | not))' | npx wrangler secret bulk
+   ```
+   Put it in the `dev` config too, then regenerate `.dev.vars`. **Always filter `DOPPLER_*`.**
+2. **Load the `claude-api` skill** before writing anything that calls Claude — model ids and
+   pricing change, and PLAN.md's "Claude Sonnet 5" should be confirmed current rather than
+   copied forward.
+3. **Deploys are automatic now.** Push to `main` builds and deploys via Workers Builds
+   (proven in B2, ~40s). Don't `npm run deploy` by hand unless testing something uncommitted.
+
+### Guardrails that now exist and shouldn't be broken
+
+- **`npm run verify:routing -- https://fuel.debrief.run`** after any change to `wrangler.jsonc`
+  assets config or to route mounting. It guards the bug that ate most of B2.
+- **Every new API route is per-user isolated** — `c.var.user` from `requireAuth`, never a
+  userId from the body or query.
+- **`ALLOWED_EMAILS` fails closed.** Any new sign-up path inherits the guard automatically
+  because it hooks user *creation*, not a particular provider.
+- **Test browser-facing routes the way a browser asks for them.** Anything reached by
+  navigation rather than `fetch()` needs `Accept: text/html`; curl's default proves nothing.
+
+### Carried-over UI work, not blocking M2
+
+- **#38** — standalone tab bar leaves the bottom safe area uncovered. Fix needs a device or
+  the iOS Simulator; headless Chrome reports the insets as 0 and cannot see it.
+- **#39** — the `theme-color` question, still open with a written method for answering it.
+- **#30** light packs, **#35** self-hosted fonts, and the 375px "TRENDS SETTINGS" spacing
+  noted on #2's thread.
 - Keep feeding design tweaks onto issue #2's thread until tokens freeze; after that, tweaks
   become normal issues.
+
+### Starter prompt (paste verbatim)
+
+```
+Working on MyMacros (~/Projects/MyMacros). Read CLAUDE.md and NEXT-STEPS.md,
+then run Session C: the M2 core loop, issues #9–#12. M1 is done and the app is
+live at https://fuel.debrief.run — push to main auto-deploys, so commit and
+push per issue rather than deploying by hand.
+
+Start by putting ANTHROPIC_API_KEY into Doppler (mymacros/prd and dev) and
+pushing it to the Worker — the commands are in NEXT-STEPS. Load the claude-api
+skill before writing anything that calls Claude, and confirm the current model
+id rather than trusting PLAN.md's.
+
+Then build text quick-add → Claude parses to macros → editable confirm sheet →
+Today totals, in Night Athletic, verified at 375 with tools/shot-matrix.mjs
+before 390/428. Every route per-user isolated via requireAuth.
+
+Run `npm run verify:routing -- https://fuel.debrief.run` if you touch the
+assets config or route mounting. Commit per issue with "closes #N" only where
+the issue is genuinely finished, push when done.
+```
