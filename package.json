@@ -16,6 +16,7 @@
     "icons": "node tools/make-icons.mjs",
     "shots": "node tools/shot-matrix.mjs",
     "verify:auth": "node tools/verify-auth.mjs",
+    "verify:routing": "node tools/verify-routing.mjs",
     "deploy": "npm run build && wrangler deploy"
   },
   "dependencies": {

@@ -40,6 +40,7 @@ npm run db:migrate:remote   # apply to REAL D1 — needs wrangler login
 npm run db:studio      # sqlite3 shell on the local D1 file
 npm run icons          # regenerate PWA icons + manifest from design/tokens.css
 npm run verify:auth    # drive the real passkey ceremony (needs `npm run dev`)
+npm run verify:routing -- https://fuel.debrief.run   # /api survives navigation; SPA still falls back
 node tools/shot-matrix.mjs <file.html|url>   # 375/390/428 render matrix
 ```
 
