@@ -34,7 +34,7 @@ shots/           screenshot output (gitignored)
 ```bash
 npm run dev            # vite dev — SPA + Worker + local D1, one process
 npm run build          # typecheck + production build to dist/
-npm run check          # tsc --noEmit + wrangler types drift check
+npm run check          # tsc --noEmit across app, worker, and node tsconfigs
 npm run db:migrate     # apply migrations to LOCAL D1 (miniflare)
 npm run db:migrate:remote   # apply to REAL D1 — needs wrangler login
 npm run db:studio      # sqlite3 shell on the local D1 file
