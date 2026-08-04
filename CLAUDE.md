@@ -138,3 +138,20 @@ node tools/shot-matrix.mjs --cookie better-auth.session_token=<token> http://loc
 - A missing static asset doesn't 404: `not_found_handling:
   single-page-application` serves index.html instead, so a mistyped asset
   path shows up as HTML with the wrong content-type rather than an error.
+- **The asset router runs *before* the Worker, and it swallows HTML
+  navigations.** With SPA `not_found_handling`, any unmatched path requested
+  as a document (`Accept: text/html`) is answered with index.html and the
+  Worker is never invoked. `fetch()` calls send `Accept: application/json`
+  and fall through to the Worker, so the API looks fine while anything the
+  *browser navigates to* silently returns the SPA. This broke the Google
+  OAuth callback in B2: `/api/auth/callback/google?code=…` rendered the
+  sign-in screen, so better-auth never saw the code — no session, no user,
+  no error, no log line. `assets.run_worker_first: ["/api/*"]` is what keeps
+  `/api` on the Worker regardless of `Accept`; don't remove it.
+- **Verify browser-facing routes the way a browser asks for them.** curl
+  defaults to `Accept: */*`, which is exactly the case the asset router
+  passes through — so every curl probe of the broken callback above returned
+  a correct 302 while the real browser got HTML. For anything reached by
+  navigation (OAuth callbacks, redirects, share links), send
+  `-H 'Accept: text/html' -H 'Sec-Fetch-Mode: navigate'` or the test proves
+  nothing.

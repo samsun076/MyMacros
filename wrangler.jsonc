@@ -9,7 +9,17 @@
     // SPA: unknown paths fall through to index.html so client routing works.
     // The asset directory is supplied by the Vite plugin — don't set it here.
     "not_found_handling": "single-page-application",
-    "binding": "ASSETS"
+    "binding": "ASSETS",
+
+    // Without this, the asset router answers HTML *navigations* to unmatched
+    // paths with index.html before the Worker ever runs — and the Google
+    // OAuth callback is a top-level navigation. The browser landed on
+    // /api/auth/callback/google and got the SPA back, so better-auth never
+    // saw the code, no session was created, and the app bounced straight back
+    // to sign-in with no error anywhere. fetch()-based /api calls were
+    // unaffected because they send Accept: application/json rather than
+    // text/html, which is also why curl probes of the same URL all passed.
+    "run_worker_first": ["/api/*"]
   },
   "observability": { "enabled": true },
 
