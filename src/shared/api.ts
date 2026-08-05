@@ -89,6 +89,22 @@ export type FoodLog = {
   updated_at: string;
 };
 
+/** One food the AI read out of a description (#9). Editable on the confirm
+ *  sheet before anything is saved. */
+export type AnalyzedItem = {
+  name: string;
+  calories: number;
+  protein_g: number;
+  carbs_g: number;
+  fat_g: number;
+  /** 0..1, range-checked server-side (structured outputs drop numeric
+   *  bounds — #45). */
+  confidence: number;
+};
+
+/** POST /api/analyze/text response. */
+export type AnalyzeResponse = { items: AnalyzedItem[] };
+
 export type DayTotals = {
   kcal: number;
   protein_g: number;
