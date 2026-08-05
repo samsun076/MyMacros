@@ -1,12 +1,12 @@
 # Next steps — session playbook
 
-State as of 2026-08-04 (evening): plan locked (PLAN.md), M0 and M1 done, the app live at
-https://fuel.debrief.run. **Both review sessions have run**: C1 (audit) filed #40–#47 and
-fixed #40/#41/#42; C2 (judgment) verified design fidelity by eye against the frozen
-sketches (verdict: faithful, no unfiled drift), signed off the architecture for M2–M6,
-signed off the motif registry on #43, and filed #48 (client data layer — the one decision
-to land before #11). **Next up: Session D builds the M2 core loop (#9–#12).** This file is
-the runway: what to run next, on which model, with paste-ready starter prompts.
+State as of 2026-08-04 (night): plan locked (PLAN.md), **M0, M1 and M2 done**, the app
+live at https://fuel.debrief.run with the core loop working end to end — text quick-add →
+Sonnet 5 structured output → editable confirm sheet → Today screen, plus favorites/recents
+one-tap re-log. Session D closed #9–#12 and #48, landed the motif registry (#43's shape)
+and migration 0002, and retired #45. **Next up: Session E builds M3, photo & barcode
+(#13–#16).** This file is the runway: what to run next, on which model, with paste-ready
+starter prompts.
 
 ## Model guidance (Claude Code sessions)
 
@@ -365,143 +365,166 @@ What C2 checked and how, so nobody re-does it: rendered the signed-in app locall
 `sketches/c2-night-athletic.html` crops side by side — chrome, header, buttons, type.
 `npm run check` and `npm run verify:routing -- https://fuel.debrief.run` both green.
 
-## Session D — build M2, the core loop (Opus 5 @ xhigh, or one autonomous Fable run)
+## Session D — build M2, the core loop — ✅ done 2026-08-04
 
-Issues **#9–#12** plus the groundwork C1/C2 settled. Everything below is decided —
-nothing for the session to invent. Read the issue comments; they carry the decisions.
+**Landed:** #9, #10, #11, #12, #48 closed by commit; #45 closed with a summary; motif
+registry stood up per #43's settled shape; migration 0002 (`profiles.target_kcal`)
+applied locally and remotely. `npm run check` green, `verify:routing` green against
+production, every screen shot-matrixed at 375/390/428 and eyeballed against the frozen
+sketches. Measured: text quick-add round-trips Claude in ~4.6s (PLAN.md promises <10s).
 
-### 0. Prerequisite (Dave, ~2 min, before the session)
+What D settled or discovered, worth carrying forward:
 
-`ANTHROPIC_API_KEY` into Doppler (`prd` **and** `dev`), pushed to the Worker, and
-`.dev.vars` regenerated — commands in CLAUDE.md `## Secrets`. It's the only secret that
-costs money and M2 cannot be verified end-to-end without it. Everything else is code.
+- **One save = one meal = one shared `logged_at` instant.** The confirm sheet writes one
+  `food_logs` row per item, all stamped with the same instant, and both the Today timeline
+  and `/api/food-logs/recent` fold rows sharing that instant back into a single meal entry.
+  That is how the sketch's combined breakfast row ("Greek yogurt, blueberries, granola")
+  falls out of per-item rows without a meal_id column. An edit route, when one lands, must
+  preserve `logged_at` for the same reason it must preserve `logged_on`.
+- **The slot chip is the slot picker.** Derived from the clock, displayed as
+  "Lunch · 12:38", and tapping the chip cycles breakfast→lunch→dinner→snack. No picker
+  control was invented — the sketch designs none (#44).
+- **Zero-earned meter rendering:** the `.earned` layer renders at zero width with its
+  boundary tick suppressed, and the scale shows `0 … BASE 1,810 ▸` with no separate
+  adjusted-total label (base == adjusted until M4 fills `run`). M4 restores the sketch's
+  three-label scale by supplying data, not by re-laying-out the hero.
+- **DEV-only hash stages** mirror the sketch convention for shot-matrix: `/log#confirm`
+  opens the sheet pre-filled with the sketch's demo meal, `/#saved` shows the toast.
+  Both are gated on `import.meta.env.DEV` (build-time literal, compiled out of prod).
+- **shot-matrix hash gotcha:** hash stages of the same path also overwrite each other
+  (`/log` and `/log#confirm` both write `app-log@*.png`) — same copy-aside rule as the
+  auth-state gotcha.
+- **Local D1 has a stale twin.** `find .wrangler/state/v3/d1 -name '*.sqlite' | head -1`
+  can grab the pre-B2 database (old `database_id`, has its own dev user, stops at
+  migration 0001). When touching the sqlite file directly, pick the one whose
+  `d1_migrations` is current.
+- **Today still fetches `/api/me` alongside `/api/day/:date`** — the day bundle carries
+  `target_kcal` but not the macro split or focus macro. Fine at two parallel requests;
+  if M4's day payload grows anyway (#19/#21 fill `run`), consider folding the profile
+  fields the screen needs into it then.
+- **Not verified: one signed-in quick-add against production.** Everything reachable
+  without a session is verified (routing, health, migration 0002 live, new routes 401ing
+  as JSON, `ANTHROPIC_API_KEY` present on the Worker via `wrangler secret list`, and the
+  same key value round-tripping Claude locally). Production auth is Google/passkey only —
+  as designed — so the end-to-end check is a 30-second phone test: open the app, quick-add
+  "black coffee", confirm, see it on Today. **Dave: do this before starting E.**
+
+## Session E — build M3, photo & barcode (Opus 5 @ xhigh, Dave reachable for decisions)
+
+Issues **#13–#16**. Unlike D, the issue comments do NOT yet carry every decision — the
+camera, upload, and barcode mechanics have real open choices. Settle them (with Dave, or
+via a C1-style decision pass) before an autonomous run writes code that assumes answers.
+
+### 0. Prerequisites (Dave, ~5 min, before the session)
+
+- **Enable R2 on the Cloudflare account** and `npx wrangler r2 bucket create
+  mymacros-photos` — R2 was deliberately left off in B2; the binding gets written in #13
+  alongside the code that uses it. Nothing else in M3 needs console access.
+- The signed-in production quick-add from D's checklist, if not already done.
+
+### Decisions to settle before code (the #44/#45 pattern, one thread each or one bundle)
+
+1. **Camera mechanism (#13).** `<input type="file" capture="environment">` (no
+   permissions prompt, no live preview, works everywhere iOS) vs `getUserMedia` live
+   viewfinder (the sketch's camera stage implies a viewfinder, but iOS PWA quirks and
+   permission UX are real). The sketch's frozen chrome (brackets, shutter, modes row)
+   ports either way; what differs is what sits in the finder.
+2. **Upload path (#13).** Client → Worker → R2 in one multipart request vs presigned
+   direct-to-R2. One-request-through-the-Worker is simpler, keeps `ALLOWED_EMAILS`-scoped
+   auth in one place, and Workers can stream to R2; presigned saves Worker CPU on big
+   uploads. Also: downscale/compress client-side before upload (canvas to ~1600px JPEG?)
+   — full-resolution photos cost ~3× vision tokens for no accuracy the plate needs.
+3. **Vision request shape (#14).** Reuse `analyze.ts`'s schema and normalize() (same
+   items contract feeding the same confirm sheet) with an image block instead of text —
+   the confirm sheet is already input-agnostic. Decide: image passed as base64 from the
+   just-uploaded R2 object vs re-fetched by key; and whether text notes can accompany a
+   photo ("half of this").
+4. **Barcode scanning (#15).** iOS Safari has no BarcodeDetector API. Options: a small
+   WASM/JS decoder lib (zxing-wasm and quagga are the usual suspects — weigh bundle
+   size against the no-new-dependencies instinct), or photo-of-barcode → server-side
+   decode. Then OpenFoodFacts lookup shape and the not-found path (falls through to
+   text? to #16's failure UX?).
+5. **Failure/low-confidence UX (#16).** The CHECK badge convention exists on the sheet;
+   #16 decides what photo-analysis failure looks like (retake? fall back to text?) —
+   the sketch designs none of it.
 
 ### Order of work (dependencies, not preference)
 
-1. **#48 first** — the typed API client (`src/client/lib/api.ts`), refetch-on-mount
-   policy, and `GET /api/day/:date` returning `{ logs, totals, target_kcal, run: null }`.
-   It's the pattern every M2 screen copies, so it exists before any screen does.
-2. **Motif registry** (settled on #43) — `src/client/motifs/` with `MotifSet` requiring
-   all four slots, `MOTIFS: Record<Theme, MotifSet>`, placeholders re-exporting Night
-   Athletic. Move the existing `.log-btn` in as the first variant so the convention
-   predates the meter and timeline row rather than being retrofitted onto them.
-3. **Migration 0002** (append-only, new file): `profiles.target_kcal` (settled on
-   #45/#11 — the base target lives in a real column; M4 changes how it's calculated,
-   not where it lives).
-4. **#9** — `POST /api/analyze/text` → `claude-sonnet-5` structured output. **Load the
-   `claude-api` skill before writing this.** Settled on #45: official `@anthropic-ai/sdk`
-   (add the dependency), thinking disabled or low effort (Sonnet 5 thinks by default;
-   PLAN.md promises the happy path under ~10s), `additionalProperties: false` on every
-   schema object, and range-check `confidence` in our code — structured outputs silently
-   drop numeric bounds.
-5. **#10** — confirm sheet + `POST /api/food-logs`. Settled on #44/#10: `logged_on` is
-   the client's local date, midnight cutoff, set once and never recomputed on edit; the
-   client writes `profiles.timezone` on first log; `meal_slot` derives from the clock
-   (<11 breakfast · <16 lunch · <21 dinner · else snack), displayed on the sheet,
-   editable — the sketch designs no picker control, so derived-and-displayed is the
-   port and any picker is a deliberate addition. Extract `routes/me.ts`'s validator
-   helpers (`isNum`/`oneOf`/`isDay`/`pct`) into a shared worker module here instead of
-   copy-pasting them into the second route.
-6. **#11** — the Today screen, ported **literally** from the frozen sketches (see the
-   comments on #11): adjusted target as the hero denominator with the base/earned
-   arithmetic in the aria-label; the `.earned` meter layer renders at zero width in M2
-   rather than being omitted; `BASE … ▸` labelled on the scale; macro targets derived
-   from the adjusted total; focus macro carries accent + the screen-reader suffix. This
-   issue adds two motif slots (budget meter, timeline row) — they go in the registry,
-   and `BudgetMeter` takes the earned data so each theme decides whether the earned
-   mark lives inside its box or beside it (see the C2 note on #43).
-7. **#12** — favorites/recents, one-tap re-log at the current slot (same clock
-   derivation as #10).
+1. **#13** — camera capture + R2 upload (binding + bucket + `photo_key` written on the
+   rows; thumbnails on the timeline can read through a Worker route that streams from R2).
+2. **#14** — photo → Sonnet 5 vision → the same `AnalyzeResponse` contract → the same
+   confirm sheet. Load the **claude-api skill** before touching the vision call: image
+   block shapes, high-res token costs, and the structured-output bounds gotcha all live
+   there. The `edited`/`confidence` semantics from #10 carry over unchanged.
+3. **#15** — barcode → OpenFoodFacts. Exact-match products get `confidence: null`
+   (the schema comment already says null = not AI-estimated); source `barcode`.
+4. **#16** — failure UX across all three input modes, threaded through the existing
+   sheet rather than new screens.
 
-### The design gate (every screen, before its issue closes)
+The Log screen's modes row (PHOTO · BARCODE · TEXT) already renders with TEXT active and
+the other two parked — M3 lights them up in place; the flow chrome, confirm sheet, save
+route, and toast all exist and are shared (#10 built them input-agnostic on purpose).
 
-Shot-matrix at 375/390/428 and **look at the PNGs** — never infer fidelity from CSS.
-The signed-in local recipe, verified end to end in C2 (dev user exists; sign-up is the
-fallback on a reset DB; better-auth 403s without the Origin header):
+### The design gate (unchanged, plus D's additions)
 
-```
-npm run dev                      # in another terminal, then:
-
-CREDS='{"email":"dev@mymacros.local","password":"dev-password-not-for-production"}'
-curl -s -X POST localhost:5173/api/auth/sign-in/email \
-  -H 'content-type: application/json' -H 'Origin: http://localhost:5173' \
-  -c /tmp/mm.txt -d "$CREDS" > /dev/null
-grep -q session_token /tmp/mm.txt || curl -s -X POST \
-  localhost:5173/api/auth/sign-up/email -H 'content-type: application/json' \
-  -H 'Origin: http://localhost:5173' -c /tmp/mm.txt \
-  -d "${CREDS%\}},\"name\":\"Dev\"}" > /dev/null
-TOKEN=$(grep session_token /tmp/mm.txt | awk '{print $7}')
-
-node tools/shot-matrix.mjs --cookie "better-auth.session_token=$TOKEN" \
-  http://localhost:5173/ http://localhost:5173/settings
-```
-
-Gotcha found in C2: shot-matrix names outputs by URL path, so a signed-**out** shot of
-`/` overwrites the signed-in `app-home@*.png`. Copy aside anything you need to keep
-before re-shooting the same path in a different auth state.
-
-Sanity-check `curl -s localhost:5173/api/health` first — `{"db":false,"migration":null}`
-means run `npm run db:migrate` (see the CLAUDE.md gotcha about `database_id`).
+Shot-matrix at 375/390/428 and **look at the PNGs** — the signed-in recipe and the
+copy-aside gotchas are in the C2/D sections above. The camera stage ports from
+`sketches/e-log-flow.html#camera` (frozen ground truth — brackets, shutter, mode row).
+Headless Chrome has no camera: shoot what's shootable, and note what needs the device.
 
 ### Guardrails that exist and shouldn't be broken
 
-- **`npm run verify:routing -- https://fuel.debrief.run`** after any change to the
-  `wrangler.jsonc` assets config or route mounting — and after the final push, since
-  push deploys (~40s via Workers Builds; don't `npm run deploy` by hand).
-- **Every new API route is per-user isolated** — mount under the `secure` sub-app,
-  read `c.var.user`, never a userId from body or query.
-- **`ALLOWED_EMAILS` fails closed**; new sign-up paths inherit it via the user-create hook.
-- **Test browser-facing routes the way a browser asks for them** — `Accept: text/html`
-  + `Sec-Fetch-Mode: navigate` for anything reached by navigation.
-- **`npm run check` green before every commit** — it's what makes the motif registry's
-  missing-variant guarantee real.
+- **`npm run verify:routing -- https://fuel.debrief.run`** after any change to
+  `wrangler.jsonc` (the R2 binding lands there!) and after the final push.
+- **Every new API route under the `secure` sub-app**; `c.var.user`, never a userId from
+  the request. Photo serving included — an R2 key is per-user data.
+- **Migrations append-only**; `npm run check` green before every commit; never hardcode
+  a color/font/radius (add a token); motif slots only through the registry.
+- **`npm run cf-typegen` needs `.dev.vars` present** (see CLAUDE.md) — you'll run it for
+  the R2 binding; don't let it silently drop the secret types.
 
 ### Deliberate — don't let a session "fix" these
 
-Passkeys scoped to `debrief.run` (#34) · `workers_dev: false` ·
-`run_worker_first: ["/api/*"]` · `ALLOWED_EMAILS` failing closed on empty · dev email
-sign-in gated on `import.meta.env.DEV` as a build-time literal · no service worker
-(deliberate non-decision, reasoning on #42) · refetch-on-mount with no client cache
-(#48 — add invalidation only when something hurts).
+Everything in D's list above, plus: `thinking: disabled` + `effort: low` on the
+quick-add route (latency is the product promise) · per-item rows with shared `logged_at`
+instead of a meal table · the two-fetch Today screen · `source` values `photo`/`barcode`
+already in the schema CHECK — use them, don't migrate.
 
-### Carried over, not blocking M2
+### Carried over, not blocking M3
 
-**#38/#39** (standalone chrome, theme-color) → M5's device pass · **#30** light packs +
-**#35** self-hosted fonts + **#46** tab-label spacing → M5 · **#47** test infra → stand
-up before M4's budget math, not before M2 · **#33** claim flow → M6.
+**#38/#39** standalone chrome + theme-color → M5's device pass · **#30/#35/#46/#36/#32**
+→ M5 · **#47** test infra → before M4's budget math (adjacent: M3 adds the first
+money-costing route with a file upload — if test infra lands early, these routes are the
+first customers) · **#33** claim flow → M6.
 
-### Starter prompt (paste verbatim)
+### Starter prompt (paste verbatim, after the decisions above are settled)
 
 ```
 Working on MyMacros (~/Projects/MyMacros, github.com/samsun076/MyMacros).
-M0/M1 are done, the app is live at https://fuel.debrief.run, and both review
-sessions (C1 audit, C2 judgment) have signed off the foundation. This is
-Session D: build the M2 core loop, issues #9-#12.
+M0–M2 are done and live at https://fuel.debrief.run — the core loop works
+end to end. This is Session E: build M3, photo & barcode, issues #13–#16.
 
-Read CLAUDE.md, PLAN.md (Theming + Build rules), design/TOKENS.md, then
-`gh issue view --comments` for #9, #10, #11, #12, #43, #44, #45, #48 — the
-comments carry every settled decision; nothing is yours to invent. Follow
-the "Order of work" in NEXT-STEPS.md's Session D section: #48's API client
-and day endpoint first, then the motif registry (per #43), then migration
-0002 (profiles.target_kcal), then #9 → #10 → #11 → #12.
+Read CLAUDE.md, PLAN.md (Theming + Build rules), design/TOKENS.md, and the
+Session E section of NEXT-STEPS.md, then gh issue view --comments for #13,
+#14, #15, #16 — the decision threads carry the settled choices for camera
+mechanism, upload path, vision request shape, and barcode scanning; if any
+of those are still open, stop and ask me rather than assuming.
 
-Load the claude-api skill before writing the Claude call (#9). Load the
-frontend-design skill before building screens. Port the Today screen and
-confirm sheet literally from sketches/e-log-flow.html and
-sketches/c2-night-athletic.html — sketches are frozen ground truth; never
-edit them to match the app.
+Load the claude-api skill before the vision call (#14). Load the
+frontend-design skill before screens. The camera stage ports literally
+from sketches/e-log-flow.html#camera; the confirm sheet, save route, and
+toast are shared from M2 — photo and barcode feed the same AnalyzeResponse
+contract and the same sheet. R2 bucket mymacros-photos exists; write the
+binding in wrangler.jsonc with #13 and re-run npm run cf-typegen (with
+.dev.vars present).
 
-Verify every screen at 375/390/428 with the signed-in shot-matrix recipe in
-NEXT-STEPS.md and LOOK at the PNGs. npm run check must stay green. Don't
-break the guardrails or "fix" the deliberate list in NEXT-STEPS.md.
+Verify every screen at 375/390/428 with the signed-in shot-matrix recipe
+in NEXT-STEPS.md and LOOK at the PNGs; note what only a device can verify
+(camera, real capture). npm run check stays green. Don't break the
+guardrails or the deliberate list in NEXT-STEPS.md's Session E section.
 
-ANTHROPIC_API_KEY should already be in the environment (I push it before
-this session) — if /api/analyze/text can't reach Claude, stop and tell me
-rather than stubbing it silently.
-
-Commit per issue, "closes #N" only where the issue is genuinely finished,
-push when done (push deploys), and finish by re-running
-npm run verify:routing -- https://fuel.debrief.run after the build lands,
-plus one end-to-end quick-add against production. Rewrite the Session D
-section of NEXT-STEPS.md as the M3 runway before you stop.
+Commit per issue, "closes #N" only where genuinely finished, push when
+done (push deploys), re-run npm run verify:routing -- https://fuel.debrief.run
+after the final push, and rewrite the Session E section of NEXT-STEPS.md
+as the M4 runway before you stop.
 ```
