@@ -1,4 +1,5 @@
 import { NavLink, useNavigate } from "react-router";
+import { activeMotifs } from "../motifs";
 
 /** Bottom chrome. Two conventions are load-bearing here and are documented in
  *  design/TOKENS.md — change them only with a device test:
@@ -12,6 +13,7 @@ import { NavLink, useNavigate } from "react-router";
  *  top edge, Trends and Settings on the right. */
 export function TabBar() {
   const navigate = useNavigate();
+  const { LogButton } = activeMotifs();
 
   return (
     <nav className="tabbar" aria-label="Main">
@@ -22,11 +24,7 @@ export function TabBar() {
         </Tab>
       </div>
 
-      <button className="log-btn" aria-label="Log food" onClick={() => void navigate("/log")}>
-        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" strokeWidth="2.6" strokeLinecap="round">
-          <path d="M12 4v16M4 12h16" />
-        </svg>
-      </button>
+      <LogButton onClick={() => void navigate("/log")} />
 
       <div className="tabzone">
         <Tab to="/trends" label="Trends">

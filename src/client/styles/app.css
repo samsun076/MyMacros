@@ -360,6 +360,10 @@ section {
   justify-content: center;
 }
 
+/* ── motifs · night athletic (registry: src/client/motifs, #43) ── */
+/* The only per-theme components. Light-pack variants land with M5 (#30). */
+
+/* slot 3 · log button — 58px rounded-square accent, lifted above the bar */
 .log-btn {
   justify-self: center;
   align-self: start;
@@ -377,6 +381,157 @@ section {
 
 .log-btn svg {
   stroke: var(--on-accent);
+}
+
+/* slot 2 · budget meter — three stacked layers (build rule 7 is structural).
+   .earned's left edge and .fill's width are data, set inline. */
+.fuel {
+  position: relative;
+  margin-top: 22px;
+  height: var(--meter-height);
+}
+
+.fuel .track {
+  position: absolute;
+  inset: 0;
+  background: var(--track);
+  border-radius: var(--radius-mark);
+}
+
+.fuel .earned {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: 0;
+  border-radius: 0 var(--radius-mark) var(--radius-mark) 0;
+  background: repeating-linear-gradient(135deg, var(--accent-soft) 0 2px, transparent 2px 7px);
+  border-left: 2px solid var(--accent);
+}
+
+.fuel .fill {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  background: var(--accent);
+  border-radius: var(--radius-mark);
+  transform-origin: left center;
+}
+
+.fuel-scale {
+  position: relative;
+  display: flex;
+  justify-content: space-between;
+  margin-top: 8px;
+  font-family: var(--data-font);
+  font-size: 9.5px;
+  color: var(--ink-muted);
+  letter-spacing: 0.04em;
+}
+
+.fuel-scale .base {
+  position: absolute;
+  transform: translateX(-100%);
+  white-space: nowrap;
+}
+
+/* slot 1 · earned-kcal annotation — hatched legend swatch + accent text */
+.earned-note {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.earned-note .swatch {
+  width: 14px;
+  height: 10px;
+  border-radius: 2px;
+  background: repeating-linear-gradient(135deg, var(--accent-soft) 0 2px, transparent 2px 5px);
+  box-shadow: inset 0 0 0 1px var(--accent-soft);
+}
+
+/* slot 4 · timeline row chrome — hairline rail, node dots, accent run dot.
+   The rail narrows below 390px (from the sketch's 375 fix). */
+.tl {
+  position: relative;
+}
+
+.tl::before {
+  content: "";
+  position: absolute;
+  left: 62px;
+  top: 6px;
+  bottom: 6px;
+  width: 1px;
+  background: var(--line);
+}
+
+.entry {
+  position: relative;
+  display: grid;
+  grid-template-columns: 50px 1fr;
+  gap: 26px;
+  padding: 9px 0;
+}
+
+.entry .when {
+  font-family: var(--data-font);
+  font-size: 10px;
+  color: var(--ink-muted);
+  letter-spacing: 0.02em;
+  text-align: right;
+  padding-top: 4px;
+  white-space: nowrap;
+}
+
+.entry::after {
+  content: "";
+  position: absolute;
+  left: 59.5px;
+  top: 18px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--bg);
+  border: 1.5px solid var(--ink-muted);
+}
+
+.entry.run::after,
+.entry.fresh::after {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+/* the just-saved wash (sketch: e-log-flow .entry.fresh) */
+.entry.fresh .meal {
+  background: var(--accent-wash);
+  border-radius: var(--radius-thumb);
+  padding: 6px 10px;
+  margin: 0 -10px;
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
+@media (max-width: 389px) {
+  .entry {
+    grid-template-columns: 40px 1fr;
+    gap: 14px;
+  }
+
+  .entry .when {
+    white-space: normal;
+    line-height: 1.5;
+  }
+
+  .tl::before {
+    left: 47px;
+  }
+
+  .entry::after {
+    left: 44.5px;
+  }
 }
 
 /* ── passkeys ─────────────────────────────────────────────── */
