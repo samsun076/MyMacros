@@ -76,6 +76,9 @@
   --shadow-lift:
     0 12px 26px rgba(5, 9, 15, 0.45),
     inset 0 -2px 0 rgba(10, 16, 26, 0.22);
+  --shadow-card: 0 10px 26px rgba(5, 9, 15, 0.35); /* raised cards: run card, toast */
+  --shadow-sheet: 0 -18px 44px rgba(5, 9, 15, 0.5); /* the confirm bottom sheet */
+  --scrim: rgba(5, 9, 15, 0.55); /* dim wash behind the sheet */
   --meter-height: 18px;         /* budget meter */
   --macro-bar-height: 6px;
   --tabbar-height: 62px;        /* bottom chrome, excluding the safe area —

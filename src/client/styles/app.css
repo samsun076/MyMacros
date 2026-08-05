@@ -534,6 +534,334 @@ section {
   }
 }
 
+/* ── log flow (#9/#10) — ported from sketches/e-log-flow.html ── */
+
+.log-screen {
+  padding: calc(14px + env(safe-area-inset-top, 0px)) 22px calc(28px + env(safe-area-inset-bottom, 0px));
+}
+
+.log-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.log-top .mono {
+  font-size: 10px;
+  color: var(--ink-muted);
+  letter-spacing: 0.08em;
+}
+
+.cam-x {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: none;
+  background: color-mix(in srgb, var(--chrome) 70%, transparent);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+
+.cam-x svg {
+  stroke: var(--ink-secondary);
+}
+
+.modes {
+  display: flex;
+  justify-content: center;
+  gap: 26px;
+  font-family: var(--data-font);
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  color: var(--ink-muted);
+  margin-top: 26px;
+}
+
+.modes b {
+  color: var(--accent);
+  font-weight: 500;
+  position: relative;
+}
+
+.modes b::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: -7px;
+  width: 14px;
+  height: 3px;
+  border-radius: var(--radius-pill);
+  background: var(--accent);
+}
+
+/* text entry — the TEXT mode's stage isn't in the frozen sketch (it designs
+   the photo stage), so this block follows the system idiom */
+.log-ask {
+  margin-top: 34px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.log-ask textarea {
+  width: 100%;
+  min-height: 116px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  padding: 14px 16px;
+  color: var(--ink);
+  font-family: var(--body-font);
+  font-size: 16px; /* ≥16px so iOS Safari doesn't zoom the field */
+  line-height: 1.5;
+  resize: none;
+}
+
+.log-ask textarea::placeholder {
+  color: var(--ink-muted);
+}
+
+.log-hint {
+  text-align: center;
+  font-family: var(--data-font);
+  font-size: 9.5px;
+  letter-spacing: 0.14em;
+  color: var(--ink-muted);
+}
+
+/* ── confirm sheet ── */
+
+.sheet-wrap {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  margin-inline: auto;
+  max-width: 430px;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  background: var(--scrim);
+}
+
+.sheet {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-bottom: none;
+  border-radius: var(--radius-card) var(--radius-card) 0 0;
+  padding: 10px 20px calc(18px + env(safe-area-inset-bottom, 0px));
+  box-shadow: var(--shadow-sheet);
+  max-height: 86dvh;
+  overflow-y: auto;
+}
+
+.grab {
+  width: 36px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--track);
+  margin: 0 auto 14px;
+}
+
+.sheet-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+
+.sheet-head .mono {
+  font-size: 9.5px;
+  color: var(--ink-muted);
+  letter-spacing: 0.08em;
+}
+
+.slot-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  text-align: left;
+}
+
+.sheet-sub {
+  font-size: 11.5px;
+  color: var(--ink-muted);
+  margin-top: 6px;
+}
+
+.item {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 4px 12px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.item-hit {
+  grid-row: span 2;
+  display: block;
+  background: none;
+  border: none;
+  padding: 0;
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+}
+
+.item .name {
+  display: block;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--ink);
+}
+
+.item .portion {
+  display: block;
+  width: fit-content;
+  font-family: var(--data-font);
+  font-size: 10px;
+  color: var(--ink-muted);
+  letter-spacing: 0.04em;
+  margin-top: 3px;
+}
+
+.item .kcal {
+  grid-row: span 2;
+  align-self: center;
+  text-align: right;
+  font-family: var(--numeral-font);
+  font-size: 20px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+}
+
+.item .kcal small {
+  display: block;
+  font-family: var(--data-font);
+  font-size: 9px;
+  font-weight: 400;
+  color: var(--ink-muted);
+  margin-top: 3px;
+  letter-spacing: 0.03em;
+}
+
+/* the uncertain row, open for editing */
+.item.check .portion {
+  color: var(--accent);
+  border-bottom: 1px dotted var(--accent-soft);
+  padding-bottom: 2px;
+}
+
+.badge {
+  font-family: var(--data-font);
+  font-size: 8.5px;
+  letter-spacing: 0.1em;
+  color: var(--accent);
+  background: var(--accent-wash);
+  border: 1px solid var(--accent-soft);
+  border-radius: 3px;
+  padding: 2px 5px;
+  margin-left: 7px;
+  vertical-align: 1px;
+}
+
+/* in-place editor — the text flow's counterpart of the sketch's stepper box */
+.item-edit {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 10px;
+  background: var(--bg);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-thumb);
+  padding: 10px 12px 12px;
+  margin-top: 6px;
+}
+
+.item-edit label {
+  display: block;
+  font-family: var(--data-font);
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  color: var(--ink-muted);
+}
+
+.item-edit input {
+  display: block;
+  width: 100%;
+  margin-top: 4px;
+  background: var(--surface-raised);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-mark);
+  padding: 8px 10px;
+  color: var(--ink);
+  font-family: var(--body-font);
+  font-size: 16px; /* ≥16px: no iOS zoom */
+  font-variant-numeric: tabular-nums;
+}
+
+.item-edit-nums {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+}
+
+.sheet-foot {
+  margin-top: 8px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+
+.totals {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+
+.totals .sum {
+  font-family: var(--numeral-font);
+  font-size: 22px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.totals .sum span {
+  font-family: var(--body-font);
+  font-size: 11px;
+  color: var(--ink-muted);
+  font-weight: 400;
+}
+
+.totals .mono {
+  font-size: 10px;
+  color: var(--ink-muted);
+  letter-spacing: 0.05em;
+}
+
+.save {
+  width: 100%;
+  margin-top: 14px;
+  padding: 15px;
+  border: none;
+  border-radius: var(--radius-card);
+  background: var(--accent);
+  color: var(--on-accent);
+  font-family: var(--body-font);
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  box-shadow: var(--shadow-lift);
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+
+.save:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
 /* ── passkeys ─────────────────────────────────────────────── */
 
 .passkeys {

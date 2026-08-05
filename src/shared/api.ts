@@ -105,6 +105,35 @@ export type AnalyzedItem = {
 /** POST /api/analyze/text response. */
 export type AnalyzeResponse = { items: AnalyzedItem[] };
 
+/** One item of a save from the confirm sheet (#10). */
+export type FoodLogItemInput = {
+  name: string;
+  kcal: number;
+  protein_g: number;
+  carbs_g: number;
+  fat_g: number;
+  /** AI confidence; null when the number wasn't AI-estimated (favorites). */
+  confidence: number | null;
+  /** True when the user changed the AI's numbers before saving. */
+  edited: boolean;
+};
+
+/** POST /api/food-logs body. One save = one meal = one shared `logged_at`
+ *  instant, which is what groups the rows back into a single timeline entry. */
+export type FoodLogCreate = {
+  /** Device-local date (#44) — the client owns the day boundary. */
+  logged_on: string;
+  /** Device IANA timezone, mirrored into profiles.timezone (#44). */
+  timezone?: string;
+  meal_slot: MealSlot;
+  /** photo/barcode arrive with M3. */
+  source: "text" | "favorite";
+  items: FoodLogItemInput[];
+};
+
+/** POST /api/food-logs response: the created rows. */
+export type FoodLogsCreated = { logs: FoodLog[] };
+
 export type DayTotals = {
   kcal: number;
   protein_g: number;

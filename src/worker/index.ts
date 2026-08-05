@@ -4,6 +4,7 @@ import { createAuth } from "./auth";
 import { requireAuth } from "./middleware/auth";
 import analyze from "./routes/analyze";
 import day from "./routes/day";
+import foodLogs from "./routes/food-logs";
 import me from "./routes/me";
 import type { AppEnv } from "./types";
 
@@ -51,6 +52,7 @@ secure.use("*", requireAuth);
 secure.route("/me", me);
 secure.route("/day", day);
 secure.route("/analyze", analyze);
+secure.route("/food-logs", foodLogs);
 
 app.route("/api", open);
 app.route("/api", secure);

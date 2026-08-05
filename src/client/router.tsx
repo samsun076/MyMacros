@@ -12,9 +12,11 @@ export const router = createBrowserRouter([
       { path: "/", element: <Today /> },
       { path: "/trends", element: <Trends /> },
       { path: "/settings", element: <Settings /> },
-      { path: "/log", element: <Log /> },
       // the Worker serves the shell for any path, so the client owns the 404
       { path: "*", element: <Today /> },
     ],
   },
+  // The log flow is modal — no tab bar, its own close affordance (the
+  // sketch's camera/confirm stages carry no bottom chrome).
+  { path: "/log", element: <Log /> },
 ]);

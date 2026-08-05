@@ -24,6 +24,8 @@ forks a component, with the sole exception of the motif slots below.
 | `--display-font` / `--body-font` / `--numeral-font` / `--data-font` | Numerals always set `font-variant-numeric: tabular-nums`; data-font is timestamps/scales/micro-captions |
 | `--radius-card/-thumb/-button/-mark/-pill` | Shape scale; `-pill` is fully-rounded ends (accent tick, chips) |
 | `--shadow-lift` | The accent buttons' lift (log button, primary action) — drop plus inset bottom highlight. A theme's *material*, not a constant: Night Athletic's deep blue-black drop means nothing on Field Notes' ivory paper, so each pack sets its own |
+| `--shadow-card` / `--shadow-sheet` | Elevation for raised cards (run card, toast) and the confirm bottom sheet — same material caveat as `--shadow-lift` |
+| `--scrim` | Dim wash behind the confirm sheet |
 | `--meter-height` / `--macro-bar-height` | Meter metrics |
 | `--tabbar-height` | Bottom chrome height, excluding the safe area. Screens pad their bottom by it so the fixed bar never covers content |
 
