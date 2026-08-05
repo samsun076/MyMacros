@@ -55,14 +55,59 @@ portions.
  *  thinking is disabled and effort low because PLAN.md promises the happy
  *  path under ~10 seconds (settled on #45). */
 analyze.post("/text", async (c) => {
+  const t0 = performance.now();
   const body = await c.req.json<{ text?: unknown }>().catch(() => null);
   const text = typeof body?.text === "string" ? body.text.trim() : "";
   if (!text) return c.json({ error: "text_required" }, 400);
   if (text.length > 1000) return c.json({ error: "text_too_long" }, 400);
 
-  const client = new Anthropic({ apiKey: c.env.ANTHROPIC_API_KEY });
+  let attempts = 0;
+  let apiMs = 0;
+  /** #49: production measured 33s for a call that takes ~4.6s locally. One
+   *  wall-clock number can't separate a single slow upstream call from the
+   *  SDK's retry loop (maxRetries: 2, exponential backoff on 429/529/5xx), so
+   *  the client gets a wrapping fetch that stamps every attempt — the backoff
+   *  sleeps are then the arithmetic between one attempt ending and the next
+   *  starting. Observability only: retry behaviour is deliberately untouched,
+   *  the fail-fast decision is #16's. */
+  const client = new Anthropic({
+    apiKey: c.env.ANTHROPIC_API_KEY,
+    fetch: async (input, init) => {
+      const attempt = ++attempts;
+      const at = performance.now() - t0;
+      try {
+        const res = await fetch(input as RequestInfo, init as RequestInit);
+        console.log("analyze/text timing", {
+          attempt,
+          at_ms: Math.round(at),
+          elapsed_ms: Math.round(performance.now() - t0 - at),
+          status: res.status,
+          ...upstreamHeaders(res.headers),
+        });
+        return res;
+      } catch (err) {
+        console.log("analyze/text timing", {
+          attempt,
+          at_ms: Math.round(at),
+          elapsed_ms: Math.round(performance.now() - t0 - at),
+          status: null,
+          transport_error: String(err),
+        });
+        throw err;
+      }
+    },
+  });
+
+  const done = (outcome: string) =>
+    console.log("analyze/text timing", {
+      outcome,
+      attempts,
+      api_ms: Math.round(apiMs),
+      total_ms: Math.round(performance.now() - t0),
+    });
 
   let raw: string;
+  const apiStart = performance.now();
   try {
     const response = await client.messages.create({
       model: "claude-sonnet-5",
@@ -75,18 +120,25 @@ analyze.post("/text", async (c) => {
       system: SYSTEM,
       messages: [{ role: "user", content: text }],
     });
+    apiMs = performance.now() - apiStart;
 
     if (response.stop_reason === "max_tokens" || response.stop_reason === "refusal") {
       console.error("analyze/text stopped early", response.stop_reason);
+      done("stopped_early");
       return c.json({ error: "analyze_failed" }, 502);
     }
     const block = response.content.find((b) => b.type === "text");
-    if (!block) return c.json({ error: "analyze_failed" }, 502);
+    if (!block) {
+      done("no_text_block");
+      return c.json({ error: "analyze_failed" }, 502);
+    }
     raw = block.text;
   } catch (err) {
     // surfaced, never stubbed: a missing/invalid key or an API outage should
     // be visible to the person logging, not silently zero-calorie
+    apiMs = performance.now() - apiStart;
     console.error("analyze/text api error", err);
+    done("api_error");
     return c.json({ error: "analyze_unavailable" }, 502);
   }
 
@@ -95,12 +147,26 @@ analyze.post("/text", async (c) => {
     parsed = JSON.parse(raw) as { items?: unknown };
   } catch {
     console.error("analyze/text unparseable output", raw.slice(0, 200));
+    done("unparseable");
     return c.json({ error: "analyze_failed" }, 502);
   }
 
   const items = Array.isArray(parsed.items) ? parsed.items.map(normalize).filter(Boolean) : [];
+  done("ok");
   return c.json<AnalyzeResponse>({ items: items as AnalyzedItem[] });
 });
+
+/** The rate-limit header set the API returns varies per response, so they're
+ *  collected by prefix rather than named one by one. */
+function upstreamHeaders(headers: Headers) {
+  const out: Record<string, string> = {};
+  headers.forEach((value, key) => {
+    if (key === "request-id" || key === "retry-after" || key.startsWith("anthropic-ratelimit-")) {
+      out[key] = value;
+    }
+  });
+  return out;
+}
 
 /** The schema guarantees presence and type; this guards the ranges the
  *  schema can't. */
