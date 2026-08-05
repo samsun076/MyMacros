@@ -25,6 +25,8 @@ export function Settings() {
         </p>
       )}
 
+      <ViewportReadout />
+
       <PasskeyManager />
 
       <section>
@@ -68,6 +70,59 @@ export function Settings() {
     </>
   );
 }
+
+/** TEMPORARY — #51. Remove with the sampler in main.tsx.
+ *
+ *  main.tsx records how the layout viewport moves during a cold standalone
+ *  launch. Reading it needs a console, a console needs Web Inspector, and
+ *  Web Inspector needs a cable that isn't to hand — so the app prints its own
+ *  measurement instead. Client-side navigation doesn't reload the page, so
+ *  walking here after a launch still finds the launch's data in memory.
+ *
+ *  Fixed-width columns because this gets read off a phone screenshot. */
+function ViewportReadout() {
+  const vp = (window as unknown as { __vp?: ViewportLog }).__vp;
+  if (!vp) return null;
+
+  const pad = (n: number | string, w: number) => String(n).padStart(w);
+  const lines = [
+    "   ms  inner client scroll visual scale",
+    ...vp.changes.map(
+      (c) =>
+        `${pad(c.t, 5)}${pad(c.innerWidth, 7)}${pad(c.clientWidth, 7)}` +
+        `${pad(c.scrollWidth, 7)}${pad(c.visualWidth, 7)}${pad(c.scale.toFixed(2), 6)}`,
+    ),
+  ];
+
+  return (
+    <section>
+      <div className="sec-head">
+        <span className="eyebrow">Viewport</span>
+        <span className="mono">#51 · temporary</span>
+      </div>
+      <pre className="vp-readout">
+        {`${vp.screen} dpr${vp.dpr} ${vp.displayMode} standalone=${vp.standalone}\n` +
+          `${vp.changes.length} change(s) in the first 8s\n\n` +
+          lines.join("\n")}
+      </pre>
+    </section>
+  );
+}
+
+type ViewportLog = {
+  screen: string;
+  dpr: number;
+  standalone: boolean | null;
+  displayMode: string;
+  changes: {
+    t: number;
+    innerWidth: number;
+    clientWidth: number;
+    scrollWidth: number;
+    visualWidth: number;
+    scale: number;
+  }[];
+};
 
 /** "night-athletic" → "Night Athletic". Units stay as stored, which is why
  *  this is a formatter and not text-transform on the whole value. */
