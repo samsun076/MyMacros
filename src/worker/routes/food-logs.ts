@@ -1,9 +1,53 @@
 import { Hono } from "hono";
-import type { FoodLogCreate, FoodLogsCreated } from "../../shared/api";
+import type { FoodLogCreate, FoodLogsCreated, RecentsResponse } from "../../shared/api";
 import type { AppEnv } from "../types";
 import { isDay, isNum, oneOf } from "../validate";
 
 const foodLogs = new Hono<AppEnv>();
+
+/** GET /api/food-logs/recent (#12): the last few distinct meals, newest
+ *  first, each folded the same way the timeline folds them (rows sharing a
+ *  logged_at instant are one meal). Deduped by name so "the usual" shows up
+ *  once no matter how often it was logged. */
+foodLogs.get("/recent", async (c) => {
+  const rows = await c.var.db
+    .selectFrom("food_logs")
+    .selectAll()
+    .where("user_id", "=", c.var.user.id)
+    .orderBy("logged_at", "desc")
+    .limit(60)
+    .execute();
+
+  const groups = new Map<string, typeof rows>();
+  for (const row of rows) {
+    const key = `${row.logged_at}|${row.meal_slot}`;
+    const group = groups.get(key);
+    if (group) group.push(row);
+    else groups.set(key, [row]);
+  }
+
+  const seen = new Set<string>();
+  const meals = [];
+  for (const group of groups.values()) {
+    const name = group.map((r, i) => (i === 0 ? r.name : r.name.toLowerCase())).join(", ");
+    const dedupe = name.toLowerCase();
+    if (seen.has(dedupe)) continue;
+    seen.add(dedupe);
+    meals.push({
+      name,
+      kcal: group.reduce((s, r) => s + r.kcal, 0),
+      protein_g: round1(group.reduce((s, r) => s + r.protein_g, 0)),
+      carbs_g: round1(group.reduce((s, r) => s + r.carbs_g, 0)),
+      fat_g: round1(group.reduce((s, r) => s + r.fat_g, 0)),
+    });
+    if (meals.length >= 8) break;
+  }
+  return c.json<RecentsResponse>({ meals });
+});
+
+function round1(n: number) {
+  return Math.round(n * 10) / 10;
+}
 
 const slotOf = oneOf(["breakfast", "lunch", "dinner", "snack"] as const);
 // photo and barcode become writable when M3's flows exist to send them
@@ -66,6 +110,16 @@ foodLogs.post("/", async (c) => {
   }
 
   await c.var.db.insertInto("food_logs").values(rows).execute();
+
+  // a re-log from a favorite records the use, so most-used sorting works
+  if (typeof body.favorite_id === "string" && body.favorite_id.length > 0) {
+    await c.var.db
+      .updateTable("favorites")
+      .set((eb) => ({ use_count: eb("use_count", "+", 1), last_used_at: now }))
+      .where("user_id", "=", c.var.user.id)
+      .where("id", "=", body.favorite_id)
+      .execute();
+  }
 
   // Keep profiles.timezone current from the device (#44) — M4's budget
   // engine runs server-side with no client present and needs a real value.

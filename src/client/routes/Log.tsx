@@ -1,7 +1,15 @@
 import { useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router";
-import type { AnalyzeResponse, AnalyzedItem, MealSlot } from "../../shared/api";
-import { api } from "../lib/api";
+import type {
+  AnalyzeResponse,
+  AnalyzedItem,
+  Favorite,
+  FavoritesResponse,
+  MealSlot,
+  RecentMeal,
+  RecentsResponse,
+} from "../../shared/api";
+import { api, useApi } from "../lib/api";
 import { deviceTimezone, localDay, mealSlotFor } from "../lib/day";
 import { fmtInt } from "../lib/format";
 
@@ -39,6 +47,58 @@ export function Log() {
   const [slot, setSlot] = useState<MealSlot>(() => mealSlotFor());
   const [editing, setEditing] = useState<number | null>(null);
   const openedAt = useRef(Date.now());
+  const { data: favData, reload: reloadFavs } = useApi<FavoritesResponse>("/api/favorites");
+  const { data: recentData } = useApi<RecentsResponse>("/api/food-logs/recent");
+
+  // favorites first (most-used), then recents that aren't already starred
+  const picks = useMemo(() => {
+    const favs = (favData?.favorites ?? []).map((f) => ({ meal: f as RecentMeal, favorite: f as Favorite | null }));
+    const starred = new Set(favs.map((p) => p.meal.name.toLowerCase()));
+    const recents = (recentData?.meals ?? [])
+      .filter((m) => !starred.has(m.name.toLowerCase()))
+      .map((meal) => ({ meal, favorite: null as Favorite | null }));
+    return [...favs, ...recents].slice(0, 8);
+  }, [favData, recentData]);
+
+  async function toggleStar(pick: { meal: RecentMeal; favorite: Favorite | null }) {
+    try {
+      if (pick.favorite) await api.del(`/api/favorites/${pick.favorite.id}`);
+      else await api.post("/api/favorites", pick.meal);
+      reloadFavs();
+    } catch {
+      /* a failed star toggle is not worth an error state */
+    }
+  }
+
+  /** #12's one tap: re-log at the slot the clock says it is right now. */
+  async function relog(pick: { meal: RecentMeal; favorite: Favorite | null }) {
+    if (saving) return;
+    setSaving(true);
+    setError(null);
+    try {
+      await api.post("/api/food-logs", {
+        logged_on: localDay(),
+        timezone: deviceTimezone(),
+        meal_slot: mealSlotFor(),
+        source: "favorite",
+        favorite_id: pick.favorite?.id,
+        items: [{ ...pick.meal, confidence: null, edited: false }],
+      });
+      void navigate("/", {
+        state: {
+          logged: {
+            slot: mealSlotFor(),
+            kcal: pick.meal.kcal,
+            ms: Date.now() - openedAt.current,
+            edited: 0,
+          },
+        },
+      });
+    } catch {
+      setError("Couldn't log that — check your connection and try again.");
+      setSaving(false);
+    }
+  }
 
   const clock = useMemo(() => {
     const now = new Date();
@@ -177,6 +237,40 @@ export function Log() {
           </p>
         )}
       </section>
+
+      {picks.length > 0 && (
+        <section className="picks">
+          <div className="sec-head">
+            <span className="eyebrow">One tap</span>
+            <span className="mono">LOGS AS {mealSlotFor().toUpperCase()}</span>
+          </div>
+          {picks.map((pick) => (
+            <div className="pick" key={pick.favorite?.id ?? pick.meal.name}>
+              <button
+                className={pick.favorite ? "pick-star on" : "pick-star"}
+                aria-pressed={pick.favorite !== null}
+                aria-label={pick.favorite ? `Unstar ${pick.meal.name}` : `Star ${pick.meal.name}`}
+                onClick={() => void toggleStar(pick)}
+              >
+                <svg width="16" height="16" viewBox="0 0 16 16" strokeWidth="1.4" strokeLinejoin="round">
+                  <path d="M8 1.8l1.9 3.9 4.3.6-3.1 3 .7 4.2L8 11.5l-3.8 2 .7-4.2-3.1-3 4.3-.6z" />
+                </svg>
+              </button>
+              <button className="pick-main" disabled={saving} onClick={() => void relog(pick)}>
+                <span className="pick-name">{pick.meal.name}</span>
+                <span className="macros-mini">
+                  {Math.round(pick.meal.protein_g)}P · {Math.round(pick.meal.carbs_g)}C ·{" "}
+                  {Math.round(pick.meal.fat_g)}F
+                </span>
+              </button>
+              <span className="pick-kcal">
+                {fmtInt(pick.meal.kcal)}
+                <small>kcal</small>
+              </span>
+            </div>
+          ))}
+        </section>
+      )}
 
       {read && (
         <div

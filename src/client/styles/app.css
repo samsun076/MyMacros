@@ -896,6 +896,99 @@ section {
   color: var(--ink-muted);
 }
 
+/* one-tap favorites & recents (#12) — no frozen sketch; system idiom */
+.picks {
+  margin-top: 34px;
+}
+
+.pick {
+  display: grid;
+  grid-template-columns: 28px 1fr auto;
+  gap: 12px;
+  align-items: center;
+  padding: 9px 0;
+}
+
+.pick + .pick {
+  border-top: 1px solid var(--line-soft);
+}
+
+.pick-star {
+  background: none;
+  border: none;
+  padding: 4px;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+}
+
+.pick-star svg {
+  stroke: var(--ink-muted);
+  fill: none;
+}
+
+.pick-star.on svg {
+  stroke: var(--accent);
+  fill: var(--accent-soft);
+}
+
+.pick-main {
+  background: none;
+  border: none;
+  padding: 0;
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+  min-width: 0;
+}
+
+.pick-main:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.pick-name {
+  display: block;
+  font-size: 13.5px;
+  font-weight: 500;
+  color: var(--ink);
+  line-height: 1.3;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pick .macros-mini {
+  display: block;
+  font-family: var(--data-font);
+  font-size: 9.5px;
+  color: var(--ink-muted);
+  margin-top: 3px;
+  letter-spacing: 0.03em;
+}
+
+.pick-kcal {
+  text-align: right;
+  font-family: var(--numeral-font);
+  font-size: 18px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  color: var(--ink);
+}
+
+.pick-kcal small {
+  display: block;
+  font-family: var(--body-font);
+  font-size: 8.5px;
+  font-stretch: 116%;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  color: var(--ink-muted);
+  margin-top: 3px;
+}
+
 /* ── confirm sheet ── */
 
 .sheet-wrap {

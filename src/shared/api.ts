@@ -128,11 +128,44 @@ export type FoodLogCreate = {
   meal_slot: MealSlot;
   /** photo/barcode arrive with M3. */
   source: "text" | "favorite";
+  /** When the save is a one-tap re-log (#12): bumps that favorite's
+   *  use_count so most-used sorting works. */
+  favorite_id?: string;
   items: FoodLogItemInput[];
 };
 
 /** POST /api/food-logs response: the created rows. */
 export type FoodLogsCreated = { logs: FoodLog[] };
+
+/** A starred meal (#12). */
+export type Favorite = {
+  id: string;
+  user_id: string;
+  name: string;
+  kcal: number;
+  protein_g: number;
+  carbs_g: number;
+  fat_g: number;
+  photo_key: string | null;
+  use_count: number;
+  last_used_at: string | null;
+  created_at: string;
+};
+
+/** GET /api/favorites — most-used first. */
+export type FavoritesResponse = { favorites: Favorite[] };
+
+/** One recent meal, folded the way the timeline folds it. */
+export type RecentMeal = {
+  name: string;
+  kcal: number;
+  protein_g: number;
+  carbs_g: number;
+  fat_g: number;
+};
+
+/** GET /api/food-logs/recent — newest first, deduped by name. */
+export type RecentsResponse = { meals: RecentMeal[] };
 
 export type DayTotals = {
   kcal: number;
