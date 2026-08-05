@@ -1,0 +1,144 @@
+#!/usr/bin/env node
+// Horizontal-overflow guard (issue #51).
+//
+//   node tools/verify-viewport.mjs --cookie better-auth.session_token=...
+//   node tools/verify-viewport.mjs --cookie ... https://fuel.debrief.run
+//   node tools/verify-viewport.mjs --widths 375 --routes /log#confirm
+//
+// #51: the standalone PWA rendered the 430px frame centred in a layout
+// viewport far wider than the phone, with letterbox bars — the desktop
+// behaviour, on a 390pt device. One way a page gets there is content that
+// overflows horizontally: iOS may widen the layout viewport to contain it and
+// then keep it. This script fails if any screen's content is wider than the
+// viewport at any phone width.
+//
+// Why this can't be an eyeball check: shot-matrix renders at a *fixed* width,
+// so a page whose content is 540px wide is simply cropped at 375 — it looks
+// like a screenshot, not like a defect. Nothing in the design loop sees this
+// class of bug, which is the same blind spot filed for #38.
+//
+// What this does NOT prove: headless Chrome always honours the width it is
+// told, so it can never reproduce iOS's *reaction* (a widened layout viewport,
+// letterboxing, per-site page zoom). It catches the cause, not the symptom.
+// On a real device the equivalent assertion is
+// `window.innerWidth === document.documentElement.clientWidth` in the remote
+// inspector — if that fails while this passes, the viewport was widened by
+// something other than the page's own content.
+
+import { evaluate, openPage, settle, withChrome } from "./cdp.mjs";
+
+// ── args ─────────────────────────────────────────────
+const argv = process.argv.slice(2);
+let widths = [375, 390, 428];
+let routes = null;
+let expand = ".item-hit";
+let base = "http://localhost:5173";
+const cookies = [];
+for (let i = 0; i < argv.length; i++) {
+  const a = argv[i];
+  if (a === "--widths") widths = argv[++i].split(",").map(Number);
+  else if (a === "--routes") routes = argv[++i].split(",");
+  // click these before measuring — a plain navigation never reaches the
+  // confirm sheet's per-item editor, which is where the four number inputs
+  // named as #51's prime suspect actually render
+  else if (a === "--expand") expand = argv[++i];
+  else if (a === "--cookie") {
+    const raw = argv[++i];
+    const eq = raw.indexOf("=");
+    cookies.push({ name: raw.slice(0, eq), value: raw.slice(eq + 1) });
+  } else base = a.replace(/\/$/, "");
+}
+
+// Every screen is behind auth; without a cookie they all render the sign-in
+// screen, so checking six of them would be checking one thing six times.
+if (!routes) {
+  routes = cookies.length ? ["/", "/log", "/log#confirm", "/#saved", "/trends", "/settings"] : ["/"];
+}
+
+// Runs in the page. Reports the document's overflow plus the elements whose
+// box actually crosses the viewport edge — children of an overflowing parent
+// all report, so the shortest paths listed first are the ones to look at.
+const PROBE = `(() => {
+  const de = document.documentElement;
+  const vw = de.clientWidth;
+  const path = (el) => {
+    const bits = [];
+    for (let n = el; n && n.nodeType === 1 && bits.length < 4; n = n.parentElement) {
+      let s = n.tagName.toLowerCase();
+      if (n.id) s += "#" + n.id;
+      if (typeof n.className === "string" && n.className.trim()) {
+        s += "." + n.className.trim().split(/\\s+/).join(".");
+      }
+      bits.unshift(s);
+    }
+    return bits.join(" > ");
+  };
+  const offenders = [];
+  for (const el of document.querySelectorAll("*")) {
+    const r = el.getBoundingClientRect();
+    if (r.width === 0) continue;
+    const past = Math.round(Math.max(r.right - vw, -r.left));
+    if (past > 1) offenders.push({ past, width: Math.round(r.width), path: path(el) });
+  }
+  offenders.sort((a, b) => b.past - a.past || a.path.length - b.path.length);
+  return { vw, scrollWidth: de.scrollWidth, offenders: offenders.slice(0, 8) };
+})()`;
+
+let failures = 0;
+function check(name, ok, detail = "") {
+  console.log(`  ${ok ? "✓" : "✗"} ${name}${detail ? `  ${detail}` : ""}`);
+  if (!ok) failures++;
+}
+
+console.log(`\nhorizontal overflow checks against ${base}`);
+console.log(`  widths ${widths.join("/")} · ${cookies.length ? "signed in" : "signed out"}\n`);
+
+await withChrome(async (cdp) => {
+  const page = await openPage(cdp);
+  await cdp.send("Network.enable", {}, page.sessionId);
+  for (const c of cookies) {
+    await cdp.send("Network.setCookie", { ...c, url: base, path: "/" }, page.sessionId);
+  }
+
+  for (const width of widths) {
+    for (const route of routes) {
+      await page.navigate(base + route);
+      await cdp.send(
+        "Emulation.setDeviceMetricsOverride",
+        { width, height: 844, deviceScaleFactor: 2, mobile: true },
+        page.sessionId,
+      );
+      await settle(cdp, page.sessionId);
+      // the screens fetch their own data; measuring mid-flight measures an
+      // empty page, which never overflows and would pass vacuously
+      await new Promise((r) => setTimeout(r, 700));
+      if (expand) {
+        const opened = await evaluate(
+          cdp,
+          page.sessionId,
+          `(() => { const n = document.querySelectorAll(${JSON.stringify(expand)});
+                    n.forEach((el) => el.click()); return n.length })()`,
+        );
+        if (opened) await new Promise((r) => setTimeout(r, 300));
+      }
+      const { vw, scrollWidth, offenders } = await evaluate(cdp, page.sessionId, PROBE);
+      // Both halves matter. scrollWidth catches in-flow overflow; the offender
+      // list catches the rest, because a position:fixed element that crosses
+      // the edge does NOT move documentElement.scrollWidth — the tab bar is
+      // fixed, so on scrollWidth alone it could overflow silently.
+      check(
+        `${String(width).padStart(3)} ${route}`,
+        scrollWidth <= vw && offenders.length === 0,
+        `content ${scrollWidth}px in ${vw}px`,
+      );
+      for (const o of offenders) console.log(`        ↳ ${o.past}px past the edge · ${o.path}`);
+    }
+  }
+});
+
+console.log(
+  failures === 0
+    ? "\nno screen overflows its viewport\n"
+    : `\n${failures} screen(s) overflow horizontally — see #51\n`,
+);
+process.exit(failures === 0 ? 0 : 1);

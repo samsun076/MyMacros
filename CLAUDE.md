@@ -41,6 +41,7 @@ npm run db:studio      # sqlite3 shell on the local D1 file
 npm run icons          # regenerate PWA icons + manifest from design/tokens.css
 npm run verify:auth    # drive the real passkey ceremony (needs `npm run dev`)
 npm run verify:routing -- https://fuel.debrief.run   # /api survives navigation; SPA still falls back
+npm run verify:viewport -- --cookie <name>=<token>   # no screen overflows horizontally (#51)
 node tools/shot-matrix.mjs <file.html|url>   # 375/390/428 render matrix
 ```
 
@@ -55,6 +56,12 @@ so pass a session cookie:
 ```bash
 node tools/shot-matrix.mjs --cookie better-auth.session_token=<token> http://localhost:5173/
 ```
+
+**The cookie has a different name in production.** better-auth applies the
+`__Secure-` prefix automatically over HTTPS (nothing sets it in `auth.ts`), so
+against `fuel.debrief.run` it is `__Secure-better-auth.session_token=<token>` —
+the bare name 401s. Same for any other tool that takes `--cookie`. Measured,
+not assumed: bare → 401, prefixed → 200 on `/api/me`.
 
 ## Secrets
 

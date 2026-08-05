@@ -17,6 +17,7 @@
     "shots": "node tools/shot-matrix.mjs",
     "verify:auth": "node tools/verify-auth.mjs",
     "verify:routing": "node tools/verify-routing.mjs",
+    "verify:viewport": "node tools/verify-viewport.mjs",
     "deploy": "npm run build && wrangler deploy"
   },
   "dependencies": {
