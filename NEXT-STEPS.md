@@ -402,12 +402,12 @@ What D settled or discovered, worth carrying forward:
   `target_kcal` but not the macro split or focus macro. Fine at two parallel requests;
   if M4's day payload grows anyway (#19/#21 fill `run`), consider folding the profile
   fields the screen needs into it then.
-- **Not verified: one signed-in quick-add against production.** Everything reachable
-  without a session is verified (routing, health, migration 0002 live, new routes 401ing
-  as JSON, `ANTHROPIC_API_KEY` present on the Worker via `wrangler secret list`, and the
-  same key value round-tripping Claude locally). Production auth is Google/passkey only —
-  as designed — so the end-to-end check is a 30-second phone test: open the app, quick-add
-  "black coffee", confirm, see it on Today. **Dave: do this before starting E.**
+- **Production quick-add: verified 2026-08-05** (browser-harness against Dave's real
+  session, morning after the deploy): black coffee → confirm sheet → saved, toast and
+  fresh entry rendered, budget moved exactly +2 kcal. The test surfaced two issues:
+  **#49** (analyze took 33s in prod vs 4.6s local — suspect SDK retry backoff) and,
+  from Dave's phone, **#51** (standalone PWA letterboxes a ~430px column — layout
+  viewport wider than the device; hypotheses and a device recipe on the issue).
 
 ## Session E — build M3, photo & barcode (Opus 5 @ xhigh, Dave reachable for decisions)
 
@@ -420,7 +420,9 @@ via a C1-style decision pass) before an autonomous run writes code that assumes 
 - **Enable R2 on the Cloudflare account** and `npx wrangler r2 bucket create
   mymacros-photos` — R2 was deliberately left off in B2; the binding gets written in #13
   alongside the code that uses it. Nothing else in M3 needs console access.
-- The signed-in production quick-add from D's checklist, if not already done.
+- **#51 triage (~2 min on the phone):** open fuel.debrief.run in regular Safari
+  (letterboxed or full-bleed?) and re-add to Home Screen — those two checks split the
+  three hypotheses on the issue before any code is written.
 
 ### Decisions to settle before code (the #44/#45 pattern, one thread each or one bundle)
 
@@ -495,7 +497,11 @@ already in the schema CHECK — use them, don't migrate.
 **#38/#39** standalone chrome + theme-color → M5's device pass · **#30/#35/#46/#36/#32**
 → M5 · **#47** test infra → before M4's budget math (adjacent: M3 adds the first
 money-costing route with a file upload — if test infra lands early, these routes are the
-first customers) · **#33** claim flow → M6.
+first customers) · **#33** claim flow → M6. · **#49** prod analyze latency
+(instrumentation — good background-subagent work; its fail-fast question belongs with
+#16) · **#51** standalone letterbox (fix as soon as triaged — it degrades daily use;
+overlaps #38/#39's device territory) · **#52** swipe-to-delete (M5, pull-forward
+candidate; brings the first DELETE route and a --danger token).
 
 ### Starter prompt (paste verbatim, after the decisions above are settled)
 
