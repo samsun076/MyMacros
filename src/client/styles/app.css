@@ -22,6 +22,21 @@ body {
   justify-content: center;
 }
 
+/* #root is body's only flex item, and a flex item with no width defaults to
+   flex-basis:auto + flex-grow:0 — it shrink-to-fits its content. The frame's
+   width:100% then resolves against a box only as wide as whatever happens to
+   be inside it, so the app drew a *growing column* on every load: 44px while
+   the splash was empty (its own padding), 261px once the header had rendered,
+   full width only after the day's data arrived. Fixed chrome like the tab bar
+   is positioned against the viewport instead, which is why it looked wider
+   than the content. Normally over in milliseconds; a slow launch holds it on
+   screen and it reads as a letterboxed app (#51). */
+#root {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+}
+
 /* iOS Safari paints its top chrome from the document background and ignores
    theme-color in-browser (field-tested) — match the page top on phones. */
 @media (max-width: 499px) {
@@ -44,13 +59,12 @@ body {
   position: relative;
   width: 100%;
   max-width: 430px;
-  /* These are flex items of <body>, so min-width defaults to auto = their
-     content's min-content width. min-width beats max-width, so ONE piece of
-     wide content anywhere inside (a long unbroken string, a wide grid, a
-     <pre>) silently overrides both width:100% and max-width and pushes the
-     frame past the viewport edge. Measured: a 380px <pre> took the frame to
-     424px at a 375px viewport. This is the overflow mechanism #51 suspected —
-     verify:viewport guards it. */
+  /* Flex items of #root, so min-width would default to auto = min-content,
+     which beats max-width. Nothing in the app currently trips that — the
+     frame-widening bug this was first written for turned out to be #root's
+     shrink-to-fit, fixed above — but a flex item that must obey its
+     max-width wants an explicit floor. verify:viewport is what would catch
+     a regression. */
   min-width: 0;
   min-height: 100dvh;
   background: var(--page-surface);
