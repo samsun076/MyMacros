@@ -1,20 +1,13 @@
-import { useEffect, useState } from "react";
 import type { Me } from "../../shared/api";
 import { PasskeyManager } from "../components/PasskeyManager";
+import { useApi } from "../lib/api";
 import { authClient } from "../lib/auth";
 
 /** The real settings screen — TDEE inputs, deficit, macro split, eat-back,
  *  theme switcher — is #23 and #29. What's here already works: the account,
  *  and passkey management, which needs a live session to register against. */
 export function Settings() {
-  const [me, setMe] = useState<Me | null>(null);
-
-  useEffect(() => {
-    fetch("/api/me")
-      .then((r) => (r.ok ? (r.json() as Promise<Me>) : null))
-      .then(setMe)
-      .catch(() => setMe(null));
-  }, []);
+  const { data: me, error } = useApi<Me>("/api/me");
 
   return (
     <>
@@ -25,6 +18,12 @@ export function Settings() {
         </span>
         <h1>{me?.user.name || me?.user.email || "Account"}</h1>
       </header>
+
+      {error && (
+        <p className="placeholder-note" role="alert">
+          Couldn't load your profile — check your connection and reopen this screen.
+        </p>
+      )}
 
       <PasskeyManager />
 

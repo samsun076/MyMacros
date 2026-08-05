@@ -1,7 +1,8 @@
 import { Hono } from "hono";
 import type { Me, ProfileUpdate } from "../../shared/api";
-import type { Db } from "../db";
+import { loadProfile } from "../profile";
 import type { AppEnv } from "../types";
+import { isDay, isNum, oneOf, pct, positive } from "../validate";
 
 const me = new Hono<AppEnv>();
 
@@ -15,6 +16,8 @@ const EDITABLE = {
   activity_level: oneOf(["sedentary", "light", "moderate", "active", "very_active"]),
   goal: oneOf(["cut", "maintain", "gain"]),
   deficit_kcal: (v: unknown) => (isNum(v) && v >= 0 && v <= 1500 ? Math.round(v) : undefined),
+  // the M2 base target (migration 0002) — sane-range guarded, not clinical
+  target_kcal: (v: unknown) => (isNum(v) && v >= 500 && v <= 6000 ? Math.round(v) : undefined),
   start_weight_kg: positive,
   goal_weight_kg: positive,
   eat_back_pct: (v: unknown) => (isNum(v) && v >= 0 && v <= 100 ? Math.round(v) : undefined),
@@ -78,40 +81,5 @@ me.patch("/profile", async (c) => {
 
   return c.json(await loadProfile(c.var.db, c.var.user.id));
 });
-
-/** Profiles are created by a better-auth user-create hook, so this should
- *  always find one; it self-heals rather than 500s if it doesn't. */
-async function loadProfile(db: Db, userId: string) {
-  const existing = await db
-    .selectFrom("profiles")
-    .selectAll()
-    .where("user_id", "=", userId)
-    .executeTakeFirst();
-  if (existing) return existing;
-
-  await db
-    .insertInto("profiles")
-    .values({ user_id: userId })
-    .onConflict((oc) => oc.column("user_id").doNothing())
-    .execute();
-
-  return db.selectFrom("profiles").selectAll().where("user_id", "=", userId).executeTakeFirstOrThrow();
-}
-
-function isNum(v: unknown): v is number {
-  return typeof v === "number" && Number.isFinite(v);
-}
-function positive(v: unknown) {
-  return isNum(v) && v > 0 ? v : undefined;
-}
-function pct(v: unknown) {
-  return isNum(v) && v >= 0 && v <= 100 ? Math.round(v) : undefined;
-}
-function isDay(v: unknown) {
-  return typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : undefined;
-}
-function oneOf<T extends string>(allowed: readonly T[]) {
-  return (v: unknown) => (typeof v === "string" && allowed.includes(v as T) ? (v as T) : undefined);
-}
 
 export default me;

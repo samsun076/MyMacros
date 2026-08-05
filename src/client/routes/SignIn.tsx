@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import type { AuthMethods } from "../../shared/api";
+import { api } from "../lib/api";
 import { authClient, platformPasskeysAvailable } from "../lib/auth";
 
 /** The only unauthenticated screen. Offers exactly the methods this
@@ -12,8 +13,8 @@ export function SignIn() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch("/api/auth-methods")
-      .then((r) => r.json() as Promise<AuthMethods>)
+    api
+      .get<AuthMethods>("/api/auth-methods")
       .then(setMethods)
       .catch(() => setError("Couldn't reach the server."));
     void platformPasskeysAvailable().then(setHasPlatformAuth);
