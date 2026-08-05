@@ -39,6 +39,9 @@ export type ProfileTable = {
   carb_pct: Generated<number>;
   fat_pct: Generated<number>;
   focus_macro: Generated<Macro>;
+  /** M2's static base target (migration 0002). M4 (#17) changes how it's
+   *  calculated, not where it lives. */
+  target_kcal: Generated<number>;
   units: Generated<Units>;
   theme: Generated<Theme>;
   accent: Generated<Accent>;

@@ -39,6 +39,9 @@ export type Profile = {
   carb_pct: number;
   fat_pct: number;
   focus_macro: Macro;
+  /** The static base target (M2). M4's TDEE engine recalculates it; the
+   *  earned run bonus is never folded in (build rule 7). */
+  target_kcal: number;
   units: Units;
   theme: Theme;
   accent: Accent;
@@ -56,3 +59,50 @@ export type Me = {
 export type ProfileUpdate = Partial<
   Omit<Profile, "user_id" | "created_at" | "updated_at">
 >;
+
+export type MealSlot = "breakfast" | "lunch" | "dinner" | "snack";
+export type FoodSource = "photo" | "barcode" | "text" | "favorite";
+
+export type FoodLog = {
+  id: string;
+  user_id: string;
+  /** YYYY-MM-DD in the device's local day at creation — set once, never
+   *  recomputed on edit (#44). */
+  logged_on: string;
+  /** ISO-8601 UTC instant of capture. */
+  logged_at: string;
+  meal_slot: MealSlot;
+  name: string;
+  kcal: number;
+  protein_g: number;
+  carbs_g: number;
+  fat_g: number;
+  source: FoodSource;
+  photo_key: string | null;
+  barcode: string | null;
+  /** AI 0..1; null for barcode/favorite. */
+  confidence: number | null;
+  /** 0/1 — the user changed the AI's numbers before saving. */
+  edited: number;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type DayTotals = {
+  kcal: number;
+  protein_g: number;
+  carbs_g: number;
+  fat_g: number;
+};
+
+/** GET /api/day/:date — everything the Today screen needs in one round trip
+ *  (#48). Deliberately M4-ready: #19/#21 fill `run` and the adjusted-target
+ *  arithmetic into this same shape instead of rewriting the client. */
+export type DayResponse = {
+  logs: FoodLog[];
+  totals: DayTotals;
+  target_kcal: number;
+  /** M4: the day's run + earned kcal; always null in M2. */
+  run: null;
+};
