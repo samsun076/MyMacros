@@ -534,6 +534,271 @@ section {
   }
 }
 
+/* ── Today (#11) — ported from sketches/c2-night-athletic.html ── */
+
+.masthead {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.masthead .mono {
+  font-size: 10px;
+  color: var(--ink-muted);
+  letter-spacing: 0.06em;
+}
+
+.vh {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* budget hero */
+.budget {
+  margin-top: 24px;
+}
+
+.hero-row {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-top: 6px;
+}
+
+.hero-num {
+  font-family: var(--numeral-font);
+  font-size: 86px;
+  font-weight: 600;
+  line-height: 0.92;
+  letter-spacing: -0.005em;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+}
+
+.hero-of {
+  font-family: var(--numeral-font);
+  font-size: 24px;
+  font-weight: 400;
+  color: var(--ink-secondary);
+  letter-spacing: 0.01em;
+}
+
+.hero-of b {
+  font-weight: 500;
+  color: var(--ink-secondary);
+}
+
+.hero-of small {
+  display: block;
+  font-family: var(--body-font);
+  font-size: 10px;
+  font-stretch: 118%;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--ink-muted);
+  margin-top: 4px;
+}
+
+.fuel-notes {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-top: 14px;
+}
+
+.fuel-notes .left {
+  font-size: 13px;
+  color: var(--ink-secondary);
+}
+
+.fuel-notes .left b {
+  font-family: var(--numeral-font);
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.01em;
+}
+
+/* macros — lead (focus) + quiet rows */
+.macro-row {
+  display: grid;
+  grid-template-columns: 70px 1fr 84px;
+  align-items: center;
+  gap: 14px;
+  padding: 9px 0;
+}
+
+.macro-row + .macro-row {
+  border-top: 1px solid var(--line-soft);
+}
+
+.macro-row .lbl {
+  font-size: 10px;
+  font-weight: 700;
+  font-stretch: 120%;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-secondary);
+}
+
+.macro-row.lead .lbl {
+  color: var(--accent);
+  position: relative;
+}
+
+/* focus-macro cue: the masthead's tick marks the macro being targeted */
+.macro-row.lead .lbl::after {
+  content: "";
+  position: absolute;
+  left: 1px;
+  bottom: -6px;
+  width: 14px;
+  height: 3px;
+  border-radius: var(--radius-pill);
+  background: var(--accent);
+}
+
+.mbar {
+  position: relative;
+  height: var(--macro-bar-height);
+  border-radius: 3px;
+  background: var(--track);
+  display: block;
+}
+
+.mbar i {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  border-radius: 3px;
+  background: var(--mark-neutral);
+  transform-origin: left center;
+}
+
+.macro-row.lead .mbar i {
+  background: var(--accent);
+}
+
+.macro-row .val {
+  text-align: right;
+  font-family: var(--numeral-font);
+  font-size: 18px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.01em;
+  color: var(--ink);
+}
+
+.macro-row .val span {
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--ink-muted);
+}
+
+/* meal rows */
+.meal {
+  display: grid;
+  grid-template-columns: 44px 1fr auto;
+  gap: 13px;
+  align-items: center;
+  padding: 6px 0;
+}
+
+.thumb {
+  width: 44px;
+  height: 44px;
+  border-radius: var(--radius-thumb);
+  background: var(--surface);
+  border: 1px solid var(--line-soft);
+  display: grid;
+  place-items: center;
+}
+
+.thumb svg {
+  display: block;
+}
+
+.meal .slot {
+  font-size: 9px;
+  font-weight: 700;
+  font-stretch: 120%;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--ink-muted);
+}
+
+.meal .desc {
+  font-size: 13.5px;
+  font-weight: 500;
+  color: var(--ink);
+  line-height: 1.3;
+  margin-top: 2px;
+}
+
+.meal .macros-mini {
+  font-family: var(--data-font);
+  font-size: 9.5px;
+  color: var(--ink-muted);
+  margin-top: 3px;
+  letter-spacing: 0.03em;
+}
+
+.meal .kcal {
+  text-align: right;
+  font-family: var(--numeral-font);
+  font-size: 20px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  color: var(--ink);
+}
+
+.meal .kcal small {
+  display: block;
+  font-family: var(--body-font);
+  font-size: 8.5px;
+  font-stretch: 116%;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  color: var(--ink-muted);
+  margin-top: 3px;
+}
+
+/* saved toast (e-log-flow stage 4) */
+.toast {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: linear-gradient(180deg, var(--surface-raised), var(--surface));
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  padding: 12px 15px;
+  margin-top: 18px;
+  box-shadow: var(--shadow-card);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.toast svg {
+  stroke: var(--positive);
+  flex: none;
+}
+
+.toast .mono {
+  margin-left: auto;
+  font-size: 9.5px;
+  color: var(--ink-muted);
+  letter-spacing: 0.08em;
+  white-space: nowrap;
+}
+
 /* ── log flow (#9/#10) — ported from sketches/e-log-flow.html ── */
 
 .log-screen {
