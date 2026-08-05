@@ -71,13 +71,17 @@ export function Settings() {
   );
 }
 
-/** TEMPORARY — #51. Remove with the sampler in main.tsx.
+/** TEMPORARY — #51. Remove with the inline sampler in index.html.
  *
- *  main.tsx records how the layout viewport moves during a cold standalone
- *  launch. Reading it needs a console, a console needs Web Inspector, and
- *  Web Inspector needs a cable that isn't to hand — so the app prints its own
- *  measurement instead. Client-side navigation doesn't reload the page, so
- *  walking here after a launch still finds the launch's data in memory.
+ *  The sampler in index.html records how the layout viewport moves during a
+ *  cold standalone launch. Reading it needs a console, a console needs Web
+ *  Inspector, and Web Inspector needs a cable that isn't to hand — so the app
+ *  prints its own measurement instead. Client-side navigation doesn't reload
+ *  the page, so walking here after a launch still finds that launch's data.
+ *
+ *  The load timings matter as much as the viewport series now: the first
+ *  round measured the app's own JS starting at t=2725ms, which is the white
+ *  screen, and is the thing actually worth explaining.
  *
  *  Fixed-width columns because this gets read off a phone screenshot. */
 function ViewportReadout() {
@@ -94,6 +98,24 @@ function ViewportReadout() {
     ),
   ];
 
+  // when each thing finished, relative to navigation start — what took the
+  // 2.7s before the app's own code ran
+  const res = performance.getEntriesByType("resource") as PerformanceResourceTiming[];
+  const end = (match: (name: string) => boolean) => {
+    const hit = res.find((r) => match(r.name));
+    return hit ? `${Math.round(hit.responseEnd)}ms` : "—";
+  };
+  const nav = performance.getEntriesByType("navigation")[0] as PerformanceNavigationTiming | undefined;
+
+  const timings = [
+    `html         ${nav ? `${Math.round(nav.responseEnd)}ms` : "—"}`,
+    `google fonts ${end((n) => n.includes("fonts.googleapis.com"))}`,
+    `font files   ${end((n) => n.includes("fonts.gstatic.com"))}`,
+    `app css      ${end((n) => n.includes("/assets/") && n.endsWith(".css"))}`,
+    `app js       ${end((n) => n.includes("/assets/") && n.endsWith(".js"))}`,
+    `dom ready    ${nav ? `${Math.round(nav.domContentLoadedEventEnd)}ms` : "—"}`,
+  ];
+
   return (
     <section>
       <div className="sec-head">
@@ -102,8 +124,10 @@ function ViewportReadout() {
       </div>
       <pre className="vp-readout">
         {`${vp.screen} dpr${vp.dpr} ${vp.displayMode} standalone=${vp.standalone}\n` +
-          `${vp.changes.length} change(s) in the first 8s\n\n` +
-          lines.join("\n")}
+          `${vp.changes.length} sample(s), first at ${vp.changes[0]?.t ?? "?"}ms\n\n` +
+          lines.join("\n") +
+          `\n\nLOAD (responseEnd from navigation start)\n` +
+          timings.join("\n")}
       </pre>
     </section>
   );
