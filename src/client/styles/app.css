@@ -44,6 +44,14 @@ body {
   position: relative;
   width: 100%;
   max-width: 430px;
+  /* These are flex items of <body>, so min-width defaults to auto = their
+     content's min-content width. min-width beats max-width, so ONE piece of
+     wide content anywhere inside (a long unbroken string, a wide grid, a
+     <pre>) silently overrides both width:100% and max-width and pushes the
+     frame past the viewport edge. Measured: a 380px <pre> took the frame to
+     424px at a 375px viewport. This is the overflow mechanism #51 suspected —
+     verify:viewport guards it. */
+  min-width: 0;
   min-height: 100dvh;
   background: var(--page-surface);
   padding: calc(14px + env(safe-area-inset-top, 0px)) 22px calc(28px + env(safe-area-inset-bottom, 0px));
@@ -1263,4 +1271,21 @@ section {
   margin-top: 3px;
   font-size: 9.5px;
   letter-spacing: 0.06em;
+}
+
+/* TEMPORARY — #51 viewport readout on Settings. Remove with the sampler. */
+.vp-readout {
+  font-family: var(--data-font);
+  font-size: 10px;
+  line-height: 1.6;
+  color: var(--ink-muted);
+  background: var(--surface);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-thumb);
+  padding: 10px 12px;
+  margin-top: 10px;
+  overflow-x: auto;
+  white-space: pre;
+  -webkit-user-select: text;
+  user-select: text;
 }
