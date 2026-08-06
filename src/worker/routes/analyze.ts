@@ -55,6 +55,27 @@ portions.
 ~0.5-0.7 for typical guesses, lower when the text is vague.
 - If the text describes no food at all, return an empty items array.`;
 
+/** One prompt covers both jobs #14's body distinguishes — reading a nutrition
+ *  label (near-exact) and estimating a plated portion (a guess). The model can
+ *  see which it is looking at, and `confidence` already carries the
+ *  distinction, so there is no mode flag on the request (settled on #14). */
+const PHOTO_SYSTEM = `You are the nutrition engine of a food-logging app. The \
+user photographs what they are about to eat — a plated meal, a packaged \
+product, or a nutrition label — and you estimate calories and macros for what \
+is in the picture.
+
+- A nutrition label or packaged product is a near-exact read: use the panel's \
+numbers, scale them to the servings actually shown, and set confidence 0.9 or \
+higher.
+- A plated meal is an estimate: identify the foods, judge the portion against \
+the plate, utensils or hand for scale, and set confidence around 0.5-0.7 — \
+lower when the portion is genuinely ambiguous or the photo is unclear.
+- Split the photo into its distinct foods when that aids editing (a bowl's \
+components stay one item; a burger and fries is two).
+- A note from the person may accompany the photo. Trust it over the picture \
+for anything it addresses — they know what they ate and what is out of frame.
+- If the photo contains no food at all, return an empty items array.`;
+
 /** POST /api/analyze/text (#9): free text → claude-sonnet-5 structured
  *  output → items for the confirm sheet. Sonnet 5 thinks by default;
  *  thinking is disabled and effort low because PLAN.md promises the happy
@@ -163,15 +184,87 @@ analyze.post("/photo", async (c) => {
     return c.json({ error: "photo_store_failed" }, 502);
   }
 
-  // #14 fills in the vision call here. Until then the photo is stored and the
-  // key returned, and an empty read is what the sheet already handles.
-  console.log("analyze/photo timing", {
-    outcome: "stored",
-    bytes: photo.size,
-    total_ms: Math.round(performance.now() - t0),
-  });
-  return c.json<AnalyzeResponse>({ items: [], photo_key: key });
+  // Base64, not a URL source: R2 objects here are private and served through
+  // an authenticated Worker route, so Anthropic's fetcher cannot reach them.
+  // Not a preference — the URL source is unavailable to this deployment. The
+  // Worker already holds the bytes, so there is nothing to re-fetch either.
+  const run = instrument(c.env, "analyze/photo", t0);
+  const noteRaw = form?.get("note");
+  const note = typeof noteRaw === "string" ? noteRaw.trim().slice(0, 300) : "";
+
+  let raw: string;
+  try {
+    const response = await run.client.messages.create({
+      model: "claude-sonnet-5",
+      max_tokens: 1500,
+      thinking: { type: "disabled" },
+      output_config: {
+        effort: "low",
+        format: { type: "json_schema", schema: ITEM_SCHEMA },
+      },
+      system: PHOTO_SYSTEM,
+      messages: [
+        {
+          role: "user",
+          content: [
+            { type: "image", source: { type: "base64", media_type: "image/jpeg", data: toBase64(bytes) } },
+            {
+              type: "text",
+              text: note
+                ? `Log what is in this photo. The person added a note: ${note}`
+                : "Log what is in this photo.",
+            },
+          ],
+        },
+      ],
+    });
+    run.apiDone();
+
+    if (response.stop_reason === "max_tokens" || response.stop_reason === "refusal") {
+      console.error("analyze/photo stopped early", response.stop_reason);
+      run.done("stopped_early", { photo_bytes: photo.size });
+      return c.json<AnalyzeResponse>({ items: [], photo_key: key }, 200);
+    }
+    const block = response.content.find((b) => b.type === "text");
+    if (!block) {
+      run.done("no_text_block", { photo_bytes: photo.size });
+      return c.json<AnalyzeResponse>({ items: [], photo_key: key }, 200);
+    }
+    raw = block.text;
+  } catch (err) {
+    run.apiDone();
+    console.error("analyze/photo api error", err);
+    run.done("api_error", { photo_bytes: photo.size });
+    // 502 with the key attached: the read failed, the photo did not. The
+    // client keeps the key so the save path stays open (#16).
+    return c.json({ error: "analyze_unavailable", photo_key: key }, 502);
+  }
+
+  let parsed: { items?: unknown };
+  try {
+    parsed = JSON.parse(raw) as { items?: unknown };
+  } catch {
+    console.error("analyze/photo unparseable output", raw.slice(0, 200));
+    run.done("unparseable", { photo_bytes: photo.size });
+    return c.json({ error: "analyze_failed", photo_key: key }, 502);
+  }
+
+  const items = Array.isArray(parsed.items) ? parsed.items.map(normalize).filter(Boolean) : [];
+  run.done("ok", { photo_bytes: photo.size, items: items.length });
+  return c.json<AnalyzeResponse>({ items: items as AnalyzedItem[], photo_key: key });
 });
+
+/** Workers have btoa but no Buffer, and String.fromCharCode(...bytes) blows
+ *  the argument limit on anything this size — so chunk it. A 214 KB frame is
+ *  ~285 KB of base64. */
+function toBase64(bytes: Uint8Array) {
+  let binary = "";
+  const CHUNK = 0x8000;
+  for (let i = 0; i < bytes.length; i += CHUNK) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + CHUNK));
+  }
+  return btoa(binary);
+}
 
 /** An Anthropic client with #49's timing instrumentation wired in, plus the
  *  two log lines that read it.
