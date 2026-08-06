@@ -13,3 +13,6 @@ dist/
 # its download after the client id, and that file must never be committed.
 google-oauth-client.json
 client_secret_*.json
+
+# Agent worktrees and local session state — never part of the project.
+.claude/
