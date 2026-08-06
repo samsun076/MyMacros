@@ -45,6 +45,23 @@ npm run verify:viewport -- --cookie <name>=<token>   # no screen overflows horiz
 node tools/shot-matrix.mjs <file.html|url>   # 375/390/428 render matrix
 ```
 
+**Shooting the camera screen needs `--camera`.** Headless Chrome has no camera, so
+`/log` and `/log#barcode` render their no-viewfinder fallback — a real screen, but not
+the primary one. `--camera` gives Chrome a synthetic device and auto-grants the
+permission; `--settle <ms>` waits past `document.fonts.ready`, which `getUserMedia`
+resolves long after. Both flags exist on `verify:viewport` too, and its live layout is
+the one worth checking — a viewfinder that failed to open is a centred paragraph, which
+overflows nothing.
+
+```bash
+node tools/shot-matrix.mjs --camera --settle 1200 --cookie <name>=<token> \
+  http://localhost:5173/log
+npm run verify:viewport -- --camera --cookie <name>=<token>
+```
+
+The log flow's modes are addressable: `/log#photo`, `/log#barcode`, `/log#text`. Unlike
+`#confirm` they inject no demo data, so they aren't DEV-gated.
+
 `.dev.vars` holds local secrets (gitignored) — **copy it from `.dev.vars.example` before
 anything else**, including before `npm run cf-typegen`: `wrangler types` reads `.dev.vars`
 to type the secret bindings, so regenerating without it silently drops
@@ -144,6 +161,13 @@ doppler secrets download -p mymacros -c prd --format json --no-file \
   (never from the request body or a query param) and scope every query by it.
   Route handlers get a typed `c.var.user` from `requireAuth`; there is no
   path to a DB query without it.
+- **R2 photo keys are `<userId>/<uuid>.jpg`, and the prefix IS the
+  authorization check** — for `GET /api/photos/:owner/:name` and for a
+  `photo_key` arriving on a save. Not a convention on top of a check; it *is*
+  the check (`src/worker/photos.ts`). A `food_logs` row deliberately can't
+  stand in: the confirm sheet shows the photo *before* any row exists, because
+  the Worker writes R2 before it calls Claude so an analysis failure can't lose
+  it. A foreign key answers 404, never 403 — a 403 would confirm it exists.
 - Auth tables (`users`, `sessions`, `accounts`, `verifications`, `passkeys`)
   are **owned by better-auth** — their columns are camelCase because the
   library generates them. Regenerate rather than hand-edit:
@@ -194,7 +218,28 @@ doppler secrets download -p mymacros -c prd --format json --no-file \
   whole design loop for that reason, while being trivially reproducible by
   blocking `/api/day` and `/api/me` with `Network.setBlockedURLs`. When a bug
   is reported that screenshots can't reproduce, suspect a state the tooling
-  skips past, not the device.
+  skips past, not the device. The same blind spot covers the pending-upload
+  and analyzing windows on the camera screen — reach them by holding the
+  request open with `Fetch.enable` and simply not continuing it, which is how
+  M3's analyzing state was shot. (`--camera`/`--settle` close the *other* half
+  of this gap; see Commands.)
+- **The Anthropic SDK retries timeouts, so `timeout` is not a deadline.** With
+  the default `maxRetries: 2`, a 20s `timeout` is a 60s worst case. A real
+  wall-clock ceiling is an `AbortSignal` — an abort is terminal. Both analyze
+  routes use one (`DEADLINE_MS` in `routes/analyze.ts`); any future AI route
+  should too. This is #49's finding in code: an attempt cap was never the
+  lever, because the slowest call ever measured was a *single un-retried*
+  attempt.
+- **The barcode decoder fetches its WebAssembly from jsdelivr by default.**
+  `@sec-ant/barcode-detector` is pointed at a self-hosted copy instead, via an
+  alias in `vite.config.ts` and a `locateFile` override in
+  `src/client/lib/barcode.ts` — otherwise a third-party CDN sits on the
+  critical path of every scan (the same objection #35 raises about the fonts)
+  and scanning breaks under a strict CSP or offline. **Re-check after any
+  `@sec-ant/*` upgrade**, by blocking `*jsdelivr*` in DevTools and confirming a
+  scan still decodes. Separately, OpenFoodFacts answers an unknown product with
+  **HTTP 200 and `status: 0`** — checking the status code reports every unknown
+  barcode as a success and then reads nutriments off an empty object.
 - Google OAuth creds and the real D1 binding are placeholders until Session
   B2 (see NEXT-STEPS.md); `wrangler deploy` fails until `database_id` is real.
   Passkeys work locally without any of that.
