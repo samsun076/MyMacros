@@ -1286,3 +1286,28 @@ section {
   font-size: 9.5px;
   letter-spacing: 0.06em;
 }
+
+/* TEMPORARY — M3 camera probe (#13). Remove with the component. */
+.probe-video {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  border-radius: var(--radius-thumb);
+  border: 1px solid var(--line-soft);
+  margin-bottom: 10px;
+  background: var(--bg);
+}
+
+.probe-out {
+  font-family: var(--data-font);
+  font-size: 10px;
+  line-height: 1.6;
+  color: var(--ink-muted);
+  background: var(--surface);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-thumb);
+  padding: 10px 12px;
+  margin-bottom: 10px;
+  overflow-x: auto;
+  white-space: pre;
+}
