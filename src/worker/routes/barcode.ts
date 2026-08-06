@@ -13,9 +13,9 @@ const USER_AGENT = "MyMacros/0.1 (https://fuel.debrief.run)";
  *  viewfinder hostage. */
 const LOOKUP_TIMEOUT_MS = 6000;
 
-/** Below this, a package is one sitting and logging the whole thing is right
- *  (a 60 g bar). Above it, 100 g is the sane default — nobody eats a 400 g jar
- *  of Nutella in one go. Settled on #15. */
+/** Below this, a package is one sitting and logging the whole thing is right.
+ *  Above it, 100 g is the sane default — nobody eats a 400 g jar of Nutella in
+ *  one go. Only consulted when the product defines no serving of its own. */
 const SINGLE_SERVE_MAX_G = 200;
 
 /** GET /api/barcode/:code (#15): UPC → OpenFoodFacts → the same
@@ -33,7 +33,12 @@ barcode.get("/:code", async (c) => {
   const t0 = performance.now();
   const url =
     `https://world.openfoodfacts.org/api/v2/product/${code}.json` +
-    `?fields=product_name,brands,quantity,nutriments`;
+    // `quantity` is requested but never read: OpenFoodFacts derives
+    // `product_quantity` from it *inside* the fields filter, so omitting the
+    // string nulls out the number. Asking for fewer fields changes the value
+    // of a field you did ask for. Measured — dropping it silently sent a 51 g
+    // Mars bar back to the 100 g default.
+    `?fields=product_name,brands,quantity,serving_quantity,product_quantity,nutriments`;
 
   let payload: OffResponse;
   try {
@@ -68,8 +73,7 @@ barcode.get("/:code", async (c) => {
     return c.json({ error: "no_nutrition" }, 404);
   }
 
-  const packageG = gramsOf(product.quantity);
-  const grams = packageG !== null && packageG <= SINGLE_SERVE_MAX_G ? packageG : 100;
+  const grams = defaultGrams(product);
   const scale = grams / 100;
 
   const item: AnalyzedItem = {
@@ -95,7 +99,10 @@ type OffResponse = {
   product?: {
     product_name?: unknown;
     brands?: unknown;
-    quantity?: unknown;
+    /** Grams in one serving as the product defines it, already numeric. */
+    serving_quantity?: unknown;
+    /** Grams in the whole package, already numeric. */
+    product_quantity?: unknown;
     nutriments?: Record<string, unknown>;
   };
 };
@@ -130,14 +137,42 @@ function macrosPer100g(n: Record<string, unknown>) {
   };
 }
 
-/** "400.0 g" / "60g" / "1.5 kg" → grams. Anything else (millilitres, "6 x
- *  25 g", a bare number) is left to the 100 g default rather than guessed at. */
-function gramsOf(quantity: unknown) {
-  const match = /^\s*([\d.]+)\s*(kg|g)\b/i.exec(str(quantity));
-  if (!match) return null;
-  const value = Number(match[1]);
-  if (!Number.isFinite(value) || value <= 0) return null;
-  return match[2]!.toLowerCase() === "kg" ? value * 1000 : value;
+/** How much of it the sheet opens on.
+ *
+ *  **`serving_quantity` first.** It is the portion the product defines for
+ *  itself — "1 bar (68 g)" → 68 — and it is exactly the amount someone
+ *  scanning a single-serve item is about to eat. Missing it is what made a
+ *  CLIF bar open at 368 kcal (100 g) instead of the 250 kcal printed on it: a
+ *  47% overstatement, silent, with correct nutrition underneath.
+ *
+ *  That mistake came from generalising off one product. Nutella has no
+ *  `serving_size` — but Nutella is a 400 g jar, the one shape that genuinely
+ *  has no serving. Single-serve items, where the portion matters most, carry
+ *  it. One observation was never enough to build a default on.
+ *
+ *  These fields are **pre-parsed numbers**, so there is no string to regex.
+ *  The regex this replaced only understood metric-first strings and matched
+ *  nothing against a US label's "2.40 oz (68 g)" — a second silent fallback to
+ *  100 g underneath the first. */
+function defaultGrams(product: NonNullable<OffResponse["product"]>) {
+  const serving = positive(num(product.serving_quantity));
+  const packaged = positive(num(product.product_quantity));
+
+  // A serving larger than the whole package is contributor junk, not a
+  // serving — a 51 g Mars bar carries "100 g" in that field, which nobody
+  // eats. The package is the ceiling on what one serving can be.
+  if (serving !== null && (packaged === null || serving <= packaged)) {
+    return Math.round(serving);
+  }
+
+  // No usable serving: log the whole package if it's plausibly one sitting.
+  if (packaged !== null && packaged <= SINGLE_SERVE_MAX_G) return Math.round(packaged);
+
+  return 100;
+}
+
+function positive(n: number | null) {
+  return n !== null && n > 0 ? n : null;
 }
 
 function str(v: unknown) {
