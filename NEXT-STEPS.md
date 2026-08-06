@@ -409,46 +409,74 @@ What D settled or discovered, worth carrying forward:
   from Dave's phone, **#51** (standalone PWA letterboxes a ~430px column — layout
   viewport wider than the device; hypotheses and a device recipe on the issue).
 
+## Pre-E session — 2026-08-05 evening ✅ done
+
+Ran before Session E to clear the two open defects and settle M3's decisions.
+
+- **#51 fixed and closed.** Not the bug it was filed as. `#root` is `<body>`'s only flex
+  item, so it shrink-to-fits its content; `.frame`'s `width:100%` resolved against it and
+  the app drew a *growing column* on every load — 44px at the empty splash, 261px once the
+  header rendered, full width only after the day's data arrived. Present since M1. The
+  issue is rewritten as the record, including the list of what it *wasn't* (page zoom,
+  desktop-site mode, stale install, the fonts, the iOS launch animation) so nobody
+  re-treads them. Fix is four lines on `#root`.
+- **`npm run verify:viewport`** (`tools/verify-viewport.mjs`) — the regression guard.
+  Checks scrollWidth **and** per-element boxes, because the tab bar is `position:fixed`
+  and a fixed element crossing the edge doesn't move `scrollWidth`.
+- **#49 measured, still open.** 33s not reproduced across 11 production + 17 control
+  samples; **zero retries**. Production is indistinguishable from calling the API off a
+  laptop, so the Worker adds nothing. The finding for #16: the slowest call of the whole
+  exercise (11.3s) was a *single un-retried attempt*, so `maxRetries: 0` would not have
+  prevented it — a wall-clock budget is the lever, not an attempt cap. Instrumentation
+  is live and will catch the next one.
+- **#53 / #54 filed** — cold-launch white screen (inline the 4.2 KB CSS, fonts off the
+  critical path, static app shell, `apple-touch-startup-image`) and service-worker
+  precache. Both M5. #35 is a subtask of #53.
+- **CLAUDE.md gotchas added** — production's session cookie is `__Secure-`-prefixed, and
+  design QA structurally cannot see loading states.
+
 ## Session E — build M3, photo & barcode (Opus 5 @ xhigh, Dave reachable for decisions)
 
-Issues **#13–#16**. Unlike D, the issue comments do NOT yet carry every decision — the
-camera, upload, and barcode mechanics have real open choices. Settle them (with Dave, or
-via a C1-style decision pass) before an autonomous run writes code that assumes answers.
+Issues **#13–#16**. **Decisions 1–3 are settled and recorded as comments on #13 and #14** —
+read them before writing code. #15 and #16 are still open.
 
 ### 0. Prerequisites (Dave, ~5 min, before the session)
 
 - **Enable R2 on the Cloudflare account** and `npx wrangler r2 bucket create
   mymacros-photos` — R2 was deliberately left off in B2; the binding gets written in #13
-  alongside the code that uses it. Nothing else in M3 needs console access.
-- **#51 triage (~2 min on the phone):** open fuel.debrief.run in regular Safari
-  (letterboxed or full-bleed?) and re-add to Home Screen — those two checks split the
-  three hypotheses on the issue before any code is written.
+  alongside the code that uses it. **This is the only remaining blocker for Session E.**
 
-### Decisions to settle before code (the #44/#45 pattern, one thread each or one bundle)
+### Decisions
 
-1. **Camera mechanism (#13).** `<input type="file" capture="environment">` (no
-   permissions prompt, no live preview, works everywhere iOS) vs `getUserMedia` live
-   viewfinder (the sketch's camera stage implies a viewfinder, but iOS PWA quirks and
-   permission UX are real). The sketch's frozen chrome (brackets, shutter, modes row)
-   ports either way; what differs is what sits in the finder.
-2. **Upload path (#13).** Client → Worker → R2 in one multipart request vs presigned
-   direct-to-R2. One-request-through-the-Worker is simpler, keeps `ALLOWED_EMAILS`-scoped
-   auth in one place, and Workers can stream to R2; presigned saves Worker CPU on big
-   uploads. Also: downscale/compress client-side before upload (canvas to ~1600px JPEG?)
-   — full-resolution photos cost ~3× vision tokens for no accuracy the plate needs.
-3. **Vision request shape (#14).** Reuse `analyze.ts`'s schema and normalize() (same
-   items contract feeding the same confirm sheet) with an image block instead of text —
-   the confirm sheet is already input-agnostic. Decide: image passed as base64 from the
-   just-uploaded R2 object vs re-fetched by key; and whether text notes can accompany a
-   photo ("half of this").
-4. **Barcode scanning (#15).** iOS Safari has no BarcodeDetector API. Options: a small
-   WASM/JS decoder lib (zxing-wasm and quagga are the usual suspects — weigh bundle
-   size against the no-new-dependencies instinct), or photo-of-barcode → server-side
-   decode. Then OpenFoodFacts lookup shape and the not-found path (falls through to
-   text? to #16's failure UX?).
-5. **Failure/low-confidence UX (#16).** The CHECK badge convention exists on the sheet;
-   #16 decides what photo-analysis failure looks like (retake? fall back to text?) —
-   the sketch designs none of it.
+1. **Camera mechanism (#13) — ✅ settled.** `getUserMedia` live viewfinder rendering the
+   frozen sketch's camera stage, with `<input capture>` as the fallback when the API is
+   absent or the permission is denied. **Verified on device**, not from documentation: a
+   temporary probe on the standalone PWA returned `gUM present true`, `3024x4032 @30fps`,
+   `facing environment`. The stream is the full 12MP sensor — so barcode mode should
+   request a smaller one or downscale before decoding; do not feed full-sensor frames to
+   a WASM decoder.
+2. **Upload path (#13) — ✅ settled.** One authenticated POST carries the photo; the
+   Worker writes R2 **first** (so #16's "never lose the photo" is structural), then calls
+   Claude with the bytes already in hand. No presigned URLs — a downscaled frame measured
+   **214 KB**, so there is nothing for presigned uploads to save. Client downscales to
+   1568 long edge at q0.8.
+3. **Vision request shape (#14) — ✅ settled.** Same `ITEM_SCHEMA`, `normalize()` and
+   `AnalyzeResponse` as the text path; base64 image block (R2 is private, so the URL
+   source is unavailable to us); optional text note alongside the photo; one prompt for
+   both label reads and meal estimation, with `confidence` carrying the distinction.
+   **Note:** Sonnet 5 takes 2576px on the long edge, not the 1568 this file previously
+   assumed — 1568 is a deliberate cost choice, and raising it for label mode is the lever
+   if label reads come back lossy.
+4. **Barcode scanning (#15) — ⛔ still open.** Confirmed: iOS Safari has **no**
+   `BarcodeDetector` and no announced timeline, so the "fallback lib" in the issue body
+   is the whole implementation, not a fallback. Since decision 1 gives us a live stream,
+   the real choice narrows to a WASM/JS decoder in the bundle (weigh size against the
+   no-new-dependencies rule) vs shipping a frame to the Worker to decode. Then the
+   OpenFoodFacts lookup shape and the not-found path.
+5. **Failure/low-confidence UX (#16) — ⛔ still open.** The CHECK badge convention exists
+   on the sheet; #16 decides what photo-analysis failure looks like (retake? fall back to
+   text?) — the sketch designs none of it. **#49's finding lands here:** fail-fast should
+   be a wall-clock budget, not `maxRetries: 0`.
 
 ### Order of work (dependencies, not preference)
 
