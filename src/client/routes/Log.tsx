@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import type {
   AnalyzeResponse,
@@ -12,7 +12,7 @@ import type {
 } from "../../shared/api";
 import { CameraStage } from "../components/CameraStage";
 import { LogModes, type LogMode } from "../components/LogModes";
-import { api, useApi } from "../lib/api";
+import { ApiError, api, useApi } from "../lib/api";
 import { deviceTimezone, localDay, mealSlotFor } from "../lib/day";
 import { fmtInt } from "../lib/format";
 
@@ -31,27 +31,43 @@ import { fmtInt } from "../lib/format";
 
 type EditableItem = AnalyzedItem & { orig: AnalyzedItem };
 
-/** One reading, whatever produced it. `source` and `photoKey` are the only
- *  things the sheet carries forward about which mode it came from. */
+/** One reading, whatever produced it. `source`, `photoKey` and `barcode` are
+ *  the only things the sheet carries forward about which mode it came from. */
 type Read = {
   items: EditableItem[];
   readMs: number;
   source: FoodSource;
   photoKey?: string;
+  barcode?: string;
+  /** Barcode reads only (#15): the grams the numbers are scaled to, plus the
+   *  pristine figures at `baseGrams` that the grams field rescales from.
+   *  Rescaling from the base rather than from the current values is what keeps
+   *  repeated adjustments from drifting. */
+  grams?: number;
+  base?: AnalyzedItem[];
+  baseGrams?: number;
 };
 
 const SLOTS: MealSlot[] = ["breakfast", "lunch", "dinner", "snack"];
 
-/** `/log#text` names a mode so tools/shot-matrix.mjs can shoot each stage
- *  deterministically, the way the frozen sketch addresses its own stages.
- *  Unlike `#confirm` it injects no demo data, so it isn't DEV-gated.
+/** `/log#photo`, `/log#barcode` and `/log#text` name a mode so
+ *  tools/shot-matrix.mjs can shoot each stage deterministically, the way the
+ *  frozen sketch addresses its own stages. Unlike `#confirm` these inject no
+ *  demo data, so they aren't DEV-gated.
  *
  *  The default is PHOTO — the sketch's flow is "+ → straight to the
  *  viewfinder", and `#confirm` keeps landing on TEXT so M2's existing shot of
  *  the sheet is unchanged. */
 function initialMode(): LogMode {
-  const hash = window.location.hash;
-  return hash === "#text" || hash === "#confirm" ? "text" : "photo";
+  switch (window.location.hash) {
+    case "#text":
+    case "#confirm":
+      return "text";
+    case "#barcode":
+      return "barcode";
+    default:
+      return "photo";
+  }
 }
 
 /** DEV-only: `/log#confirm` opens the sheet pre-filled with the sketch's
@@ -199,6 +215,80 @@ export function Log() {
     }
   }
 
+  /** A decoded barcode (#15). No model runs and nothing is stored, so this is
+   *  the cheapest and most exact of the three readers — the confirm sheet it
+   *  fills is the same one. Memoised because it gates CameraStage's scan loop.
+   */
+  const readBarcode = useCallback(async (code: string) => {
+    setBusy(true);
+    setError(null);
+    const t0 = Date.now();
+    try {
+      const { items, barcode, grams } = await api.get<AnalyzeResponse>(`/api/barcode/${code}`);
+      if (!items.length) {
+        setError("That product is listed, but without any nutrition information.");
+        return;
+      }
+      setSlot(mealSlotFor());
+      setRead({
+        items: items.map((it) => ({ ...it, orig: it })),
+        readMs: Date.now() - t0,
+        source: "barcode",
+        barcode,
+        grams,
+        base: items,
+        baseGrams: grams,
+      });
+      setEditing(null);
+    } catch (err) {
+      const code = err instanceof ApiError ? err.code : "network";
+      setError(
+        code === "product_not_found"
+          ? "That barcode isn't in the food database."
+          : code === "no_nutrition"
+            ? "That product is listed, but without any nutrition information."
+            : "Couldn't reach the food database right now.",
+      );
+    } finally {
+      setBusy(false);
+    }
+  }, []);
+
+  // stable identity: CameraStage's scan loop keys its effect on this, so a
+  // fresh closure per render would tear the loop down and rebuild it each time
+  const onScan = useCallback(
+    (code: string) => {
+      void readBarcode(code);
+    },
+    [readBarcode],
+  );
+
+  /** The grams field rescales every number linearly from the pristine base.
+   *  `orig` moves with it: changing the portion is not correcting the read,
+   *  and `edited` exists to flag corrections. */
+  function setGrams(grams: number) {
+    setRead((r) => {
+      if (!r?.base || !r.baseGrams) return r;
+      const scale = grams / r.baseGrams;
+      return {
+        ...r,
+        grams,
+        items: r.base.map((it) => {
+          const scaled: AnalyzedItem = {
+            ...it,
+            calories: Math.round(it.calories * scale),
+            protein_g: round1(it.protein_g * scale),
+            carbs_g: round1(it.carbs_g * scale),
+            fat_g: round1(it.fat_g * scale),
+          };
+          return { ...scaled, orig: scaled };
+        }),
+      };
+    });
+  }
+
+  /** Photo mode: drop the frozen frame. Barcode mode: clear the failure that
+   *  paused the scan loop, so it picks up again. */
   function retake() {
     setStill(null);
     setError(null);
@@ -233,6 +323,7 @@ export function Log() {
         meal_slot: slot,
         source: read.source,
         photo_key: read.photoKey,
+        barcode: read.barcode,
         items: read.items.map((it) => ({
           name: it.name,
           kcal: it.calories,
@@ -362,6 +453,7 @@ export function Log() {
           error={read ? null : error}
           onCapture={(photo) => void readPhoto(photo)}
           onRetake={retake}
+          onScan={onScan}
         />
       )}
 
@@ -391,6 +483,31 @@ export function Log() {
               <span className="mono">READ IN {(read.readMs / 1000).toFixed(1)}S</span>
             </div>
             <p className="sheet-sub">Tap anything to change it before it saves.</p>
+
+            {/* Barcode reads land per-100g or per-package, so the portion is
+                the one thing the database can't tell us (OpenFoodFacts leaves
+                serving_size null even for Nutella). One field, scaling every
+                number live — the sheet's own editing idiom, not a new screen. */}
+            {read.grams !== undefined && (
+              <div className="portion-row">
+                <label className="eyebrow" htmlFor="grams">
+                  How much
+                </label>
+                <input
+                  id="grams"
+                  type="number"
+                  inputMode="numeric"
+                  min={1}
+                  max={5000}
+                  value={read.grams}
+                  onChange={(e) => {
+                    const n = Number(e.target.value);
+                    if (Number.isFinite(n) && n >= 1 && n <= 5000) setGrams(Math.round(n));
+                  }}
+                />
+                <span className="mono">GRAMS</span>
+              </div>
+            )}
 
             {read.items.map((item, i) => (
               <ItemRow
@@ -440,6 +557,8 @@ function ItemRow({
 }) {
   // low confidence gets the sketch's CHECK treatment (accent badge + open row)
   const low = item.confidence !== null && item.confidence < 0.75;
+  // null confidence means nothing estimated it — a barcode's exact match (#15)
+  const exact = item.confidence === null;
 
   return (
     <div className={low || editing ? "item check" : "item"}>
@@ -449,7 +568,11 @@ function ItemRow({
           {low && <span className="badge">CHECK</span>}
         </span>
         <span className="portion">
-          {low ? "BEST GUESS — TAP TO ADJUST" : `CONFIDENCE ${Math.round((item.confidence ?? 0) * 100)}%`}
+          {exact
+            ? "FROM THE BARCODE"
+            : low
+              ? "BEST GUESS — TAP TO ADJUST"
+              : `CONFIDENCE ${Math.round((item.confidence ?? 0) * 100)}%`}
         </span>
       </button>
       <span className="kcal">
@@ -520,4 +643,8 @@ function isEdited(item: EditableItem) {
 /** "breakfast" → "Breakfast" */
 function label(slot: MealSlot) {
   return slot.charAt(0).toUpperCase() + slot.slice(1);
+}
+
+function round1(n: number) {
+  return Math.round(n * 10) / 10;
 }

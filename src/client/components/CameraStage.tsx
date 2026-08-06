@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { scanner } from "../lib/barcode";
 import { frameFromFile, frameFromVideo } from "../lib/photo";
 import { LogModes, type LogMode } from "./LogModes";
 
@@ -19,15 +20,27 @@ import { LogModes, type LogMode } from "./LogModes";
 /** The rear camera. The on-device probe found the default rear stream is the
  *  full 12MP sensor (3024×4032 @30fps) — far more than the 1568px long edge
  *  we keep, and heavy to run a live preview from. `ideal` rather than `exact`
- *  so a device that can't honour it still opens a camera instead of throwing. */
-const CONSTRAINTS: MediaStreamConstraints = {
-  video: {
-    facingMode: { ideal: "environment" },
-    width: { ideal: 1920 },
-    height: { ideal: 1920 },
-  },
-  audio: false,
-};
+ *  so a device that can't honour it still opens a camera instead of throwing.
+ *
+ *  Barcode mode asks for less again: that probe's explicit warning was not to
+ *  feed full-sensor frames to a WASM decoder, and asking getUserMedia for a
+ *  smaller stream is the cheapest way to honour it (#13/#15). 1280 still
+ *  resolves a UPC comfortably at arm's length. */
+function constraintsFor(mode: LogMode): MediaStreamConstraints {
+  const edge = mode === "barcode" ? 1280 : 1920;
+  return {
+    video: {
+      facingMode: { ideal: "environment" },
+      width: { ideal: edge },
+      height: { ideal: edge },
+    },
+    audio: false,
+  };
+}
+
+/** ~3 decodes a second. Fast enough to feel like lock-on, slow enough to
+ *  leave the main thread to the preview. */
+const SCAN_INTERVAL_MS = 300;
 
 type Finder = "starting" | "live" | "denied" | "unsupported";
 
@@ -41,6 +54,7 @@ export function CameraStage({
   error,
   onCapture,
   onRetake,
+  onScan,
 }: {
   mode: LogMode;
   onMode: (mode: LogMode) => void;
@@ -52,12 +66,17 @@ export function CameraStage({
   busy: boolean;
   error: string | null;
   onCapture: (photo: Blob) => void;
+  /** Photo mode: discard the frozen frame. Barcode mode: resume scanning
+   *  after a lookup that came back empty. */
   onRetake: () => void;
+  /** A decoded barcode. Memoise it — it gates the scan loop's effect. */
+  onScan: (code: string) => void;
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const [finder, setFinder] = useState<Finder>("starting");
   const [captureError, setCaptureError] = useState<string | null>(null);
+  const [scanning, setScanning] = useState(false);
 
   // The stream runs only while the finder is actually showing. Freezing a
   // frame tears it down, which is what puts the camera indicator out while
@@ -82,7 +101,7 @@ export function CameraStage({
     setFinder("starting");
 
     navigator.mediaDevices
-      .getUserMedia(CONSTRAINTS)
+      .getUserMedia(constraintsFor(mode))
       .then((s) => {
         if (!mounted) {
           s.getTracks().forEach((t) => t.stop());
@@ -122,7 +141,59 @@ export function CameraStage({
       if (video && onFrame) video.removeEventListener("loadeddata", onFrame);
       stream?.getTracks().forEach((t) => t.stop());
     };
-  }, [live]);
+    // mode is a dependency because barcode mode asks for a different stream
+  }, [live, mode]);
+
+  /** The scan loop (#15). Runs only while barcode mode is showing a live
+   *  finder with nothing pending — so a lookup in flight, or one that came
+   *  back empty, pauses it. That pause is load-bearing: without it the next
+   *  frame re-reads the same code and the failure repeats forever. */
+  useEffect(() => {
+    if (mode !== "barcode" || finder !== "live" || busy || still || error) {
+      setScanning(false);
+      return;
+    }
+
+    let stopped = false;
+    let timer: ReturnType<typeof setTimeout>;
+
+    void (async () => {
+      let detect;
+      try {
+        detect = await scanner();
+      } catch {
+        if (!stopped) setCaptureError("The barcode scanner didn't load. Check your connection, or switch to PHOTO.");
+        return;
+      }
+      if (stopped) return;
+      setScanning(true);
+
+      const tick = async () => {
+        const video = videoRef.current;
+        // readyState guards the same race the shutter does: a video with no
+        // decoded frame yet has nothing to read
+        if (video && video.readyState >= 2) {
+          try {
+            const hit = (await detect.detect(video))[0];
+            if (hit && !stopped) {
+              onScan(hit.rawValue);
+              return;
+            }
+          } catch {
+            // a frame with no barcode in it is the overwhelmingly common
+            // case, not an error worth surfacing
+          }
+        }
+        if (!stopped) timer = setTimeout(() => void tick(), SCAN_INTERVAL_MS);
+      };
+      void tick();
+    })();
+
+    return () => {
+      stopped = true;
+      clearTimeout(timer);
+    };
+  }, [mode, finder, busy, still, error, onScan]);
 
   async function shoot() {
     const video = videoRef.current;
@@ -145,17 +216,24 @@ export function CameraStage({
     }
   }
 
+  const scan = mode === "barcode";
   const fallback = finder === "denied" || finder === "unsupported";
   const message = error ?? captureError;
   const hint = busy
-    ? "READING THE PHOTO"
-    : still
+    ? scan
+      ? "LOOKING IT UP"
+      : "READING THE PHOTO"
+    : still || message
       ? null
-      : finder === "live"
-        ? "FRAME THE PLATE — AI FILLS THE MACROS"
-        : finder === "starting"
+      : finder !== "live"
+        ? finder === "starting"
           ? "STARTING THE CAMERA"
-          : null;
+          : null
+        : scan
+          ? scanning
+            ? "POINT AT THE BARCODE"
+            : "STARTING THE SCANNER"
+          : "FRAME THE PLATE — AI FILLS THE MACROS";
 
   return (
     <main className="frame cam">
@@ -185,8 +263,11 @@ export function CameraStage({
         />
         {still && <img className="cam-still" src={still} alt="The photo you just took" />}
 
+        {/* Same four corner marks as the sketch; barcode mode pulls them into
+            a wide, short window, because that is the shape of the thing being
+            aimed at and the framing is the whole instruction. */}
         {!still && !fallback && (
-          <div className="brackets" aria-hidden="true">
+          <div className={scan ? "brackets scan" : "brackets"} aria-hidden="true">
             <i />
             <i />
             <i />
@@ -218,18 +299,45 @@ export function CameraStage({
         )}
 
         {message && (
-          <p className="cam-error" role="alert">
-            {message}
-          </p>
+          <div className="cam-error" role="alert">
+            <p>{message}</p>
+            {/* A barcode failure has no shutter to fall back on, so it carries
+                its own way out. Photographing the panel is the settled answer
+                (#15): the label is already in the user's hand, and #14 reads
+                panels near-exactly. */}
+            {scan && (
+              <div className="cam-error-acts">
+                <button className="btn btn-accent" onClick={() => onMode("photo")}>
+                  Photograph the label
+                </button>
+                <button className="btn-text" onClick={onRetake}>
+                  Scan again
+                </button>
+              </div>
+            )}
+          </div>
         )}
 
         {hint && <span className="cam-hint">{hint}</span>}
       </div>
 
       <div className="cam-deck">
-        <LogModes mode={mode} onMode={onMode} barcodeReady={false} />
+        <LogModes mode={mode} onMode={onMode} barcodeReady />
         <div className="shutter-row">
-          {still ? (
+          {scan ? (
+            // Scanning is continuous — there is nothing to press. The ring
+            // keeps the deck's geometry so switching modes doesn't jump, but
+            // it is a status, not a control.
+            <span
+              className={scanning && !busy ? "scan-ring on" : "scan-ring"}
+              role="status"
+              aria-label={
+                busy ? "Looking up the barcode" : scanning ? "Scanning for a barcode" : "Scanner paused"
+              }
+            >
+              <i />
+            </span>
+          ) : still ? (
             <button
               className="shutter"
               aria-label="Retake photo"
@@ -250,7 +358,7 @@ export function CameraStage({
               <i />
             </button>
           )}
-          <span className="barcode-hint" aria-hidden="true">
+          <span className={scan ? "barcode-hint on" : "barcode-hint"} aria-hidden="true">
             <svg width="26" height="26" viewBox="0 0 26 26" fill="none" strokeWidth="1.5" strokeLinecap="round">
               <path d="M4 8V5a1 1 0 0 1 1-1h3M18 4h3a1 1 0 0 1 1 1v3M22 18v3a1 1 0 0 1-1 1h-3M8 22H5a1 1 0 0 1-1-1v-3M8 9v8M12 9v8M15 9v8M18 9v8" />
             </svg>

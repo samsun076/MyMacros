@@ -23,6 +23,7 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.115.0",
     "@better-auth/passkey": "^1.6.25",
+    "@sec-ant/barcode-detector": "^1.3.3",
     "better-auth": "^1.6.25",
     "hono": "^4.12.33",
     "kysely": "^0.29.4",

@@ -98,8 +98,9 @@ export type AnalyzedItem = {
   carbs_g: number;
   fat_g: number;
   /** 0..1, range-checked server-side (structured outputs drop numeric
-   *  bounds — #45). */
-  confidence: number;
+   *  bounds — #45). **null when the numbers were not AI-estimated** — a
+   *  barcode's exact-match nutrition has no confidence to report (#15). */
+  confidence: number | null;
 };
 
 /** POST /api/analyze/text and /api/analyze/photo response — one contract for
@@ -110,7 +111,15 @@ export type AnalyzedItem = {
  *  calling Claude, so the key comes back even when the read finds nothing —
  *  that ordering is what makes #16's "never lose the photo" structural rather
  *  than something an error path has to remember. */
-export type AnalyzeResponse = { items: AnalyzedItem[]; photo_key?: string };
+export type AnalyzeResponse = {
+  items: AnalyzedItem[];
+  photo_key?: string;
+  /** Barcode reads only (#15): the scanned code, and the gram weight the
+   *  numbers above are scaled to. The sheet's grams field rescales linearly
+   *  from there, so no separate per-100g basis has to cross the wire. */
+  barcode?: string;
+  grams?: number;
+};
 
 /** One item of a save from the confirm sheet (#10). */
 export type FoodLogItemInput = {
@@ -137,6 +146,8 @@ export type FoodLogCreate = {
   /** R2 object key from POST /api/analyze/photo, stamped on every row of the
    *  save so the timeline can show the meal's own photo. */
   photo_key?: string;
+  /** The scanned code, when the meal came from GET /api/barcode/:code. */
+  barcode?: string;
   /** When the save is a one-tap re-log (#12): bumps that favorite's
    *  use_count so most-used sorting works. */
   favorite_id?: string;

@@ -59,7 +59,7 @@ for (let i = 0; i < argv.length; i++) {
 // screen, so checking six of them would be checking one thing six times.
 if (!routes) {
   routes = cookies.length
-    ? ["/", "/log", "/log#text", "/log#confirm", "/#saved", "/trends", "/settings"]
+    ? ["/", "/log", "/log#barcode", "/log#text", "/log#confirm", "/#saved", "/trends", "/settings"]
     : ["/"];
 }
 

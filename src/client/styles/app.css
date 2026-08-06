@@ -1031,6 +1031,12 @@ section {
   color: var(--ink-secondary);
 }
 
+/* barcode mode: the same four corner marks, pulled into the shape of the
+   thing being aimed at — a wide, short window (#15) */
+.brackets.scan {
+  inset: 38% 11%;
+}
+
 .cam-error {
   position: absolute;
   left: 22px;
@@ -1045,6 +1051,17 @@ section {
   border-radius: var(--radius-thumb);
   padding: 10px 14px;
   box-shadow: var(--shadow-card);
+}
+
+.cam-error-acts {
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+  margin-top: 12px;
+}
+
+.cam-error-acts .btn {
+  width: 100%;
 }
 
 /* the analyzing window — the one state the design loop structurally cannot
@@ -1134,12 +1151,67 @@ section {
   cursor: default;
 }
 
+/* Barcode mode has no shutter — scanning is continuous, so there is nothing
+   to press. The ring holds the deck's geometry (same 74px circle, same grid
+   column) so switching modes doesn't jump the layout, but it reads as a
+   status: hollow, and never a tap target. */
+.scan-ring {
+  grid-column: 2;
+  width: 74px;
+  height: 74px;
+  border-radius: 50%;
+  border: 3px solid var(--track);
+  display: grid;
+  place-items: center;
+}
+
+.scan-ring i {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--track);
+}
+
+.scan-ring.on {
+  border-color: var(--accent);
+}
+
+.scan-ring.on i {
+  background: var(--accent);
+  animation: scan-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes scan-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(2.2);
+    opacity: 0.35;
+  }
+}
+
+/* the quality floor again: without motion the ring still has to read as
+   "live", so the dot simply stays at its accent colour */
+@media (prefers-reduced-motion: reduce) {
+  .scan-ring.on i {
+    animation: none;
+  }
+}
+
 .barcode-hint {
   justify-self: end;
 }
 
 .barcode-hint svg {
   stroke: var(--mark-neutral);
+}
+
+/* the glyph is the mode's own emblem once that mode is active */
+.barcode-hint.on svg {
+  stroke: var(--accent);
 }
 
 /* text entry — the TEXT mode's stage isn't in the frozen sketch (it designs
@@ -1334,6 +1406,32 @@ section {
   font-size: 11.5px;
   color: var(--ink-muted);
   margin-top: 6px;
+}
+
+/* barcode portion (#15) — one field scaling every number on the sheet */
+.portion-row {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  align-items: center;
+  gap: 10px;
+  margin-top: 14px;
+  padding: 10px 12px;
+  background: var(--bg);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-thumb);
+}
+
+.portion-row input {
+  width: 88px;
+  text-align: right;
+  background: var(--surface-raised);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-mark);
+  padding: 7px 10px;
+  color: var(--ink);
+  font-family: var(--body-font);
+  font-size: 16px; /* ≥16px: no iOS zoom */
+  font-variant-numeric: tabular-nums;
 }
 
 .item {

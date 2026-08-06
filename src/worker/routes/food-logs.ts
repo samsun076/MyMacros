@@ -82,6 +82,16 @@ foodLogs.post("/", async (c) => {
     if (!owned) return c.json({ error: "invalid_photo_key" }, 400);
     photoKey = owned;
   }
+
+  // The code the scan produced, kept on the row so "what did I actually eat"
+  // stays answerable later without a second lookup (#15).
+  let scanned: string | null = null;
+  if (body.barcode !== undefined) {
+    if (typeof body.barcode !== "string" || !/^\d{8,14}$/.test(body.barcode)) {
+      return c.json({ error: "invalid_barcode" }, 400);
+    }
+    scanned = body.barcode;
+  }
   if (!Array.isArray(body.items) || body.items.length < 1 || body.items.length > 20) {
     return c.json({ error: "items_required" }, 400);
   }
@@ -120,6 +130,7 @@ foodLogs.post("/", async (c) => {
       // timeline folds rows sharing an instant into one meal, and that meal
       // has one photo
       photo_key: photoKey,
+      barcode: scanned,
       confidence,
       edited: item.edited === true ? 1 : 0,
     });
