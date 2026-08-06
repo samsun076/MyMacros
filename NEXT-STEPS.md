@@ -540,7 +540,7 @@ first customers) · **#33** claim flow → M6. · **#49** prod analyze latency
 overlaps #38/#39's device territory) · **#52** swipe-to-delete (M5, pull-forward
 candidate; brings the first DELETE route and a --danger token).
 
-### Starter prompt (paste verbatim, after the decisions above are settled)
+### Starter prompt (paste verbatim — decisions 1–3 are settled, 4–5 open by design)
 
 ```
 Working on MyMacros (~/Projects/MyMacros, github.com/samsun076/MyMacros).
@@ -564,9 +564,15 @@ binding in wrangler.jsonc with #13 and re-run npm run cf-typegen (with
 .dev.vars present).
 
 Verify every screen at 375/390/428 with the signed-in shot-matrix recipe
-in NEXT-STEPS.md and LOOK at the PNGs; note what only a device can verify
-(camera, real capture). npm run check stays green. Don't break the
-guardrails or the deliberate list in NEXT-STEPS.md's Session E section.
+in NEXT-STEPS.md and LOOK at the PNGs, and run npm run verify:viewport --
+the camera stage is a new full-bleed surface and that guard is what catches
+horizontal overflow. Remember shot-matrix only ever sees the SETTLED state:
+it waits for fonts and data and forces prefers-reduced-motion, so permission
+prompts, pending-upload and analyzing states are invisible to it. Reproduce
+those with Network.setBlockedURLs rather than assuming they're fine — that
+is how #51 was finally found. Note what only a device can verify (camera,
+real capture). npm run check stays green. Don't break the guardrails or the
+deliberate list in NEXT-STEPS.md's Session E section.
 
 Commit per issue, "closes #N" only where genuinely finished, push when
 done (push deploys), re-run npm run verify:routing -- https://fuel.debrief.run
