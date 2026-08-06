@@ -25,6 +25,12 @@
 
   --surface: #1c2533;           /* card */
   --surface-raised: #242f40;    /* card top edge / elevated gradient stop */
+  --viewfinder-surface:         /* full `background` for the camera stage —
+                                   darker than --page-surface so a live
+                                   preview reads as the lit thing on screen
+                                   (#13). Same job as --page-surface: a flat
+                                   theme swaps in one color */
+    linear-gradient(180deg, #090d13 0%, #0b1017 100%);
   --chrome: #111720;            /* bottom bar surface; what iOS Safari blends
                                    with. Never accent-tinted (accent switches
                                    live) and MUST be applied fully opaque —

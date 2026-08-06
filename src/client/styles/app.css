@@ -741,10 +741,18 @@ section {
   border: 1px solid var(--line-soft);
   display: grid;
   place-items: center;
+  overflow: hidden; /* a photo fills the rounded square (#13) */
 }
 
 .thumb svg {
   display: block;
+}
+
+.thumb img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 
 .meal .slot {
@@ -881,6 +889,257 @@ section {
   height: 3px;
   border-radius: var(--radius-pill);
   background: var(--accent);
+}
+
+.modes span,
+.modes b {
+  cursor: pointer;
+}
+
+/* BARCODE is parked until #15 gives it a decoder */
+.modes .parked {
+  cursor: default;
+  opacity: 0.45;
+}
+
+/* ── camera stage — ported from sketches/e-log-flow.html#camera ──
+   Full-bleed: the frame's padding and page wash give way to the viewfinder
+   surface, and the mode row moves into the bottom deck, where the sketch puts
+   it. Compounded onto .frame rather than leaning on source order, so the
+   override can't be lost to a later rule of equal weight. */
+.frame.cam {
+  padding: 0;
+  background: var(--viewfinder-surface);
+  display: flex;
+  flex-direction: column;
+}
+
+.cam .log-top {
+  padding: calc(16px + env(safe-area-inset-top, 0px)) 20px 12px;
+}
+
+.finder {
+  position: relative;
+  flex: 1;
+  min-height: 380px;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+}
+
+.cam-video,
+.cam-still {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* hidden until the stream actually delivers, so a black rectangle never
+   stands in for a camera that failed to open */
+.cam-video {
+  visibility: hidden;
+}
+
+.cam-video.on {
+  visibility: visible;
+}
+
+/* the sketch's own behind-the-sheet treatment, reused for the frozen frame:
+   the read runs over a dimmed version of the photo it is reading, and the
+   confirm sheet rises over that same image without a cut */
+.cam-still {
+  filter: brightness(0.5) saturate(0.8);
+}
+
+.brackets {
+  position: absolute;
+  inset: 8% 9%;
+  pointer-events: none;
+}
+
+.brackets i {
+  position: absolute;
+  width: 26px;
+  height: 26px;
+  border: 2px solid var(--accent);
+  opacity: 0.85;
+}
+
+.brackets i:nth-child(1) {
+  top: 0;
+  left: 0;
+  border-width: 2px 0 0 2px;
+  border-radius: var(--radius-mark) 0 0 0;
+}
+
+.brackets i:nth-child(2) {
+  top: 0;
+  right: 0;
+  border-width: 2px 2px 0 0;
+  border-radius: 0 var(--radius-mark) 0 0;
+}
+
+.brackets i:nth-child(3) {
+  bottom: 0;
+  left: 0;
+  border-width: 0 0 2px 2px;
+  border-radius: 0 0 0 var(--radius-mark);
+}
+
+.brackets i:nth-child(4) {
+  bottom: 0;
+  right: 0;
+  border-width: 0 2px 2px 0;
+  border-radius: 0 0 var(--radius-mark) 0;
+}
+
+.cam-hint {
+  position: absolute;
+  bottom: 14px;
+  left: 0;
+  right: 0;
+  text-align: center;
+  font-family: var(--data-font);
+  font-size: 9.5px;
+  letter-spacing: 0.14em;
+  color: var(--ink-muted);
+}
+
+/* no live viewfinder to be had — permission refused, or a browser/origin that
+   can't offer one. The system camera is the way through, so it gets a button
+   rather than an apology. */
+.cam-fallback {
+  position: relative;
+  max-width: 290px;
+  margin: 0 22px;
+  display: grid;
+  justify-items: center;
+  gap: 14px;
+  text-align: center;
+}
+
+.cam-fallback svg {
+  stroke: var(--ink-muted);
+  fill: none;
+}
+
+.cam-fallback p {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--ink-secondary);
+}
+
+.cam-error {
+  position: absolute;
+  left: 22px;
+  right: 22px;
+  bottom: 52px;
+  text-align: center;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-thumb);
+  padding: 10px 14px;
+  box-shadow: var(--shadow-card);
+}
+
+/* the analyzing window — the one state the design loop structurally cannot
+   see, since shot-matrix waits for every fetch to land before it shoots */
+.cam-reading {
+  position: absolute;
+  left: 9%;
+  right: 9%;
+  bottom: 34px;
+  height: 2px;
+  border-radius: var(--radius-pill);
+  background: var(--track);
+  overflow: hidden;
+}
+
+.cam-reading i {
+  display: block;
+  width: 40%;
+  height: 100%;
+  border-radius: var(--radius-pill);
+  background: var(--accent);
+  animation: cam-sweep 1.2s ease-in-out infinite;
+}
+
+@keyframes cam-sweep {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(250%);
+  }
+}
+
+/* reduced motion still has to say "working" — the sweep becomes a full bar,
+   not nothing. It is also what the shot matrix captures, since cdp.mjs forces
+   this query on every page it opens. */
+@media (prefers-reduced-motion: reduce) {
+  .cam-reading i {
+    width: 100%;
+    animation: none;
+    opacity: 0.6;
+  }
+}
+
+.cam-deck {
+  padding: 10px 22px calc(26px + env(safe-area-inset-bottom, 0px));
+}
+
+.cam-deck .modes {
+  margin-top: 0;
+  margin-bottom: 20px;
+}
+
+.shutter-row {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+}
+
+.shutter {
+  grid-column: 2;
+  width: 74px;
+  height: 74px;
+  border-radius: 50%;
+  border: 3px solid var(--accent);
+  background: transparent;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+
+.shutter i {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: var(--shadow-lift);
+}
+
+.shutter svg {
+  stroke: var(--accent);
+  fill: none;
+}
+
+.shutter:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.barcode-hint {
+  justify-self: end;
+}
+
+.barcode-hint svg {
+  stroke: var(--mark-neutral);
 }
 
 /* text entry — the TEXT mode's stage isn't in the frozen sketch (it designs
@@ -1023,6 +1282,13 @@ section {
   flex-direction: column;
   justify-content: flex-end;
   background: var(--scrim);
+}
+
+/* over a photo read there is no scrim: the sketch's confirm stage dims the
+   photo itself and lets the sheet rise over it, so a second wash on top would
+   double the dimming */
+.sheet-wrap.over-photo {
+  background: transparent;
 }
 
 .sheet {

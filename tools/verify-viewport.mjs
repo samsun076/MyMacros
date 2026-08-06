@@ -4,6 +4,7 @@
 //   node tools/verify-viewport.mjs --cookie better-auth.session_token=...
 //   node tools/verify-viewport.mjs --cookie ... https://fuel.debrief.run
 //   node tools/verify-viewport.mjs --widths 375 --routes /log#confirm
+//   node tools/verify-viewport.mjs --camera --cookie ...   # live viewfinder
 //
 // #51: the standalone PWA rendered the 430px frame centred in a layout
 // viewport far wider than the phone, with letterbox bars — the desktop
@@ -33,10 +34,15 @@ let widths = [375, 390, 428];
 let routes = null;
 let expand = ".item-hit";
 let base = "http://localhost:5173";
+// The camera stage (#13) is a new full-bleed surface, and its live layout is
+// the one worth checking — a viewfinder that failed to open is a centred
+// paragraph, which overflows nothing. Chrome gets a synthetic device.
+let camera = false;
 const cookies = [];
 for (let i = 0; i < argv.length; i++) {
   const a = argv[i];
   if (a === "--widths") widths = argv[++i].split(",").map(Number);
+  else if (a === "--camera") camera = true;
   else if (a === "--routes") routes = argv[++i].split(",");
   // click these before measuring — a plain navigation never reaches the
   // confirm sheet's per-item editor, which is where the four number inputs
@@ -52,7 +58,9 @@ for (let i = 0; i < argv.length; i++) {
 // Every screen is behind auth; without a cookie they all render the sign-in
 // screen, so checking six of them would be checking one thing six times.
 if (!routes) {
-  routes = cookies.length ? ["/", "/log", "/log#confirm", "/#saved", "/trends", "/settings"] : ["/"];
+  routes = cookies.length
+    ? ["/", "/log", "/log#text", "/log#confirm", "/#saved", "/trends", "/settings"]
+    : ["/"];
 }
 
 // Runs in the page. Reports the document's overflow plus the elements whose
@@ -134,7 +142,7 @@ await withChrome(async (cdp) => {
       for (const o of offenders) console.log(`        ↳ ${o.past}px past the edge · ${o.path}`);
     }
   }
-});
+}, camera ? ["--use-fake-device-for-media-stream", "--use-fake-ui-for-media-stream"] : []);
 
 console.log(
   failures === 0

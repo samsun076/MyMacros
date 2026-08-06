@@ -28,6 +28,9 @@ type Entry = {
   p: number;
   c: number;
   f: number;
+  /** R2 key when the meal was photographed (#13) — the thumb shows the food
+   *  itself instead of the slot glyph. */
+  photoKey: string | null;
 };
 
 export function Today() {
@@ -72,6 +75,7 @@ export function Today() {
         p: Math.round(rows.reduce((s, r) => s + r.protein_g, 0)),
         c: Math.round(rows.reduce((s, r) => s + r.carbs_g, 0)),
         f: Math.round(rows.reduce((s, r) => s + r.fat_g, 0)),
+        photoKey: rows.find((r) => r.photo_key)?.photo_key ?? null,
       };
     });
   }, [day]);
@@ -183,9 +187,19 @@ export function Today() {
                 return (
                   <TimelineRow key={i} when={entry.when} fresh={fresh}>
                     <div className="meal">
-                      <span className="thumb" aria-hidden="true">
-                        <SlotIcon slot={entry.slot} />
-                      </span>
+                      {entry.photoKey ? (
+                        <span className="thumb">
+                          <img
+                            src={`/api/photos/${entry.photoKey}`}
+                            alt={`Photo of ${entry.desc}`}
+                            loading="lazy"
+                          />
+                        </span>
+                      ) : (
+                        <span className="thumb" aria-hidden="true">
+                          <SlotIcon slot={entry.slot} />
+                        </span>
+                      )}
                       <div>
                         <div className="slot">
                           {slotLabel(entry.slot)}

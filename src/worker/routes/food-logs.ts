@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import type { FoodLogCreate, FoodLogsCreated, RecentsResponse } from "../../shared/api";
+import { ownedPhotoKey } from "../photos";
 import type { AppEnv } from "../types";
 import { isDay, isNum, oneOf } from "../validate";
 
@@ -50,8 +51,9 @@ function round1(n: number) {
 }
 
 const slotOf = oneOf(["breakfast", "lunch", "dinner", "snack"] as const);
-// photo and barcode become writable when M3's flows exist to send them
-const sourceOf = oneOf(["text", "favorite"] as const);
+// the schema's four sources are all writable from M3 — the CHECK constraint
+// in migration 0001 already named photo and barcode, so nothing migrates
+const sourceOf = oneOf(["text", "favorite", "photo", "barcode"] as const);
 
 /** POST /api/food-logs (#10): the confirm sheet's save. One row per item,
  *  all sharing one `logged_at` instant — that shared instant is what groups
@@ -69,6 +71,16 @@ foodLogs.post("/", async (c) => {
   const source = sourceOf(body.source);
   if (!loggedOn || !mealSlot || !source) {
     return c.json({ error: "invalid_fields" }, 400);
+  }
+
+  // The key was minted by POST /api/analyze/photo for this session, so a key
+  // that isn't under this user's prefix is either a bug or someone else's
+  // photo — refuse rather than store a pointer we'd then serve 404s for.
+  let photoKey: string | null = null;
+  if (body.photo_key !== undefined) {
+    const owned = ownedPhotoKey(body.photo_key, c.var.user.id);
+    if (!owned) return c.json({ error: "invalid_photo_key" }, 400);
+    photoKey = owned;
   }
   if (!Array.isArray(body.items) || body.items.length < 1 || body.items.length > 20) {
     return c.json({ error: "items_required" }, 400);
@@ -104,6 +116,10 @@ foodLogs.post("/", async (c) => {
       carbs_g: carbs,
       fat_g: fat,
       source,
+      // stamped on every row of the save, the same way logged_at is: the
+      // timeline folds rows sharing an instant into one meal, and that meal
+      // has one photo
+      photo_key: photoKey,
       confidence,
       edited: item.edited === true ? 1 : 0,
     });

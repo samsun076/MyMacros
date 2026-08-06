@@ -102,8 +102,15 @@ export type AnalyzedItem = {
   confidence: number;
 };
 
-/** POST /api/analyze/text response. */
-export type AnalyzeResponse = { items: AnalyzedItem[] };
+/** POST /api/analyze/text and /api/analyze/photo response — one contract for
+ *  every input mode, so the confirm sheet, the save route and the toast never
+ *  learn which one produced the items (#13/#14).
+ *
+ *  `photo_key` is set only by the photo path. The Worker writes R2 *before*
+ *  calling Claude, so the key comes back even when the read finds nothing —
+ *  that ordering is what makes #16's "never lose the photo" structural rather
+ *  than something an error path has to remember. */
+export type AnalyzeResponse = { items: AnalyzedItem[]; photo_key?: string };
 
 /** One item of a save from the confirm sheet (#10). */
 export type FoodLogItemInput = {
@@ -126,8 +133,10 @@ export type FoodLogCreate = {
   /** Device IANA timezone, mirrored into profiles.timezone (#44). */
   timezone?: string;
   meal_slot: MealSlot;
-  /** photo/barcode arrive with M3. */
-  source: "text" | "favorite";
+  source: FoodSource;
+  /** R2 object key from POST /api/analyze/photo, stamped on every row of the
+   *  save so the timeline can show the meal's own photo. */
+  photo_key?: string;
   /** When the save is a one-tap re-log (#12): bumps that favorite's
    *  use_count so most-used sorting works. */
   favorite_id?: string;

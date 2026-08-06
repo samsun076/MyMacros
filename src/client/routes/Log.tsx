@@ -1,54 +1,94 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import type {
   AnalyzeResponse,
   AnalyzedItem,
   Favorite,
   FavoritesResponse,
+  FoodSource,
   MealSlot,
   RecentMeal,
   RecentsResponse,
 } from "../../shared/api";
+import { CameraStage } from "../components/CameraStage";
+import { LogModes, type LogMode } from "../components/LogModes";
 import { api, useApi } from "../lib/api";
 import { deviceTimezone, localDay, mealSlotFor } from "../lib/day";
 import { fmtInt } from "../lib/format";
 
-/** The M2 log flow: text quick-add → editable confirm sheet → saved (#9/#10).
+/** The log flow: capture → editable confirm sheet → saved.
+ *
  *  Chrome (top bar, modes row) and the sheet are ported from
- *  sketches/e-log-flow.html; the sketch designs only the photo stage, so the
- *  text-entry block follows the system idiom rather than frozen markup.
- *  PHOTO and BARCODE light up in M3 (#13/#14). */
+ *  sketches/e-log-flow.html. M2 built the sheet, the save route and the toast
+ *  input-agnostic on purpose (#10), so M3's photo path lights up the mode row
+ *  in place rather than growing a second flow: both readers return the same
+ *  `AnalyzeResponse` and hand it to the same sheet.
+ *
+ *  This screen owns the *photo* — the frozen frame and the request that
+ *  persists and reads it — while CameraStage owns the camera. The stage tears
+ *  its stream down the moment a frame is taken, so the still has to live out
+ *  here to survive that. BARCODE stays parked until #15. */
 
 type EditableItem = AnalyzedItem & { orig: AnalyzedItem };
 
+/** One reading, whatever produced it. `source` and `photoKey` are the only
+ *  things the sheet carries forward about which mode it came from. */
+type Read = {
+  items: EditableItem[];
+  readMs: number;
+  source: FoodSource;
+  photoKey?: string;
+};
+
 const SLOTS: MealSlot[] = ["breakfast", "lunch", "dinner", "snack"];
+
+/** `/log#text` names a mode so tools/shot-matrix.mjs can shoot each stage
+ *  deterministically, the way the frozen sketch addresses its own stages.
+ *  Unlike `#confirm` it injects no demo data, so it isn't DEV-gated.
+ *
+ *  The default is PHOTO — the sketch's flow is "+ → straight to the
+ *  viewfinder", and `#confirm` keeps landing on TEXT so M2's existing shot of
+ *  the sheet is unchanged. */
+function initialMode(): LogMode {
+  const hash = window.location.hash;
+  return hash === "#text" || hash === "#confirm" ? "text" : "photo";
+}
 
 /** DEV-only: `/log#confirm` opens the sheet pre-filled with the sketch's
  *  demo meal, mirroring e-log-flow.html's hash-navigable stages so
  *  tools/shot-matrix.mjs can shoot the sheet without a Claude round trip.
  *  import.meta.env.DEV is a build-time literal — compiled out in prod. */
-function demoRead(): { items: EditableItem[]; readMs: number } | null {
+function demoRead(): Read | null {
   if (!import.meta.env.DEV || window.location.hash !== "#confirm") return null;
   const items: AnalyzedItem[] = [
     { name: "Grilled chicken breast", calories: 280, protein_g: 52, carbs_g: 0, fat_g: 6, confidence: 0.9 },
     { name: "Jasmine rice", calories: 210, protein_g: 4, carbs_g: 45, fat_g: 0, confidence: 0.6 },
     { name: "Steamed broccoli", calories: 55, protein_g: 4, carbs_g: 11, fat_g: 1, confidence: 0.85 },
   ];
-  return { items: items.map((it) => ({ ...it, orig: it })), readMs: 1800 };
+  return { items: items.map((it) => ({ ...it, orig: it })), readMs: 1800, source: "text" };
 }
 
 export function Log() {
   const navigate = useNavigate();
+  const [mode, setMode] = useState<LogMode>(initialMode);
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [read, setRead] = useState<{ items: EditableItem[]; readMs: number } | null>(demoRead);
+  const [read, setRead] = useState<Read | null>(demoRead);
+  const [still, setStill] = useState<string | null>(null);
   const [slot, setSlot] = useState<MealSlot>(() => mealSlotFor());
   const [editing, setEditing] = useState<number | null>(null);
   const openedAt = useRef(Date.now());
   const { data: favData, reload: reloadFavs } = useApi<FavoritesResponse>("/api/favorites");
   const { data: recentData } = useApi<RecentsResponse>("/api/food-logs/recent");
+
+  // An object URL is a document-lifetime handle on the frame's bytes, so the
+  // previous one is released whenever it's replaced and on the way out.
+  useEffect(() => {
+    if (!still) return;
+    return () => URL.revokeObjectURL(still);
+  }, [still]);
 
   // favorites first (most-used), then recents that aren't already starred
   const picks = useMemo(() => {
@@ -118,13 +158,59 @@ export function Log() {
         return;
       }
       setSlot(mealSlotFor());
-      setRead({ items: items.map((it) => ({ ...it, orig: it })), readMs: Date.now() - t0 });
+      setRead({ items: items.map((it) => ({ ...it, orig: it })), readMs: Date.now() - t0, source: "text" });
       setEditing(null);
     } catch {
       setError("The AI reader is unreachable right now — try again in a moment.");
     } finally {
       setBusy(false);
     }
+  }
+
+  /** One POST carries the photo (settled on #13): the Worker writes R2 first,
+   *  then reads the bytes it already holds. The frame is frozen on screen
+   *  before the request goes out, so a slow or failed read never leaves the
+   *  user wondering whether the shutter fired. */
+  async function readPhoto(photo: Blob) {
+    setStill(URL.createObjectURL(photo));
+    setBusy(true);
+    setError(null);
+    const t0 = Date.now();
+    const form = new FormData();
+    form.append("photo", photo, "meal.jpg");
+    try {
+      const { items, photo_key } = await api.postForm<AnalyzeResponse>("/api/analyze/photo", form);
+      if (!items.length) {
+        setError("Couldn't read any food in that photo — retake it, or switch to TEXT.");
+        return;
+      }
+      setSlot(mealSlotFor());
+      setRead({
+        items: items.map((it) => ({ ...it, orig: it })),
+        readMs: Date.now() - t0,
+        source: "photo",
+        photoKey: photo_key,
+      });
+      setEditing(null);
+    } catch {
+      setError("The AI reader is unreachable right now — retake the photo, or switch to TEXT.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function retake() {
+    setStill(null);
+    setError(null);
+  }
+
+  /** Dismissing the sheet discards the read, and with it the frozen frame —
+   *  the finder comes back live rather than stranding the user on a photo
+   *  whose read they just threw away. */
+  function dismiss() {
+    setRead(null);
+    setStill(null);
+    setError(null);
   }
 
   function update(index: number, patch: Partial<AnalyzedItem>) {
@@ -145,7 +231,8 @@ export function Log() {
         logged_on: localDay(),
         timezone: deviceTimezone(),
         meal_slot: slot,
-        source: "text",
+        source: read.source,
+        photo_key: read.photoKey,
         items: read.items.map((it) => ({
           name: it.name,
           kcal: it.calories,
@@ -185,98 +272,104 @@ export function Log() {
   }, [read]);
 
   return (
-    <main className="frame log-screen">
-      <div className="log-top">
-        <button className="cam-x" aria-label="Close" onClick={() => void navigate("/")}>
-          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" strokeWidth="1.8" strokeLinecap="round">
-            <path d="M3 3l10 10M13 3L3 13" />
-          </svg>
-        </button>
-        <span className="eyebrow">
-          <span className="tick" />
-          Log
-        </span>
-        <span className="mono">{clock.meridian}</span>
-      </div>
-
-      <div className="modes" role="tablist" aria-label="Input mode">
-        <span role="tab" aria-selected="false" title="Photo — coming in M3">
-          PHOTO
-        </span>
-        <span role="tab" aria-selected="false" title="Barcode — coming in M3">
-          BARCODE
-        </span>
-        <b role="tab" aria-selected="true">
-          TEXT
-        </b>
-      </div>
-
-      <section className="log-ask">
-        <label className="eyebrow" htmlFor="describe">
-          What did you eat?
-        </label>
-        <textarea
-          id="describe"
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          placeholder="chipotle chicken bowl, no rice, extra beans"
-          autoFocus
-          rows={4}
-        />
-        <p className="log-hint">DESCRIBE IT — AI FILLS THE MACROS</p>
-        <button
-          className="btn btn-accent"
-          disabled={busy || !text.trim()}
-          onClick={() => void readText()}
-        >
-          {busy ? "Reading…" : "Read it"}
-        </button>
-        {error && !read && (
-          <p className="signin-error" role="alert">
-            {error}
-          </p>
-        )}
-      </section>
-
-      {picks.length > 0 && (
-        <section className="picks">
-          <div className="sec-head">
-            <span className="eyebrow">One tap</span>
-            <span className="mono">LOGS AS {mealSlotFor().toUpperCase()}</span>
+    <>
+      {mode === "text" ? (
+        <main className="frame log-screen">
+          <div className="log-top">
+            <button className="cam-x" aria-label="Close" onClick={() => void navigate("/")}>
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" strokeWidth="1.8" strokeLinecap="round">
+                <path d="M3 3l10 10M13 3L3 13" />
+              </svg>
+            </button>
+            <span className="eyebrow">
+              <span className="tick" />
+              Log
+            </span>
+            <span className="mono">{clock.meridian}</span>
           </div>
-          {picks.map((pick) => (
-            <div className="pick" key={pick.favorite?.id ?? pick.meal.name}>
-              <button
-                className={pick.favorite ? "pick-star on" : "pick-star"}
-                aria-pressed={pick.favorite !== null}
-                aria-label={pick.favorite ? `Unstar ${pick.meal.name}` : `Star ${pick.meal.name}`}
-                onClick={() => void toggleStar(pick)}
-              >
-                <svg width="16" height="16" viewBox="0 0 16 16" strokeWidth="1.4" strokeLinejoin="round">
-                  <path d="M8 1.8l1.9 3.9 4.3.6-3.1 3 .7 4.2L8 11.5l-3.8 2 .7-4.2-3.1-3 4.3-.6z" />
-                </svg>
-              </button>
-              <button className="pick-main" disabled={saving} onClick={() => void relog(pick)}>
-                <span className="pick-name">{pick.meal.name}</span>
-                <span className="macros-mini">
-                  {Math.round(pick.meal.protein_g)}P · {Math.round(pick.meal.carbs_g)}C ·{" "}
-                  {Math.round(pick.meal.fat_g)}F
-                </span>
-              </button>
-              <span className="pick-kcal">
-                {fmtInt(pick.meal.kcal)}
-                <small>kcal</small>
-              </span>
-            </div>
-          ))}
-        </section>
+
+          <LogModes mode={mode} onMode={setMode} barcodeReady={false} />
+
+          <section className="log-ask">
+            <label className="eyebrow" htmlFor="describe">
+              What did you eat?
+            </label>
+            <textarea
+              id="describe"
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              placeholder="chipotle chicken bowl, no rice, extra beans"
+              autoFocus
+              rows={4}
+            />
+            <p className="log-hint">DESCRIBE IT — AI FILLS THE MACROS</p>
+            <button
+              className="btn btn-accent"
+              disabled={busy || !text.trim()}
+              onClick={() => void readText()}
+            >
+              {busy ? "Reading…" : "Read it"}
+            </button>
+            {error && !read && (
+              <p className="signin-error" role="alert">
+                {error}
+              </p>
+            )}
+          </section>
+
+          {picks.length > 0 && (
+            <section className="picks">
+              <div className="sec-head">
+                <span className="eyebrow">One tap</span>
+                <span className="mono">LOGS AS {mealSlotFor().toUpperCase()}</span>
+              </div>
+              {picks.map((pick) => (
+                <div className="pick" key={pick.favorite?.id ?? pick.meal.name}>
+                  <button
+                    className={pick.favorite ? "pick-star on" : "pick-star"}
+                    aria-pressed={pick.favorite !== null}
+                    aria-label={pick.favorite ? `Unstar ${pick.meal.name}` : `Star ${pick.meal.name}`}
+                    onClick={() => void toggleStar(pick)}
+                  >
+                    <svg width="16" height="16" viewBox="0 0 16 16" strokeWidth="1.4" strokeLinejoin="round">
+                      <path d="M8 1.8l1.9 3.9 4.3.6-3.1 3 .7 4.2L8 11.5l-3.8 2 .7-4.2-3.1-3 4.3-.6z" />
+                    </svg>
+                  </button>
+                  <button className="pick-main" disabled={saving} onClick={() => void relog(pick)}>
+                    <span className="pick-name">{pick.meal.name}</span>
+                    <span className="macros-mini">
+                      {Math.round(pick.meal.protein_g)}P · {Math.round(pick.meal.carbs_g)}C ·{" "}
+                      {Math.round(pick.meal.fat_g)}F
+                    </span>
+                  </button>
+                  <span className="pick-kcal">
+                    {fmtInt(pick.meal.kcal)}
+                    <small>kcal</small>
+                  </span>
+                </div>
+              ))}
+            </section>
+          )}
+        </main>
+      ) : (
+        <CameraStage
+          mode={mode}
+          onMode={setMode}
+          onClose={() => void navigate("/")}
+          clock={clock.meridian}
+          still={still}
+          busy={busy}
+          error={read ? null : error}
+          onCapture={(photo) => void readPhoto(photo)}
+          onRetake={retake}
+        />
       )}
 
       {read && (
         <div
-          className="sheet-wrap"
+          className={still ? "sheet-wrap over-photo" : "sheet-wrap"}
           onClick={(e) => {
-            if (e.target === e.currentTarget) setRead(null);
+            if (e.target === e.currentTarget) dismiss();
           }}
         >
           <div className="sheet" role="dialog" aria-label="Confirm what you ate">
@@ -330,7 +423,7 @@ export function Log() {
           </div>
         </div>
       )}
-    </main>
+    </>
   );
 }
 

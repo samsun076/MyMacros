@@ -14,6 +14,7 @@ forks a component, with the sole exception of the motif slots below.
 | `--page-surface` | Full `background` value for the app frame — gradient wash in Night Athletic, a flat color in the light packs |
 | `--bg-top` / `--bg` / `--bg-bottom` | Wash stops; `--bg-top` is also the `theme-color` meta for the top |
 | `--surface` / `--surface-raised` | Cards; raised = elevated gradient stop |
+| `--viewfinder-surface` | Full `background` for the camera stage (#13) — darker than `--page-surface` so a live preview reads as the lit thing on screen. Same job as `--page-surface`: a flat theme swaps in one color. The camera is **not** a motif slot; it re-skins through this one token with no per-theme code |
 | `--chrome` | Bottom-bar surface. iOS Safari blends its own chrome with it, so it extends through the safe area with **zero seam**, is **never accent-tinted**, and must be applied **fully opaque** — Safari won't tint from translucent or backdrop-filtered edges (field-tested on device vs Field Notes) |
 | `--track` | Empty meter/bar track |
 | `--line` / `--line-soft` | Hairlines |

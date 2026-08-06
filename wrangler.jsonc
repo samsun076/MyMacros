@@ -55,6 +55,22 @@
       "migrations_dir": "migrations"
     }
   ],
+  "r2_buckets": [
+    {
+      // Meal photos (#13). Named PHOTOS to match the DB / ASSETS style rather
+      // than wrangler's suggested `mymacros_photos`.
+      //
+      // Every object is written under a `<userId>/` prefix, which is what
+      // authorizes GET /api/photos/:owner/:name without a database round trip
+      // — the confirm sheet shows the photo before any food_logs row exists,
+      // so ownership can't be proven from a row.
+      //
+      // Local dev gets a miniflare-backed bucket under .wrangler/state; no
+      // network calls and nothing to create.
+      "binding": "PHOTOS",
+      "bucket_name": "mymacros-photos"
+    }
+  ],
   "vars": {
     // Public, non-secret config — these are the PRODUCTION values. Local dev
     // overrides them from .dev.vars, which takes precedence over this block,

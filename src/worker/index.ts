@@ -7,6 +7,7 @@ import day from "./routes/day";
 import favorites from "./routes/favorites";
 import foodLogs from "./routes/food-logs";
 import me from "./routes/me";
+import photos from "./routes/photos";
 import type { AppEnv } from "./types";
 
 const app = new Hono<AppEnv>();
@@ -55,6 +56,7 @@ secure.route("/day", day);
 secure.route("/analyze", analyze);
 secure.route("/food-logs", foodLogs);
 secure.route("/favorites", favorites);
+secure.route("/photos", photos);
 
 app.route("/api", open);
 app.route("/api", secure);

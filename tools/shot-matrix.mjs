@@ -20,6 +20,16 @@
 // passes here. The dashed line on the sheet marks that device's fold
 // (logical viewport height). Zero npm deps: Node ≥22 (native WebSocket) + Chrome.
 //
+// The camera stage (#13) needs a camera, and headless Chrome has none — it
+// falls back to the "no viewfinder" state, which is a real screen but not the
+// primary one. --camera gives Chrome a synthetic video source and auto-grants
+// the permission, so the live viewfinder is shootable too:
+//   node tools/shot-matrix.mjs --camera --settle 900 --cookie ... http://localhost:5173/log
+//
+// --settle <ms> waits that long after fonts and two frames, for anything on
+// its own clock that settle() cannot see — a camera stream coming up, a
+// screen's own fetch landing.
+//
 // Limits: Chrome reports env(safe-area-inset-*) as 0 and can't reproduce iOS
 // Safari's chrome tinting — verify those in the Xcode Simulator (tier 2 in #31).
 
@@ -39,8 +49,16 @@ const argv = process.argv.slice(2);
 let widths = Object.keys(DEVICES).map(Number);
 const files = [];
 const cookies = [];
+let camera = false;
+// Extra wait after fonts+frames, for anything that settles on its own clock:
+// a camera stream coming up, a fetch the screen fires itself. settle() can't
+// see either — it waits for document.fonts.ready and two frames, both of
+// which happen long before.
+let settleMs = 0;
 for (let i = 0; i < argv.length; i++) {
   if (argv[i] === "--widths") widths = argv[++i].split(",").map(Number);
+  else if (argv[i] === "--camera") camera = true;
+  else if (argv[i] === "--settle") settleMs = Number(argv[++i]);
   else if (argv[i] === "--cookie") {
     const raw = argv[++i];
     const eq = raw.indexOf("=");
@@ -67,6 +85,7 @@ async function fullPageShot(cdp, sessionId, width) {
     );
   await setMetrics(width, DEVICES[width] ?? 844);
   await settle(cdp, sessionId);
+  if (settleMs) await new Promise((r) => setTimeout(r, settleMs));
   const { result } = await cdp.send(
     "Runtime.evaluate",
     { expression: "document.documentElement.scrollHeight", returnByValue: true },
@@ -123,7 +142,12 @@ function deadline(promise, what) {
 // ── main ─────────────────────────────────────────────
 await mkdir(OUT_DIR, { recursive: true });
 const profileDir = await mkdtemp(join(tmpdir(), "shot-matrix-"));
-const { proc, wsUrl } = await launchChrome(profileDir);
+const { proc, wsUrl } = await launchChrome(
+  profileDir,
+  // a rolling synthetic pattern as the camera, and the permission granted
+  // without a prompt — headless Chrome has no real device to offer
+  camera ? ["--use-fake-device-for-media-stream", "--use-fake-ui-for-media-stream"] : [],
+);
 const cdp = await connect(wsUrl);
 
 try {
