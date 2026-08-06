@@ -1,12 +1,13 @@
 # Next steps — session playbook
 
-State as of 2026-08-04 (night): plan locked (PLAN.md), **M0, M1 and M2 done**, the app
-live at https://fuel.debrief.run with the core loop working end to end — text quick-add →
-Sonnet 5 structured output → editable confirm sheet → Today screen, plus favorites/recents
-one-tap re-log. Session D closed #9–#12 and #48, landed the motif registry (#43's shape)
-and migration 0002, and retired #45. **Next up: Session E builds M3, photo & barcode
-(#13–#16).** This file is the runway: what to run next, on which model, with paste-ready
-starter prompts.
+State as of 2026-08-06: plan locked (PLAN.md), **M0–M3 done**, the app live at
+https://fuel.debrief.run. All three input modes log a meal end to end — photograph it,
+scan its barcode, or describe it — each feeding one `AnalyzeResponse` into one editable
+confirm sheet, one save route and one toast. Session E closed #13–#16 and settled the
+last two M3 decisions with Dave. **Next up: Session F builds M4, the budget engine
+(#47 first, then #17–#21)** — where the daily target starts breathing with the running.
+This file is the runway: what to run next, on which model, with paste-ready starter
+prompts.
 
 ## Model guidance (Claude Code sessions)
 
@@ -435,147 +436,207 @@ Ran before Session E to clear the two open defects and settle M3's decisions.
 - **CLAUDE.md gotchas added** — production's session cookie is `__Secure-`-prefixed, and
   design QA structurally cannot see loading states.
 
-## Session E — build M3, photo & barcode (Opus 5 @ xhigh, Dave reachable for decisions)
+## Session E — build M3, photo & barcode — ✅ done 2026-08-06
 
-Issues **#13–#16**. **Decisions 1–3 are settled and recorded as comments on #13 and #14** —
-read them before writing code. #15 and #16 are still open.
+**Landed:** #13, #14, #15, #16 all closed by commit. M3 is complete and live. The Log
+screen's three modes all work: PHOTO (live viewfinder → Sonnet 5 vision), BARCODE
+(scan → OpenFoodFacts), TEXT (M2's quick-add), each feeding the same `AnalyzeResponse`
+into the same confirm sheet, save route and toast. `npm run check`, `verify:viewport`
+(now 8 routes × 3 widths, with a live camera) and `verify:routing` against production
+all green; deploy confirmed live by matching production's asset hash against a local
+build of HEAD.
 
-### 0. Prerequisites — ✅ none left
+Decisions 4 and 5 were settled with Dave mid-session and are **recorded as comments on
+#15 and #16** — that's the record, this is the pointer.
 
-**R2 is enabled and `mymacros-photos` exists** (created 2026-08-06). Enabling R2 is a
-dashboard action no API token can perform (`[code: 10042]`); creating the bucket is a
-plain wrangler call. The **binding is deliberately not in `wrangler.jsonc` yet** — it
-lands with #13's code, per the rule that a binding arrives with the thing that reads it.
-Wrangler will suggest `mymacros_photos`; prefer `PHOTOS` to match the existing `DB` and
-`ASSETS` style. Re-run `npm run cf-typegen` after adding it (with `.dev.vars` present —
-see CLAUDE.md) and `npm run verify:routing` after, since `wrangler.jsonc` changed.
+### What E settled or discovered, worth carrying forward
 
-Cost, checked rather than recalled: 10 GB-month storage / 1M writes / 10M reads free,
-egress always free. At the measured 214 KB per photo and ~5 photos a day that is ~390 MB
-a year against a 10 GB ceiling — it crosses the free tier around year 25. The real M3
-cost is the vision calls, not the storage.
+- **Three input modes, one contract.** `AnalyzeResponse` grew `photo_key`, `barcode` and
+  `grams`, and nothing else changed: the sheet, the save route and the toast still don't
+  know which mode produced the items. A fourth reader plugs in the same way.
+- **R2 keys are `<userId>/<uuid>.jpg`, and the prefix IS the authorization.** Not a
+  convention — it's the check, for both `GET /api/photos` and a `photo_key` arriving on a
+  save. A row can't be consulted instead: the sheet shows the photo before any row
+  exists. Verified: a foreign prefix 404s on read and is refused on save.
+- **The Worker writes R2 before it calls Claude**, so `photo_key` comes back on the
+  *error* bodies too. That single ordering is what makes #16's "never lose the photo"
+  structural. Proven by failing the analyze call at the network layer and driving the
+  recovery to a saved row — the timeline thumbnail was the photo.
+- **A wall-clock deadline must be an `AbortSignal`, not the SDK's `timeout`.** The SDK
+  *retries* timeouts, so a 20s `timeout` with `maxRetries: 2` is a 60s worst case. An
+  abort is terminal. This is #49's finding turned into code: an attempt cap was never the
+  lever, since the slowest measured call was a single un-retried attempt.
+- **OpenFoodFacts, measured not read:** an unknown product is **HTTP 200 with
+  `status: 0`** (checking the status code reports every unknown barcode as a success),
+  and **`serving_size` is null even for Nutella** — the reliable fields are the per-100g
+  nutriments, which is why the sheet grew a grams field instead of a serving picker.
+- **The barcode polyfill fetches its wasm from jsdelivr by default.** Aliased in
+  `vite.config.ts` and emitted as one of our own hashed assets instead. Verified the
+  hard way — blocking `*jsdelivr*`, `*unpkg*` and `*cdn.*` at the network layer, and
+  confirming a scan still decodes. Worth re-checking after any `@sec-ant/*` upgrade.
+- **The design tooling can see more than it could.** `shot-matrix` gained `--camera`
+  (synthetic device, permission auto-granted) and `--settle <ms>`; without them the
+  primary state of the camera screen is literally unshootable, because headless Chrome
+  has no camera and `getUserMedia` resolves long after `document.fonts.ready`.
+  `verify:viewport` gained `--camera` and covers `/log#barcode` and `/log#text`.
+- **`/log#photo`, `/log#barcode`, `/log#text`** address the modes for shot-matrix, the
+  way the frozen sketch addresses its own stages. Unlike `#confirm` they inject no demo
+  data, so they aren't DEV-gated.
+- **A bug only driving the real UI could find:** the shutter armed when `getUserMedia`
+  resolved, but a `<video>` has no frame until `loadeddata` — tapping immediately
+  captured a blank. It now arms on the first decoded frame. Reading the code would not
+  have found this; clicking the real shutter did.
 
-### Decisions
+### ⚠️ What Session E did NOT verify
 
-1. **Camera mechanism (#13) — ✅ settled.** `getUserMedia` live viewfinder rendering the
-   frozen sketch's camera stage, with `<input capture>` as the fallback when the API is
-   absent or the permission is denied. **Verified on device**, not from documentation: a
-   temporary probe on the standalone PWA returned `gUM present true`, `3024x4032 @30fps`,
-   `facing environment`. The stream is the full 12MP sensor — so barcode mode should
-   request a smaller one or downscale before decoding; do not feed full-sensor frames to
-   a WASM decoder.
-2. **Upload path (#13) — ✅ settled.** One authenticated POST carries the photo; the
-   Worker writes R2 **first** (so #16's "never lose the photo" is structural), then calls
-   Claude with the bytes already in hand. No presigned URLs — a downscaled frame measured
-   **214 KB**, so there is nothing for presigned uploads to save. Client downscales to
-   1568 long edge at q0.8.
-3. **Vision request shape (#14) — ✅ settled.** Same `ITEM_SCHEMA`, `normalize()` and
-   `AnalyzeResponse` as the text path; base64 image block (R2 is private, so the URL
-   source is unavailable to us); optional text note alongside the photo; one prompt for
-   both label reads and meal estimation, with `confidence` carrying the distinction.
-   **Note:** Sonnet 5 takes 2576px on the long edge, not the 1568 this file previously
-   assumed — 1568 is a deliberate cost choice, and raising it for label mode is the lever
-   if label reads come back lossy.
-4. **Barcode scanning (#15) — ⛔ still open.** Confirmed: iOS Safari has **no**
-   `BarcodeDetector` and no announced timeline, so the "fallback lib" in the issue body
-   is the whole implementation, not a fallback. Since decision 1 gives us a live stream,
-   the real choice narrows to a WASM/JS decoder in the bundle (weigh size against the
-   no-new-dependencies rule) vs shipping a frame to the Worker to decode. Then the
-   OpenFoodFacts lookup shape and the not-found path.
-5. **Failure/low-confidence UX (#16) — ⛔ still open.** The CHECK badge convention exists
-   on the sheet; #16 decides what photo-analysis failure looks like (retake? fall back to
-   text?) — the sketch designs none of it. **#49's finding lands here:** fail-fast should
-   be a wall-clock budget, not `maxRetries: 0`.
+Everything below is honest gap, not oversight. Nothing here blocks M4.
+
+- **Meal (plate) estimation quality.** The label half is verified exactly — a rendered
+  nutrition panel came back 240 kcal · 15P · 22C · 11F against known ground truth, at
+  confidence 0.95 in 4.3s. Judging a portion from a real plate needs a real photo off a
+  real sensor. **The one-line check: photograph a meal on the phone and see whether the
+  numbers and the confidence are sane.** If label reads ever come back lossy, the lever
+  is raising the long edge for that mode only (Sonnet 5 takes 2576px; we send 1568 as a
+  deliberate cost choice) — no schema or contract change needed.
+- **Real capture on device** — the iOS permission prompt, standalone PWA behaviour, and
+  whether the viewfinder fills the frame the way the synthetic stream does.
+- **Scanning a real barcode on a real package** — curvature, gloss and focus are exactly
+  what a generated flat EAN-13 doesn't test.
+- **The analyze deadline firing.** Never hit in practice; the instrumentation logs
+  `outcome: "deadline"` if it ever does.
+
+## Session F — build M4, the budget engine (Opus 5 @ xhigh)
+
+Issues **#17–#21**, plus **#47** first. This is where the app stops being a food diary
+and starts being the thing PLAN.md describes: a budget that breathes with the running.
 
 ### Order of work (dependencies, not preference)
 
-1. **#13** — camera capture + R2 upload (binding + bucket + `photo_key` written on the
-   rows; thumbnails on the timeline can read through a Worker route that streams from R2).
-2. **#14** — photo → Sonnet 5 vision → the same `AnalyzeResponse` contract → the same
-   confirm sheet. Load the **claude-api skill** before touching the vision call: image
-   block shapes, high-res token costs, and the structured-output bounds gotcha all live
-   there. The `edited`/`confidence` semantics from #10 carry over unchanged.
-3. **#15** — barcode → OpenFoodFacts. Exact-match products get `confidence: null`
-   (the schema comment already says null = not AI-estimated); source `barcode`.
-4. **#16** — failure UX across all three input modes, threaded through the existing
-   sheet rather than new screens.
+1. **#47 — test infrastructure, before the budget math.** Filed by Dave after C1 and
+   explicitly scheduled "before M4's budget math lands". M3 is the argument for it: the
+   money-costing routes and the file upload now exist and were verified by hand-rolled
+   CDP drivers in a scratch directory. Those drivers proved real bugs (the `loadeddata`
+   race, the CDN default) and then evaporated. TDEE arithmetic is the first thing in this
+   codebase where a wrong number is silently wrong rather than visibly broken — it earns
+   real tests, and M3's routes are the first customers.
+2. **#17 — onboarding: TDEE (Mifflin-St Jeor) + deficit + macro split.** `profiles`
+   already carries every input (`sex`, `birth_date`, `height_cm`, `activity_level`,
+   `goal`, `deficit_kcal`, the three `*_pct` columns). M2 shipped `target_kcal` as a
+   static column in migration 0002 — M4 changes how it is *calculated*, not where it
+   lives.
+3. **#18 — weight log: manual entry + 7-day smoothed trend.** `weights` exists with a
+   unique index on `(user_id, measured_on)`, which is what makes the smoothing
+   well-defined and lets a sync re-POST the same day forever.
+4. **#19 — sync endpoint + the debrief `runs.db` push script.** `runs` exists with a
+   unique `(user_id, external_id)`; NULLs stay distinct in SQLite so manual runs don't
+   collide while synced ones stay idempotent.
+5. **#20 — Garmin Connect weight sync** via `python-garminconnect` in the same local
+   pipeline. Needs Dave's credentials — pair on it.
+6. **#21 — eat-back: a configurable share of run calories adjusts today's budget.**
 
-The Log screen's modes row (PHOTO · BARCODE · TEXT) already renders with TEXT active and
-the other two parked — M3 lights them up in place; the flow chrome, confirm sheet, save
-route, and toast all exist and are shared (#10 built them input-agnostic on purpose).
+### The two things M4 turns on that are already built waiting
 
-### The design gate (unchanged, plus D's additions)
+- **`DayResponse.run` is `null` by construction and typed that way on purpose** (#48).
+  #19/#21 fill it; the Today screen's arithmetic is already written against
+  `base + earned`.
+- **The budget meter's `.earned` layer already renders**, at zero width with its boundary
+  tick suppressed, and the scale already shows `0 … BASE 1,810 ▸`. M4 restores the
+  sketch's three-label scale **by supplying data, not by re-laying-out the hero.** If you
+  find yourself editing `BudgetMeter`'s layout, stop and check whether the data is what's
+  missing.
 
-Shot-matrix at 375/390/428 and **look at the PNGs** — the signed-in recipe and the
-copy-aside gotchas are in the C2/D sections above. The camera stage ports from
-`sketches/e-log-flow.html#camera` (frozen ground truth — brackets, shutter, mode row).
-Headless Chrome has no camera: shoot what's shootable, and note what needs the device.
+### Worth deciding early
+
+- **Today fetches `/api/me` alongside `/api/day/:date`** because the day bundle carries
+  `target_kcal` but not the macro split or focus macro. D flagged that if M4's day
+  payload grows anyway — and #19/#21 grow it — that's the moment to fold the profile
+  fields the screen needs into it and drop to one request.
+- **`#37` (deployment-neutral defaults) is M6, but M4 is where the schema stops being
+  neutral** — TDEE assumes imperial-vs-metric handling, and `profiles.timezone` starts
+  being read server-side with no client present. Worth a glance at #37 before choosing
+  defaults, so M6 has less to undo.
 
 ### Guardrails that exist and shouldn't be broken
 
-- **`npm run verify:routing -- https://fuel.debrief.run`** after any change to
-  `wrangler.jsonc` (the R2 binding lands there!) and after the final push.
 - **Every new API route under the `secure` sub-app**; `c.var.user`, never a userId from
-  the request. Photo serving included — an R2 key is per-user data.
-- **Migrations append-only**; `npm run check` green before every commit; never hardcode
-  a color/font/radius (add a token); motif slots only through the registry.
-- **`npm run cf-typegen` needs `.dev.vars` present** (see CLAUDE.md) — you'll run it for
-  the R2 binding; don't let it silently drop the secret types.
+  the request. The sync endpoint (#19) is the exception worth thinking hard about — it's
+  called by a machine, not a browser, so it needs its own auth story rather than a
+  session. Decide that with Dave before writing it.
+- **`npm run verify:routing -- https://fuel.debrief.run`** after any `wrangler.jsonc`
+  change and after the final push. **`npm run verify:viewport -- --camera --cookie …`**
+  for layout. `npm run check` green before every commit.
+- **Migrations are append-only.** M4 will add columns; new file every time.
+- Never hardcode a color/font/radius — add a token. Motif slots only through the registry.
 
 ### Deliberate — don't let a session "fix" these
 
-Everything in D's list above, plus: `thinking: disabled` + `effort: low` on the
-quick-add route (latency is the product promise) · per-item rows with shared `logged_at`
-instead of a meal table · the two-fetch Today screen · `source` values `photo`/`barcode`
-already in the schema CHECK — use them, don't migrate.
+Everything in D's and E's lists above, plus:
 
-### Carried over, not blocking M3
+- **`thinking: disabled` + `effort: low` on both analyze routes.** Latency is the product
+  promise; the label read measured 4.3s and the text path 4.6s.
+- **1568px at q0.8 on upload**, not Sonnet 5's 2576px ceiling — a deliberate cost choice
+  (~3× the image tokens at the limit), revisited per-mode only if label reads go lossy.
+- **The camera stage's fallback has no button** — the shutter itself hands off to the
+  system camera, so there is one control where the user already expects it.
+- **Barcode mode has no shutter.** Scanning is continuous; the ring is a status, and it
+  keeps the deck's geometry so switching modes doesn't jump.
+- **A row typed from scratch is not `edited`.** That flag answers "how good are the AI's
+  estimates?", and a manual entry had no estimate to correct.
+- **The scan loop pauses on a failed lookup.** Without it the next frame re-reads the
+  same code and the failure repeats forever.
 
-**#38/#39** standalone chrome + theme-color → M5's device pass · **#30/#35/#46/#36/#32**
-→ M5 · **#47** test infra → before M4's budget math (adjacent: M3 adds the first
-money-costing route with a file upload — if test infra lands early, these routes are the
-first customers) · **#33** claim flow → M6. · **#49** prod analyze latency
-(instrumentation — good background-subagent work; its fail-fast question belongs with
-#16) · **#51** standalone letterbox (fix as soon as triaged — it degrades daily use;
-overlaps #38/#39's device territory) · **#52** swipe-to-delete (M5, pull-forward
-candidate; brings the first DELETE route and a --danger token).
+### Carried over, not blocking M4
 
-### Starter prompt (paste verbatim — decisions 1–3 are settled, 4–5 open by design)
+**#49** prod analyze latency — instrumentation is live on both routes and now logs a
+`deadline` outcome; still never reproduced · **#38/#39** standalone chrome + theme-color
+→ M5's device pass · **#51** was fixed and closed in the pre-E session · **#30/#35/#46/
+#36/#32/#52/#53/#54** → M5 (note **#35** and the barcode wasm are the same class of
+problem, and the wasm half is now solved — the pattern in `vite.config.ts` is reusable
+for the fonts) · **#33/#37/#55** → M6.
+
+### Starter prompt (paste verbatim)
 
 ```
 Working on MyMacros (~/Projects/MyMacros, github.com/samsun076/MyMacros).
-M0–M2 are done and live at https://fuel.debrief.run — the core loop works
-end to end. This is Session E: build M3, photo & barcode, issues #13–#16.
+M0–M3 are done and live at https://fuel.debrief.run — photo, barcode and
+text all log a meal end to end. This is Session F: build M4, the budget
+engine, issues #17–#21, with #47 first.
 
-Read CLAUDE.md, PLAN.md (Theming + Build rules), design/TOKENS.md, and the
-Session E section of NEXT-STEPS.md, then read the decision comments on #13
-and #14 (use GH_PAGER=cat — gh issue view prints nothing without it). Those
-carry the settled camera mechanism, upload path and vision request shape,
-verified on a real device. #15 (barcode) and #16 (failure UX) are still open
-ON PURPOSE — don't stop for them: they come last in the dependency order, so
-build #13 and #14 first and settle them with me when you get there.
+Read CLAUDE.md, PLAN.md (Locked decisions + Build rules), design/TOKENS.md,
+and the Session F section of NEXT-STEPS.md. Use GH_PAGER=cat for every gh
+read — it prints nothing otherwise.
 
-Load the claude-api skill before the vision call (#14). Load the
-frontend-design skill before screens. The camera stage ports literally
-from sketches/e-log-flow.html#camera; the confirm sheet, save route, and
-toast are shared from M2 — photo and barcode feed the same AnalyzeResponse
-contract and the same sheet. R2 bucket mymacros-photos exists; write the
-binding in wrangler.jsonc with #13 and re-run npm run cf-typegen (with
-.dev.vars present).
+Start with #47, test infrastructure. It's scheduled before the budget math
+on purpose: TDEE arithmetic is the first thing in this codebase where a
+wrong number is silently wrong rather than visibly broken, and M3's analyze,
+photo, barcode and food-log routes are its first customers. Pick the
+lightest thing that runs in CI and against the Worker; don't build a
+framework.
 
-Verify every screen at 375/390/428 with the signed-in shot-matrix recipe
-in NEXT-STEPS.md and LOOK at the PNGs, and run npm run verify:viewport --
-the camera stage is a new full-bleed surface and that guard is what catches
-horizontal overflow. Remember shot-matrix only ever sees the SETTLED state:
-it waits for fonts and data and forces prefers-reduced-motion, so permission
-prompts, pending-upload and analyzing states are invisible to it. Reproduce
-those with Network.setBlockedURLs rather than assuming they're fine — that
-is how #51 was finally found. Note what only a device can verify (camera,
-real capture). npm run check stays green. Don't break the guardrails or the
-deliberate list in NEXT-STEPS.md's Session E section.
+Then #17 → #18 → #19 → #21 in that order. #20 (Garmin) needs my credentials
+— surface it when you get there rather than blocking on it. Two things are
+already built waiting for M4's data: DayResponse.run is typed null on
+purpose (#48), and the budget meter's earned layer already renders at zero
+width. Fill them with data; if you find yourself re-laying-out BudgetMeter,
+stop and check whether data is what's actually missing.
 
-Commit per issue, "closes #N" only where genuinely finished, push when
-done (push deploys), re-run npm run verify:routing -- https://fuel.debrief.run
-after the final push, and rewrite the Session E section of NEXT-STEPS.md
-as the M4 runway before you stop.
+#19's sync endpoint is called by a machine, not a browser, so it needs its
+own auth story rather than a session — settle that with me before writing
+it, and don't weaken the rule that every other route reads c.var.user.
+
+Verify screens at 375/390/428 with the signed-in shot-matrix recipe and LOOK
+at the PNGs; run npm run verify:viewport -- --camera --cookie <name>=<token>.
+npm run check stays green; migrations are append-only. Commit per issue,
+"closes #N" only where genuinely finished, push when done (push deploys),
+re-run npm run verify:routing -- https://fuel.debrief.run after the final
+push, and rewrite the Session F section of NEXT-STEPS.md as the M5 runway
+before you stop.
 ```
+
+### One device check owed from M3 (5 minutes, any time)
+
+On the phone, at `https://fuel.debrief.run`: photograph a real meal and check the numbers
+and confidence are sane; scan a real package's barcode; confirm the camera permission
+prompt and the standalone viewfinder behave. None of it blocks M4 — but it's the half of
+M3 that headless Chrome structurally cannot reach, and the sooner it's known the cheaper
+any fix is.
