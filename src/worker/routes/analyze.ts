@@ -101,7 +101,7 @@ analyze.post("/text", async (c) => {
       },
       system: SYSTEM,
       messages: [{ role: "user", content: text }],
-    });
+    }, { signal: AbortSignal.timeout(DEADLINE_MS) });
     run.apiDone();
 
     if (response.stop_reason === "max_tokens" || response.stop_reason === "refusal") {
@@ -119,9 +119,10 @@ analyze.post("/text", async (c) => {
     // surfaced, never stubbed: a missing/invalid key or an API outage should
     // be visible to the person logging, not silently zero-calorie
     run.apiDone();
+    const timedOut = err instanceof Error && err.name === "TimeoutError";
     console.error("analyze/text api error", err);
-    run.done("api_error");
-    return c.json({ error: "analyze_unavailable" }, 502);
+    run.done(timedOut ? "deadline" : "api_error");
+    return c.json({ error: timedOut ? "analyze_timeout" : "analyze_unavailable" }, 502);
   }
 
   let parsed: { items?: unknown };
@@ -217,7 +218,7 @@ analyze.post("/photo", async (c) => {
           ],
         },
       ],
-    });
+    }, { signal: AbortSignal.timeout(DEADLINE_MS) });
     run.apiDone();
 
     if (response.stop_reason === "max_tokens" || response.stop_reason === "refusal") {
@@ -233,11 +234,12 @@ analyze.post("/photo", async (c) => {
     raw = block.text;
   } catch (err) {
     run.apiDone();
+    const timedOut = err instanceof Error && err.name === "TimeoutError";
     console.error("analyze/photo api error", err);
-    run.done("api_error", { photo_bytes: photo.size });
+    run.done(timedOut ? "deadline" : "api_error", { photo_bytes: photo.size });
     // 502 with the key attached: the read failed, the photo did not. The
-    // client keeps the key so the save path stays open (#16).
-    return c.json({ error: "analyze_unavailable", photo_key: key }, 502);
+    // client keeps the key so the manual save path stays open (#16).
+    return c.json({ error: timedOut ? "analyze_timeout" : "analyze_unavailable", photo_key: key }, 502);
   }
 
   let parsed: { items?: unknown };
@@ -265,6 +267,21 @@ function toBase64(bytes: Uint8Array) {
   }
   return btoa(binary);
 }
+
+/** The wall-clock budget for a read (#16).
+ *
+ *  #49 is the reason this is a deadline and not an attempt cap. 33s was never
+ *  reproduced across 11 production and 17 control samples, and there were zero
+ *  retries — the slowest call of that whole exercise (11.3s) was a *single
+ *  un-retried attempt*, which `maxRetries: 0` would not have prevented.
+ *
+ *  It is an AbortSignal rather than the SDK's `timeout` option deliberately: a
+ *  timed-out request is retried, so a 20s `timeout` with maxRetries 2 is a 60s
+ *  worst case. An abort is terminal, which is what makes this an actual
+ *  ceiling. Sized off the measured 11.3s with headroom, not off the 33s
+ *  outlier — past this point the user has given up, and #16's manual path is a
+ *  better answer than a longer wait. */
+const DEADLINE_MS = 20_000;
 
 /** An Anthropic client with #49's timing instrumentation wired in, plus the
  *  two log lines that read it.

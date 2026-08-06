@@ -46,7 +46,26 @@ type Read = {
   grams?: number;
   base?: AnalyzedItem[];
   baseGrams?: number;
+  /** #16: the read failed or found nothing, so the sheet opened on a blank row
+   *  for the user to fill in. The photo is already stored — `photoKey` is set
+   *  even here, which is the whole point of writing R2 before calling Claude. */
+  manual?: string;
 };
+
+/** The sheet the failure path opens (#16). One empty row, the photo attached,
+ *  and the save route unchanged — the recovery is the surface the happy path
+ *  already uses, not a new screen. */
+function manualRead(why: string, photoKey: string | undefined, ms: number): Read {
+  const blank: AnalyzedItem = {
+    name: "",
+    calories: 0,
+    protein_g: 0,
+    carbs_g: 0,
+    fat_g: 0,
+    confidence: null,
+  };
+  return { items: [{ ...blank, orig: blank }], readMs: ms, source: "photo", photoKey, manual: why };
+}
 
 const SLOTS: MealSlot[] = ["breakfast", "lunch", "dinner", "snack"];
 
@@ -176,8 +195,14 @@ export function Log() {
       setSlot(mealSlotFor());
       setRead({ items: items.map((it) => ({ ...it, orig: it })), readMs: Date.now() - t0, source: "text" });
       setEditing(null);
-    } catch {
-      setError("The AI reader is unreachable right now — try again in a moment.");
+    } catch (err) {
+      // Text needs no manual-entry rescue: what the user typed is still in the
+      // box, so retrying is one tap and nothing was lost (#16).
+      setError(
+        (err instanceof ApiError ? err.code : "") === "analyze_timeout"
+          ? "That took too long to read — try again, or shorten the description."
+          : "The AI reader is unreachable right now — try again in a moment.",
+      );
     } finally {
       setBusy(false);
     }
@@ -196,11 +221,14 @@ export function Log() {
     form.append("photo", photo, "meal.jpg");
     try {
       const { items, photo_key } = await api.postForm<AnalyzeResponse>("/api/analyze/photo", form);
+      setSlot(mealSlotFor());
       if (!items.length) {
-        setError("Couldn't read any food in that photo — retake it, or switch to TEXT.");
+        // #16: no food found is a failure of the read, not of the user. The
+        // photo is stored; open the sheet so it can still be logged.
+        setRead(manualRead("No food found in that photo.", photo_key, Date.now() - t0));
+        setEditing(0);
         return;
       }
-      setSlot(mealSlotFor());
       setRead({
         items: items.map((it) => ({ ...it, orig: it })),
         readMs: Date.now() - t0,
@@ -208,8 +236,25 @@ export function Log() {
         photoKey: photo_key,
       });
       setEditing(null);
-    } catch {
-      setError("The AI reader is unreachable right now — retake the photo, or switch to TEXT.");
+    } catch (err) {
+      // The photo survives an analysis failure by construction — the Worker
+      // writes R2 before it calls Claude, so the key comes back on the error
+      // body too, and the manual save path stays open (#13/#16).
+      const detail = err instanceof ApiError ? (err.detail as { photo_key?: string } | null) : null;
+      const code = err instanceof ApiError ? err.code : "network";
+      setSlot(mealSlotFor());
+      setRead(
+        manualRead(
+          code === "analyze_timeout"
+            ? "The read took too long and was stopped."
+            : code === "network"
+              ? "Couldn't reach the reader."
+              : "The reader couldn't handle that photo.",
+          detail?.photo_key,
+          Date.now() - t0,
+        ),
+      );
+      setEditing(0);
     } finally {
       setBusy(false);
     }
@@ -315,7 +360,10 @@ export function Log() {
     if (!read) return;
     setSaving(true);
     setError(null);
-    const edited = read.items.filter(isEdited);
+    // `edited` answers "how good are the AI's estimates?", so a row the user
+    // typed from scratch is not an edit — there was nothing to correct (#16).
+    const manual = read.manual !== undefined;
+    const edited = manual ? [] : read.items.filter(isEdited);
     try {
       await api.post("/api/food-logs", {
         logged_on: localDay(),
@@ -331,7 +379,7 @@ export function Log() {
           carbs_g: it.carbs_g,
           fat_g: it.fat_g,
           confidence: it.confidence,
-          edited: isEdited(it),
+          edited: !manual && isEdited(it),
         })),
       });
       // the saved toast renders on Today (sketch stage 4): slot, kcal,
@@ -480,9 +528,15 @@ export function Log() {
                   {label(slot)} · {clock.short}
                 </span>
               </button>
-              <span className="mono">READ IN {(read.readMs / 1000).toFixed(1)}S</span>
+              <span className="mono">
+                {read.manual ? "COULDN'T READ IT" : `READ IN ${(read.readMs / 1000).toFixed(1)}S`}
+              </span>
             </div>
-            <p className="sheet-sub">Tap anything to change it before it saves.</p>
+            <p className="sheet-sub">
+              {read.manual
+                ? `${read.manual} Your photo is saved — type what you ate, or close this to retake.`
+                : "Tap anything to change it before it saves."}
+            </p>
 
             {/* Barcode reads land per-100g or per-package, so the portion is
                 the one thing the database can't tell us (OpenFoodFacts leaves
@@ -513,6 +567,7 @@ export function Log() {
               <ItemRow
                 key={i}
                 item={item}
+                manual={read.manual !== undefined}
                 editing={editing === i}
                 onToggle={() => setEditing(editing === i ? null : i)}
                 onChange={(patch) => update(i, patch)}
@@ -528,7 +583,13 @@ export function Log() {
                   {totals.p}P · {totals.c}C · {totals.f}F
                 </span>
               </div>
-              <button className="save" disabled={saving} onClick={() => void save()}>
+              {/* a blank row has nothing to save until it's named — the save
+                  route rejects an empty name, so the button says so first */}
+              <button
+                className="save"
+                disabled={saving || read.items.every((it) => !it.name.trim())}
+                onClick={() => void save()}
+              >
                 {saving ? "Logging…" : `Log ${fmtInt(totals.kcal)} kcal`}
               </button>
               {error && (
@@ -546,11 +607,14 @@ export function Log() {
 
 function ItemRow({
   item,
+  manual,
   editing,
   onToggle,
   onChange,
 }: {
   item: EditableItem;
+  /** #16's blank row — nothing read it, so there is nothing to report about it. */
+  manual: boolean;
   editing: boolean;
   onToggle: () => void;
   onChange: (patch: Partial<AnalyzedItem>) => void;
@@ -558,21 +622,23 @@ function ItemRow({
   // low confidence gets the sketch's CHECK treatment (accent badge + open row)
   const low = item.confidence !== null && item.confidence < 0.75;
   // null confidence means nothing estimated it — a barcode's exact match (#15)
-  const exact = item.confidence === null;
+  const exact = !manual && item.confidence === null;
 
   return (
     <div className={low || editing ? "item check" : "item"}>
       <button className="item-hit" onClick={onToggle} aria-expanded={editing}>
         <span className="name">
-          {item.name}
+          {item.name || (manual ? "Untitled" : "")}
           {low && <span className="badge">CHECK</span>}
         </span>
         <span className="portion">
-          {exact
-            ? "FROM THE BARCODE"
-            : low
-              ? "BEST GUESS — TAP TO ADJUST"
-              : `CONFIDENCE ${Math.round((item.confidence ?? 0) * 100)}%`}
+          {manual
+            ? "TYPE WHAT YOU ATE"
+            : exact
+              ? "FROM THE BARCODE"
+              : low
+                ? "BEST GUESS — TAP TO ADJUST"
+                : `CONFIDENCE ${Math.round((item.confidence ?? 0) * 100)}%`}
         </span>
       </button>
       <span className="kcal">
