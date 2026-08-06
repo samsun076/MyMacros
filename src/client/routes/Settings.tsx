@@ -1,5 +1,4 @@
 import type { Me } from "../../shared/api";
-import { CameraProbe } from "../components/CameraProbe";
 import { PasskeyManager } from "../components/PasskeyManager";
 import { useApi } from "../lib/api";
 import { authClient } from "../lib/auth";
@@ -25,8 +24,6 @@ export function Settings() {
           Couldn't load your profile — check your connection and reopen this screen.
         </p>
       )}
-
-      <CameraProbe />
 
       <PasskeyManager />
 
