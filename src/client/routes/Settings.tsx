@@ -25,8 +25,6 @@ export function Settings() {
         </p>
       )}
 
-      <ViewportReadout />
-
       <PasskeyManager />
 
       <section>
@@ -70,83 +68,6 @@ export function Settings() {
     </>
   );
 }
-
-/** TEMPORARY — #51. Remove with the inline sampler in index.html.
- *
- *  The sampler in index.html records how the layout viewport moves during a
- *  cold standalone launch. Reading it needs a console, a console needs Web
- *  Inspector, and Web Inspector needs a cable that isn't to hand — so the app
- *  prints its own measurement instead. Client-side navigation doesn't reload
- *  the page, so walking here after a launch still finds that launch's data.
- *
- *  The load timings matter as much as the viewport series now: the first
- *  round measured the app's own JS starting at t=2725ms, which is the white
- *  screen, and is the thing actually worth explaining.
- *
- *  Fixed-width columns because this gets read off a phone screenshot. */
-function ViewportReadout() {
-  const vp = (window as unknown as { __vp?: ViewportLog }).__vp;
-  if (!vp) return null;
-
-  const pad = (n: number | string, w: number) => String(n).padStart(w);
-  const lines = [
-    "   ms  inner client scroll visual scale",
-    ...vp.changes.map(
-      (c) =>
-        `${pad(c.t, 5)}${pad(c.innerWidth, 7)}${pad(c.clientWidth, 7)}` +
-        `${pad(c.scrollWidth, 7)}${pad(c.visualWidth, 7)}${pad(c.scale.toFixed(2), 6)}`,
-    ),
-  ];
-
-  // when each thing finished, relative to navigation start — what took the
-  // 2.7s before the app's own code ran
-  const res = performance.getEntriesByType("resource") as PerformanceResourceTiming[];
-  const end = (match: (name: string) => boolean) => {
-    const hit = res.find((r) => match(r.name));
-    return hit ? `${Math.round(hit.responseEnd)}ms` : "—";
-  };
-  const nav = performance.getEntriesByType("navigation")[0] as PerformanceNavigationTiming | undefined;
-
-  const timings = [
-    `html         ${nav ? `${Math.round(nav.responseEnd)}ms` : "—"}`,
-    `google fonts ${end((n) => n.includes("fonts.googleapis.com"))}`,
-    `font files   ${end((n) => n.includes("fonts.gstatic.com"))}`,
-    `app css      ${end((n) => n.includes("/assets/") && n.endsWith(".css"))}`,
-    `app js       ${end((n) => n.includes("/assets/") && n.endsWith(".js"))}`,
-    `dom ready    ${nav ? `${Math.round(nav.domContentLoadedEventEnd)}ms` : "—"}`,
-  ];
-
-  return (
-    <section>
-      <div className="sec-head">
-        <span className="eyebrow">Viewport</span>
-        <span className="mono">#51 · temporary</span>
-      </div>
-      <pre className="vp-readout">
-        {`${vp.screen} dpr${vp.dpr} ${vp.displayMode} standalone=${vp.standalone}\n` +
-          `${vp.changes.length} sample(s), first at ${vp.changes[0]?.t ?? "?"}ms\n\n` +
-          lines.join("\n") +
-          `\n\nLOAD (responseEnd from navigation start)\n` +
-          timings.join("\n")}
-      </pre>
-    </section>
-  );
-}
-
-type ViewportLog = {
-  screen: string;
-  dpr: number;
-  standalone: boolean | null;
-  displayMode: string;
-  changes: {
-    t: number;
-    innerWidth: number;
-    clientWidth: number;
-    scrollWidth: number;
-    visualWidth: number;
-    scale: number;
-  }[];
-};
 
 /** "night-athletic" → "Night Athletic". Units stay as stored, which is why
  *  this is a formatter and not text-transform on the whole value. */

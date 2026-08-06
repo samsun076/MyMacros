@@ -181,6 +181,16 @@ doppler secrets download -p mymacros -c prd --format json --no-file \
 - Chrome (headless, shot-matrix) reports `env(safe-area-inset-*)` as 0 and
   can't reproduce Safari's chrome tinting — verify those in the iOS Simulator
   or on device.
+- **Design QA never sees loading states.** `shot-matrix` waits for
+  `document.fonts.ready` plus two frames and the screens' own fetches, and
+  `cdp.mjs` forces `prefers-reduced-motion: reduce` on every page it opens. So
+  every PNG this project has ever produced is of a fully-loaded, animation-free
+  app. #51 lived entirely in the data-pending window — the frame collapsed to
+  its content width until the day's data arrived — and was invisible to the
+  whole design loop for that reason, while being trivially reproducible by
+  blocking `/api/day` and `/api/me` with `Network.setBlockedURLs`. When a bug
+  is reported that screenshots can't reproduce, suspect a state the tooling
+  skips past, not the device.
 - Google OAuth creds and the real D1 binding are placeholders until Session
   B2 (see NEXT-STEPS.md); `wrangler deploy` fails until `database_id` is real.
   Passkeys work locally without any of that.

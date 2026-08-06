@@ -5,53 +5,6 @@
     <!-- viewport-fit=cover is what makes env(safe-area-inset-*) non-zero -->
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 
-    <!-- TEMPORARY — #51. Remove with the Settings readout.
-         The same sampler lived in main.tsx first and proved useless: its very
-         first sample was stamped t=2725ms, because a module script doesn't run
-         until parsing and the render-blocking stylesheets are done. The whole
-         event being investigated is over by then. Inline and first in <head>
-         is the only position that observes the page from t=0. -->
-    <script>
-      (function () {
-        var vv = window.visualViewport;
-        var measure = function () {
-          var d = document.documentElement;
-          return {
-            t: Math.round(performance.now()),
-            innerWidth: window.innerWidth,
-            clientWidth: d.clientWidth,
-            scrollWidth: d.scrollWidth,
-            visualWidth: vv ? Math.round(vv.width) : -1,
-            scale: vv ? Number(vv.scale.toFixed(2)) : -1,
-          };
-        };
-        var key = function (m) {
-          return [m.innerWidth, m.clientWidth, m.scrollWidth, m.visualWidth, m.scale].join("/");
-        };
-        var first = measure();
-        var changes = [first];
-        var last = key(first);
-        var tick = function () {
-          var m = measure();
-          if (key(m) !== last) {
-            changes.push(m);
-            last = key(m);
-          }
-          if (m.t < 9000) requestAnimationFrame(tick);
-        };
-        requestAnimationFrame(tick);
-        window.__vp = {
-          screen: window.screen.width + "x" + window.screen.height,
-          dpr: window.devicePixelRatio,
-          standalone: navigator.standalone === undefined ? null : navigator.standalone,
-          displayMode: window.matchMedia("(display-mode: standalone)").matches
-            ? "standalone"
-            : "browser",
-          changes: changes,
-        };
-      })();
-    </script>
-
     <title>MyMacros</title>
     <meta
       name="description"

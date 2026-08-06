@@ -1286,20 +1286,3 @@ section {
   font-size: 9.5px;
   letter-spacing: 0.06em;
 }
-
-/* TEMPORARY — #51 viewport readout on Settings. Remove with the sampler. */
-.vp-readout {
-  font-family: var(--data-font);
-  font-size: 10px;
-  line-height: 1.6;
-  color: var(--ink-muted);
-  background: var(--surface);
-  border: 1px solid var(--line-soft);
-  border-radius: var(--radius-thumb);
-  padding: 10px 12px;
-  margin-top: 10px;
-  overflow-x: auto;
-  white-space: pre;
-  -webkit-user-select: text;
-  user-select: text;
-}
