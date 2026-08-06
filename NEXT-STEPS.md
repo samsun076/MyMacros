@@ -440,11 +440,20 @@ Ran before Session E to clear the two open defects and settle M3's decisions.
 Issues **#13–#16**. **Decisions 1–3 are settled and recorded as comments on #13 and #14** —
 read them before writing code. #15 and #16 are still open.
 
-### 0. Prerequisites (Dave, ~5 min, before the session)
+### 0. Prerequisites — ✅ none left
 
-- **Enable R2 on the Cloudflare account** and `npx wrangler r2 bucket create
-  mymacros-photos` — R2 was deliberately left off in B2; the binding gets written in #13
-  alongside the code that uses it. **This is the only remaining blocker for Session E.**
+**R2 is enabled and `mymacros-photos` exists** (created 2026-08-06). Enabling R2 is a
+dashboard action no API token can perform (`[code: 10042]`); creating the bucket is a
+plain wrangler call. The **binding is deliberately not in `wrangler.jsonc` yet** — it
+lands with #13's code, per the rule that a binding arrives with the thing that reads it.
+Wrangler will suggest `mymacros_photos`; prefer `PHOTOS` to match the existing `DB` and
+`ASSETS` style. Re-run `npm run cf-typegen` after adding it (with `.dev.vars` present —
+see CLAUDE.md) and `npm run verify:routing` after, since `wrangler.jsonc` changed.
+
+Cost, checked rather than recalled: 10 GB-month storage / 1M writes / 10M reads free,
+egress always free. At the measured 214 KB per photo and ~5 photos a day that is ~390 MB
+a year against a 10 GB ceiling — it crosses the free tier around year 25. The real M3
+cost is the vision calls, not the storage.
 
 ### Decisions
 
