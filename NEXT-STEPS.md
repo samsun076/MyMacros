@@ -539,10 +539,12 @@ M0–M2 are done and live at https://fuel.debrief.run — the core loop works
 end to end. This is Session E: build M3, photo & barcode, issues #13–#16.
 
 Read CLAUDE.md, PLAN.md (Theming + Build rules), design/TOKENS.md, and the
-Session E section of NEXT-STEPS.md, then gh issue view --comments for #13,
-#14, #15, #16 — the decision threads carry the settled choices for camera
-mechanism, upload path, vision request shape, and barcode scanning; if any
-of those are still open, stop and ask me rather than assuming.
+Session E section of NEXT-STEPS.md, then read the decision comments on #13
+and #14 (use GH_PAGER=cat — gh issue view prints nothing without it). Those
+carry the settled camera mechanism, upload path and vision request shape,
+verified on a real device. #15 (barcode) and #16 (failure UX) are still open
+ON PURPOSE — don't stop for them: they come last in the dependency order, so
+build #13 and #14 first and settle them with me when you get there.
 
 Load the claude-api skill before the vision call (#14). Load the
 frontend-design skill before screens. The camera stage ports literally
