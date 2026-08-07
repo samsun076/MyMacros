@@ -2,6 +2,17 @@
 
 Photograph your food, AI fills in the macros, and your daily calorie budget breathes with your running.
 
+<p align="center">
+  <img src="docs/log-flow.gif" width="402"
+       alt="Logging a meal: the Today screen shows 1,030 of 1,810 kcal eaten with 780 left; tapping the log button opens a camera viewfinder over a plate of steak and rice; after a few seconds reading the photo, a confirm sheet lists sliced steak 420 kcal and white rice 300 kcal, editable, totalling 720; tapping Log returns to Today, now 1,750 of 1,810 with 60 kcal left and dinner in the timeline.">
+</p>
+
+<p align="center"><sub>
+Real recording — real camera frame, real Claude call, unedited numbers. The read took 5.4s
+and is sped up here; the sheet reports its own timing. Recorded with
+<a href="tools/screencast.mjs"><code>tools/screencast.mjs</code></a>.
+</sub></p>
+
 > **Status: in active development, built for one user so far.** It's deployed and the
 > daily loop works end to end — photograph, scan or describe a meal and it lands in the
 > timeline. It is *not* packaged for someone else to deploy: the budget engine that makes
@@ -113,6 +124,22 @@ npm run check        # tsc --noEmit across app, worker and node tsconfigs
 npm run db:studio    # sqlite3 shell on the local D1 file
 node tools/shot-matrix.mjs <file.html|url>   # 375/390/428 render matrix
 ```
+
+A fresh clone signs in to an empty Today screen, which is a poor first look and
+useless to screenshot. `tools/seed-demo.mjs` fills one day with a plausible morning;
+`tools/screencast.mjs` and `tools/assemble-cast.mjs` are what produced the GIF above,
+and between them they'll rebuild it from scratch:
+
+```bash
+node tools/seed-demo.mjs                       # a day of meals in the local D1
+node tools/screencast.mjs --cookie better-auth.session_token=... \
+  --video meal.y4m --at 19:20 --out shots/cast # drive and record the log flow
+node tools/assemble-cast.mjs --in shots/cast --out docs/log-flow
+```
+
+The recorder needs a square `.y4m` to stand in for the camera — headless Chrome has no
+camera, and its built-in fake device is a colour-bar test pattern. Any photo will do:
+`ffmpeg -loop 1 -framerate 15 -i plate.jpg -t 8 -vf scale=720:720 meal.y4m`.
 
 ## Layout
 

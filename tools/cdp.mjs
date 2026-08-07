@@ -16,6 +16,10 @@ export function connect(wsUrl) {
   let id = 0;
   const pending = new Map();
   const waiters = [];
+  // Standing subscriptions. `once` is enough for load events, but a screencast
+  // emits Page.screencastFrame continuously and every frame has to be caught
+  // and acked or Chrome stops sending them.
+  const subs = [];
   ws.onmessage = (e) => {
     const msg = JSON.parse(e.data);
     if (msg.id && pending.has(msg.id)) {
@@ -28,6 +32,11 @@ export function connect(wsUrl) {
         if (w.method === msg.method && (!w.sessionId || w.sessionId === msg.sessionId)) {
           waiters.splice(i, 1);
           w.res(msg.params);
+        }
+      }
+      for (const s of subs) {
+        if (s.method === msg.method && (!s.sessionId || s.sessionId === msg.sessionId)) {
+          s.fn(msg.params);
         }
       }
     }
@@ -43,6 +52,15 @@ export function connect(wsUrl) {
           }),
         once: (method, sessionId) =>
           new Promise((res2) => waiters.push({ method, sessionId, res: res2 })),
+        /** Standing subscription; returns an unsubscribe function. */
+        on: (method, fn, sessionId) => {
+          const sub = { method, fn, sessionId };
+          subs.push(sub);
+          return () => {
+            const i = subs.indexOf(sub);
+            if (i >= 0) subs.splice(i, 1);
+          };
+        },
         close: () => ws.close(),
       });
     ws.onerror = rej;
@@ -72,17 +90,25 @@ export async function launchChrome(profileDir, extraArgs = []) {
   return { proc, wsUrl };
 }
 
-export async function openPage(cdp) {
+/** `reduceMotion` defaults to true because every *screenshot* tool wants it —
+ *  a still shot taken mid-transition is noise, not a design. Recording is the
+ *  one caller that wants the opposite: motion is the subject, and forcing
+ *  `reduce` there produces a video of an app that appears to teleport between
+ *  states. That default is also why no PNG this project has produced has ever
+ *  shown a transition, which is worth remembering when a bug report can't be
+ *  reproduced from screenshots. */
+export async function openPage(cdp, { reduceMotion = true } = {}) {
   const { targetId } = await cdp.send("Target.createTarget", { url: "about:blank" });
   const { sessionId } = await cdp.send("Target.attachToTarget", { targetId, flatten: true });
   await cdp.send("Page.enable", {}, sessionId);
   await cdp.send("Runtime.enable", {}, sessionId);
-  // deterministic shots: skip entrance animations
-  await cdp.send(
-    "Emulation.setEmulatedMedia",
-    { features: [{ name: "prefers-reduced-motion", value: "reduce" }] },
-    sessionId,
-  );
+  if (reduceMotion) {
+    await cdp.send(
+      "Emulation.setEmulatedMedia",
+      { features: [{ name: "prefers-reduced-motion", value: "reduce" }] },
+      sessionId,
+    );
+  }
   return {
     targetId,
     sessionId,
