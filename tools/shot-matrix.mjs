@@ -50,6 +50,7 @@ let widths = Object.keys(DEVICES).map(Number);
 const files = [];
 const cookies = [];
 let camera = false;
+let videoFile = null;
 // Extra wait after fonts+frames, for anything that settles on its own clock:
 // a camera stream coming up, a fetch the screen fires itself. settle() can't
 // see either — it waits for document.fonts.ready and two frames, both of
@@ -58,6 +59,10 @@ let settleMs = 0;
 for (let i = 0; i < argv.length; i++) {
   if (argv[i] === "--widths") widths = argv[++i].split(",").map(Number);
   else if (argv[i] === "--camera") camera = true;
+  else if (argv[i] === "--video") {
+    videoFile = argv[++i];
+    camera = true; // a feed with no camera is a contradiction
+  }
   else if (argv[i] === "--settle") settleMs = Number(argv[++i]);
   else if (argv[i] === "--cookie") {
     const raw = argv[++i];
@@ -145,8 +150,18 @@ const profileDir = await mkdtemp(join(tmpdir(), "shot-matrix-"));
 const { proc, wsUrl } = await launchChrome(
   profileDir,
   // a rolling synthetic pattern as the camera, and the permission granted
-  // without a prompt — headless Chrome has no real device to offer
-  camera ? ["--use-fake-device-for-media-stream", "--use-fake-ui-for-media-stream"] : [],
+  // without a prompt — headless Chrome has no real device to offer.
+  // --video swaps that pattern for a real y4m, which is the difference
+  // between a screenshot that proves the viewfinder opened and one that shows
+  // the app doing its job. Photo mode asks for a square stream, so feed it a
+  // square file (see tools/screencast.mjs).
+  camera
+    ? [
+        "--use-fake-device-for-media-stream",
+        "--use-fake-ui-for-media-stream",
+        ...(videoFile ? [`--use-file-for-fake-video-capture=${videoFile}`] : []),
+      ]
+    : [],
 );
 const cdp = await connect(wsUrl);
 
@@ -170,8 +185,14 @@ try {
     const [path, hash] = file.split("#");
     const isUrl = /^https?:\/\//.test(path);
     // a URL has no filename, so name it after its route: / → app-home
+    // The hash has to be in the name for URLs too, not just files: the log
+    // flow's modes are addressable as /log#photo, #barcode and #text, so
+    // shooting all three in one run silently overwrote a single app-log.png
+    // and left two of the modes unshot.
     const name = isUrl
-      ? "app-" + (new URL(path).pathname.replace(/^\/|\/$/g, "").replace(/\//g, "-") || "home")
+      ? "app-" +
+        (new URL(path).pathname.replace(/^\/|\/$/g, "").replace(/\//g, "-") || "home") +
+        (hash ? `-${hash}` : "")
       : basename(path, ".html") + (hash ? `-${hash}` : "");
     const url = isUrl ? file : `file://${resolve(path)}${hash ? "#" + hash : ""}`;
     const shots = [];
