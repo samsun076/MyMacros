@@ -4,8 +4,14 @@
     "lib": ["ES2023"],
     "module": "ESNext",
     "moduleResolution": "bundler",
-    // vite/client for import.meta.env — the Worker is bundled by Vite too
-    "types": ["./src/worker/worker-configuration.d.ts", "vite/client"],
+    // vite/client for import.meta.env — the Worker is bundled by Vite too.
+    // The pool's types declare the `cloudflare:test` module that route tests
+    // (`*.route.test.ts`) import for `env` and `applyD1Migrations` (#47).
+    "types": [
+      "./src/worker/worker-configuration.d.ts",
+      "vite/client",
+      "@cloudflare/vitest-pool-workers/types"
+    ],
 
     "strict": true,
     "noUncheckedIndexedAccess": true,

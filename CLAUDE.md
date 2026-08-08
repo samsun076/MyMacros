@@ -33,8 +33,10 @@ shots/           screenshot output (gitignored)
 
 ```bash
 npm run dev            # vite dev — SPA + Worker + local D1, one process
-npm run build          # typecheck + production build to dist/
+npm run build          # check + test + production build to dist/
 npm run check          # tsc --noEmit across app, worker, and node tsconfigs
+npm test               # vitest, both projects (#47)
+npm run test:watch     # same, watching
 npm run db:migrate     # apply migrations to LOCAL D1 (miniflare)
 npm run db:migrate:remote   # apply to REAL D1 — needs wrangler login
 npm run db:studio      # sqlite3 shell on the local D1 file
@@ -44,6 +46,38 @@ npm run verify:routing -- https://fuel.debrief.run   # /api survives navigation;
 npm run verify:viewport -- --cookie <name>=<token>   # no screen overflows horizontally (#51)
 node tools/shot-matrix.mjs <file.html|url>   # 375/390/428 render matrix
 ```
+
+## Tests (#47)
+
+Two vitest projects, one `npm test`, split by filename:
+
+- **`foo.test.ts` → `unit`.** Plain Node, no bindings, ~150ms for the lot.
+  Pure functions live here and this is where most tests belong.
+- **`foo.route.test.ts` → `worker`.** Real workerd, real D1, `migrations/`
+  applied by `src/worker/test-setup.ts` — so route tests describe the schema
+  production actually has instead of a fixture that drifts from it. Costs a
+  few seconds to boot, which is why it isn't the default for everything.
+
+Both colocate with their source; `tsconfig.app`/`tsconfig.worker` already
+include `src/`, so `npm run check` type-checks tests with no extra project.
+
+- **Route tests call `app.fetch(req, env)`, not `SELF.fetch`.** SELF enters
+  through the asset router, whose directory the Vite plugin supplies and which
+  doesn't exist under test. Everything under `/api` is `run_worker_first`
+  anyway, so calling the Hono app directly exercises the same path.
+- **`npm run build` runs check + test.** Push to main deploys via Workers
+  Builds, so the build is the only gate this workflow actually has — a red
+  test must stop a deploy, not annotate one. Verified by breaking a validator
+  and watching `npm run build` exit 1.
+- **Route tests read `.dev.vars`** (the pool loads it — you'll see "Using
+  secrets defined in .dev.vars"). Don't write a test that depends on a value
+  in there; it isn't present in CI.
+- **The pool's v4 API is not what its older docs describe.** There is no
+  `@cloudflare/vitest-pool-workers/config` subpath and no
+  `defineWorkersProject`/`singleWorker` — it's a Vite plugin, `cloudflareTest()`,
+  imported from the package root.
+- A test that can't fail is worse than no test. When one covers something that
+  matters, break the source once and watch it go red before trusting it.
 
 **Shooting the camera screen needs `--camera`.** Headless Chrome has no camera, so
 `/log` and `/log#barcode` render their no-viewfinder fallback — a real screen, but not
