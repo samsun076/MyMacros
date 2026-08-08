@@ -114,6 +114,47 @@ against `fuel.debrief.run` it is `__Secure-better-auth.session_token=<token>` �
 the bare name 401s. Same for any other tool that takes `--cookie`. Measured,
 not assumed: bare → 401, prefixed → 200 on `/api/me`.
 
+## Sync from the Mac (#19, #20)
+
+Two scripts push into `POST /api/sync`, both idempotent — they re-send a
+rolling window and the endpoint upserts, so a missed run costs nothing and a
+double run writes nothing twice.
+
+```bash
+MYMACROS_SYNC_TOKEN=mms_… node tools/sync-runs.mjs --days 30   # debrief runs.db
+MYMACROS_SYNC_TOKEN=mms_… uv run tools/sync-garmin.py          # Garmin weigh-ins
+uv run tools/sync-garmin.py login                              # once, interactive
+MYMACROS_SYNC_TOKEN=mms_… ./tools/install-sync-agent.sh        # launchd, every 30 min
+```
+
+- **Tokens are per-user and hashed** (`sync_tokens`, migration 0003). Issued in
+  Settings → Sync, shown once, revocable. The token resolves to a `user_id` and
+  the route puts the same `c.var.user` on the context every other route reads —
+  the rule is extended to the machine caller, never relaxed.
+- **`/api/sync` is mounted on the OPEN sub-app** because `requireAuth` wants a
+  session cookie a launchd job doesn't have. It does its own auth first. Don't
+  "fix" this by moving it under `secure`.
+- **Runs are `activity_id` 1 and 53**, and **TSS is `COALESCE(tss_hr, tss)`** —
+  both from debrief's own `pipeline/src/weekly.js`, whose comment is explicit
+  that raw `tss` changes calculation method across history and must never be
+  aggregated. Don't re-derive these.
+- **debrief's `energy_kj` column holds KILOCALORIES.** It comes from Suunto's
+  `energyConsumption`, which is kcal. Measured, not assumed: recent runs land at
+  56–63 kcal/km, right for an ~80 kg runner, where kJ would imply ~14 kcal/km.
+  Dividing by 4.184 understates every run by 76% — and since eat-back returns a
+  share of it, the symptom is a bonus that merely looks small.
+- **Garmin reports weight in GRAMS** (`80200.0` = 80.2 kg). `sync-garmin.py`
+  refuses anything outside 20–400 kg after conversion, loudly, because the
+  failure worth catching is a silent unit change upstream.
+- **Don't use `sqlite3 -readonly` on debrief's runs.db.** It is WAL mode, and a
+  read-only open can't create the `-shm` file it needs:
+  `Error: in prepare, unable to open database file (14)`. It passes whenever the
+  database is quiescent, so it fails only sometimes — which is worse.
+- **Garmin rate-limits login by IP (429)** and repeated attempts extend the
+  block. Wait 15–30 minutes; don't retry in a loop.
+- Garmin credentials never reach the repo: `login` exchanges the password for
+  OAuth tokens in `~/.garminconnect`, and nothing afterwards needs a password.
+
 ## Secrets
 
 Canonical home is the **`mymacros` Doppler project** (`dev` and `prd` configs);

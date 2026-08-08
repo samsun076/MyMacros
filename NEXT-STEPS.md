@@ -552,65 +552,58 @@ Second one, cheaper: both new screens sat on `.shell` when the gutters and the
 `verify:viewport` passed throughout and was right to — nothing overflowed, the
 content just had no margins. Only the PNG showed it. Look at the PNGs.
 
-## Session G — finish M4 (Opus 5 @ xhigh, Dave present for #20)
+## Session G — finish M4 — ⚠️ all but Garmin, 2026-08-08
 
-Issues **#19 → #20 → #21**, in that order.
+**Closed:** #19 (sync endpoint, per-user hashed tokens, debrief push script)
+and #21 (eat-back). With #47, #17 and most of #18 from Session F, M4 is done
+except **#20**, which is blocked on a Garmin login, and **#18's trend chart**,
+which belongs to #22.
 
-### Decisions already made with Dave — don't re-open
+Verified against production, not just locally: 68 real runs pushed to
+`fuel.debrief.run`, pushed again, still 68 rows. Token revoke confirmed (a
+revoked token 401s). Migration 0003 applied remotely.
 
-- **#19's auth is a per-user token, hashed in D1** (settled 2026-08-07). Not a
-  single `SYNC_TOKEN` Worker secret: that has no user attached, so the Worker
-  would need a second setting to know whose rows to write, which bakes "there is
-  exactly one user" into the schema — the thing #37 exists to prevent. Needs a
-  migration (append-only), a token issued from Settings, and resolution to a
-  `user_id` that puts the same `c.var.user` on the context every other route
-  reads. **Don't weaken that rule for the machine caller — extend it.**
-- **#20 is a pairing task and Dave wants it done.** Garmin credentials stay on
-  his Mac: Doppler plus `garth`'s own login, never in the repo and never in the
-  conversation. The script reads them from the environment.
+### #20 — what remains
 
-### Then #21, which is now small
+The script is written and its every API call checked against the installed
+`garminconnect`. Two steps, both Dave's:
 
-`DayResponse.run` is still typed `null` and the budget meter's `.earned` layer
-still renders at zero width — both waiting for data, exactly as #48 left them.
-Fill them; if you find yourself re-laying-out `BudgetMeter`, stop and check
-whether data is what's missing. `eat_back_pct` already exists on `profiles`
-(default 50). Base and earned always draw separately (build rule 7).
+1. `uv run tools/sync-garmin.py login` — interactive, once. **Garmin
+   rate-limits login by IP (429) and repeated attempts extend the block**; the
+   first attempt hit it. Wait 15–30 minutes between tries, never loop.
+2. `MYMACROS_SYNC_TOKEN=… ./tools/install-sync-agent.sh` — installs the
+   launchd agent that runs both syncs every 30 minutes.
 
-### Still owed from this session
+Then confirm a weigh-in lands and check the grams→kg conversion on real data.
+`tail ~/Library/Logs/mymacros/sync.log`.
 
-- **#18's trend line is a list of numbers**, not a chart. Drawing it belongs with
-  the trends screen (#22, M5) rather than inventing a second chart idiom.
-- **Theme QA for M4's two new screens** — build rule 4. `/onboarding` and
-  `/weight` have Night Athletic only; the light packs port in M5 (#30).
-- **The `.warn` class** on the macro-split total is accent-colored, which is a
-  placeholder. There is still no destructive/alert color in the pack — #52 wants
-  a `--danger` token for the same reason.
+### Handling the sync token
 
-### Verification recipe that worked
-
-Local dev may land on **5174** if something is already on 5173, and better-auth
-rejects the origin because `APP_URL` in `.dev.vars` says 5173. Cookies ignore
-ports, so signing in with a spoofed `Origin: http://localhost:5173` header
-against the 5174 server produces a cookie that works:
+It is a live credential that can write to the account. **Neither `!` echoing
+nor `export` keeps one out of the transcript** — the command line itself is
+recorded, and each agent Bash call gets a fresh shell so the export isn't
+even visible to it. The working pattern is to never let the agent hold it:
 
 ```bash
-CREDS='{"email":"dev@mymacros.local","password":"dev-password-not-for-production","name":"Dev"}'
-curl -s -H 'Origin: http://localhost:5173' -H 'Content-Type: application/json' \
-  -D /tmp/h -o /dev/null -X POST http://localhost:5174/api/auth/sign-in/email -d "$CREDS"
-COOKIE=$(grep -i '^set-cookie' /tmp/h | sed -E 's/^[Ss]et-[Cc]ookie: *//;s/;.*//' | head -1)
-node tools/shot-matrix.mjs --cookie "$COOKIE" http://localhost:5174/onboarding
-npm run verify:viewport -- --cookie "$COOKIE" http://localhost:5174
+bash -c 'read -rsp "token: " T; echo; MYMACROS_SYNC_TOKEN="$T" ./tools/install-sync-agent.sh'
 ```
 
-**Confirm a deploy actually landed** before believing it — `/api/health` answers
-200 from the *old* build the whole time Workers Builds is still building. Grep
-the served bundle for a string only the new code has:
+Verification afterwards reads the launchd log, which never contains the token.
 
-```bash
-ASSET=$(curl -s https://fuel.debrief.run/ | grep -oE '/assets/[^"]+\.js' | head -1)
-curl -s "https://fuel.debrief.run$ASSET" | grep -c "Not counting workouts"
-```
+### What M4 left for M5
+
+- **#18's trend line is a list of numbers.** `GET /api/weights` already returns
+  the smoothed `series` ready to plot; drawing it is #22.
+- **The weigh-in link lives in Settings**, which is the wrong home for a daily
+  action — noted on #22.
+- **`.warn` on the macro-split total is accent-coloured**, a placeholder. There
+  is still no destructive/alert colour in the pack; #52 wants `--danger` for the
+  same reason.
+- **Theme QA for M4's four new screens** (build rule 4): /onboarding, /weight,
+  and Settings' two new sections are Night Athletic only. Light packs are #30.
+- **`/api/day` now issues four queries** (logs, profile, weigh-ins, runs). Fine
+  at this size; if the Today screen ever feels slow, that is where to look
+  before anything else.
 
 ### One device check owed from M3 (5 minutes, any time)
 
