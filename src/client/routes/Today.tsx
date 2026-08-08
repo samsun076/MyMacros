@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { Link, useLocation } from "react-router";
-import type { DayResponse, FoodLog, MealSlot, Me } from "../../shared/api";
+import type { DayResponse, DayRun, FoodLog, MealSlot, Me, Units } from "../../shared/api";
 import { useApi } from "../lib/api";
 import { localDay } from "../lib/day";
 import { fmtInt } from "../lib/format";
@@ -50,8 +50,11 @@ export function Today() {
   const budget: BudgetData = {
     eaten: day?.totals.kcal ?? 0,
     base: day?.target_kcal ?? 0,
-    earned: 0, // M2: no runs yet — #19/#21 fill day.run and this becomes real
-    earnedLabel: null,
+    // #21: the earned layer has rendered at zero width since M2 waiting for
+    // exactly this. Base and earned stay separate all the way through —
+    // nothing here folds the bonus into the target (build rule 7).
+    earned: day?.run?.earned_kcal ?? 0,
+    earnedLabel: day?.run ? runLabel(day.run, me?.profile.units ?? "imperial") : null,
   };
   const adjusted = budget.base + budget.earned;
   const remaining = adjusted - budget.eaten;
@@ -253,6 +256,18 @@ function gramsFor(adjustedKcal: number, pct: number, kcalPerGram: number) {
 }
 
 /** "7:12 AM" — the timeline rail format. */
+/** "6.2 mi run", "10.0 km run", or "2 runs" when the day had more than one.
+ *
+ *  Built here rather than server-side because whether a distance reads in
+ *  miles or kilometres is a display concern settled from `profiles.units` —
+ *  the wire carries metres, like every other measurement. */
+function runLabel(run: DayRun, units: Units) {
+  if (run.count > 1) return `${run.count} runs`;
+  return units === "imperial"
+    ? `${(run.distance_m / 1609.344).toFixed(1)} mi run`
+    : `${(run.distance_m / 1000).toFixed(1)} km run`;
+}
+
 function clock12(iso: string) {
   return new Date(iso).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
 }

@@ -144,6 +144,24 @@ export function computeBudget(i: BudgetInputs, today = new Date()): Budget | nul
   };
 }
 
+/** The share of a day's run calories that extends the budget (#21).
+ *
+ *  Partial by default (PLAN.md locks 50%) for a reason worth keeping in view:
+ *  a watch's calorie estimate is itself an estimate, and eating back 100% of
+ *  an over-reported burn is how a deficit quietly becomes maintenance. Half
+ *  is the conventional hedge.
+ *
+ *  This is the ONLY place run calories enter the budget. They never reach
+ *  `target_kcal` — base and earned always draw separately (build rule 7), so
+ *  the earned figure is computed per-day at read time and the stored target
+ *  stays the answer to "what do I eat on a day I don't run". */
+export function earnedKcal(runKcal: number, eatBackPct: number): number {
+  if (!Number.isFinite(runKcal) || runKcal <= 0) return 0;
+  // the column is CHECKed 0-100, but this also runs on client-side input
+  const pct = Math.min(Math.max(Number.isFinite(eatBackPct) ? eatBackPct : 0, 0), 100);
+  return Math.round((runKcal * pct) / 100);
+}
+
 /** Grams of each macro for a target, from the percent-of-kcal split.
  *
  *  Rounded to whole grams for display; the percentages remain the stored

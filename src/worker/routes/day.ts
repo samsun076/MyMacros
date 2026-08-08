@@ -1,6 +1,6 @@
 import { Hono } from "hono";
-import type { DayResponse } from "../../shared/api";
-import { missingBudgetInputs } from "../../shared/budget";
+import type { DayResponse, DayRun } from "../../shared/api";
+import { earnedKcal, missingBudgetInputs } from "../../shared/budget";
 import { recentWeighIns } from "../budget";
 import { loadProfile } from "../profile";
 import type { AppEnv } from "../types";
@@ -60,11 +60,32 @@ day.get("/:date", async (c) => {
       deficit_kcal: profile.deficit_kcal,
     }).length === 0;
 
+  // The day's runs, folded into one earned figure (#21). Scoped to the same
+  // local day the meals are, so a run and the meals it earns back always
+  // agree about which day they belong to (#44).
+  const runs = await c.var.db
+    .selectFrom("runs")
+    .select(["kcal", "distance_m"])
+    .where("user_id", "=", c.var.user.id)
+    .where("ran_on", "=", date)
+    .execute();
+
+  const runKcal = runs.reduce((s, r) => s + r.kcal, 0);
+  const run: DayRun | null = runs.length
+    ? {
+        count: runs.length,
+        kcal: runKcal,
+        distance_m: Math.round(runs.reduce((s, r) => s + r.distance_m, 0)),
+        earned_kcal: earnedKcal(runKcal, profile.eat_back_pct),
+        eat_back_pct: profile.eat_back_pct,
+      }
+    : null;
+
   return c.json<DayResponse>({
     logs,
     totals,
     target_kcal: profile.target_kcal,
-    run: null,
+    run,
     onboarded,
   });
 });

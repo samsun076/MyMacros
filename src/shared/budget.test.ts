@@ -5,6 +5,7 @@ import {
   bmr,
   type BudgetInputs,
   computeBudget,
+  earnedKcal,
   macroGrams,
   missingBudgetInputs,
 } from "./budget";
@@ -172,6 +173,46 @@ describe("computeBudget", () => {
         missingBudgetInputs({ ...DAVE, sex: null, height_cm: null, weight_kg: null }),
       ).toEqual(["sex", "height_cm", "weight_kg"]);
     });
+  });
+});
+
+describe("earnedKcal", () => {
+  it("hands back the configured share", () => {
+    expect(earnedKcal(600, 50)).toBe(300);
+    expect(earnedKcal(600, 100)).toBe(600);
+    expect(earnedKcal(600, 0)).toBe(0);
+    expect(earnedKcal(494, 50)).toBe(247);
+  });
+
+  it("rounds to whole kcal", () => {
+    expect(earnedKcal(495, 50)).toBe(248);
+    expect(earnedKcal(333, 33)).toBe(110);
+  });
+
+  it("earns nothing from no run", () => {
+    expect(earnedKcal(0, 50)).toBe(0);
+    expect(earnedKcal(-100, 50)).toBe(0);
+    expect(earnedKcal(NaN, 50)).toBe(0);
+  });
+
+  it("clamps a percentage outside 0-100", () => {
+    expect(earnedKcal(600, 150)).toBe(600);
+    expect(earnedKcal(600, -10)).toBe(0);
+    expect(earnedKcal(600, NaN)).toBe(0);
+  });
+
+  /** The reason the default is 50 and not 100: a watch's calorie figure is an
+   *  estimate, and eating back all of an over-reported burn turns a deficit
+   *  into maintenance. */
+  it("defaults to giving back half, not all", () => {
+    expect(earnedKcal(700, 50)).toBeLessThan(700);
+  });
+
+  /** Build rule 7, at the level this function can enforce it: earned is a
+   *  number computed FROM the run, never added to the base target. Nothing
+   *  here takes a target at all. */
+  it("has no access to the base target", () => {
+    expect(earnedKcal.length).toBe(2);
   });
 });
 

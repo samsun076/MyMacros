@@ -292,6 +292,25 @@ export type SyncTokensResponse = { tokens: SyncToken[] };
 /** The one and only time the plaintext token exists outside the client. */
 export type SyncTokenCreated = SyncToken & { token: string };
 
+/** Every run on a given day, folded into one figure (#21).
+ *
+ *  Distance crosses the wire in metres, not as a formatted label: whether it
+ *  reads "6.2 mi" or "10.0 km" is a display concern the client settles from
+ *  `profiles.units`, the same way every other measurement does. */
+export type DayRun = {
+  /** How many runs — the label says "2 runs" rather than pretending to one. */
+  count: number;
+  /** Total kcal burned, as reported by the watch. */
+  kcal: number;
+  distance_m: number;
+  /** The share of `kcal` that actually extends today's budget: kcal ×
+   *  eat_back_pct. Never folded into target_kcal (build rule 7). */
+  earned_kcal: number;
+  /** The percentage applied, so the UI can explain the number rather than
+   *  just assert it. */
+  eat_back_pct: number;
+};
+
 export type DayTotals = {
   kcal: number;
   protein_g: number;
@@ -306,8 +325,9 @@ export type DayResponse = {
   logs: FoodLog[];
   totals: DayTotals;
   target_kcal: number;
-  /** M4: the day's run + earned kcal; always null in M2. */
-  run: null;
+  /** The day's runs, folded (#21). Null when nothing was run that day, which
+   *  is what keeps "no runs" and "a run that earned nothing" distinguishable. */
+  run: DayRun | null;
   /** False until the budget engine has every Mifflin-St Jeor input (#17) —
    *  meaning `target_kcal` above is the deployment's default, not a number
    *  computed for this person. The Today screen says so rather than drawing a

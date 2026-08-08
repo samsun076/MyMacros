@@ -59,6 +59,7 @@ export function Onboarding() {
     activity_level: form.activity_level ?? p?.activity_level ?? "moderate",
     goal: form.goal ?? p?.goal ?? "cut",
     deficit_kcal: form.deficit_kcal ?? p?.deficit_kcal ?? 500,
+    eat_back_pct: form.eat_back_pct ?? p?.eat_back_pct ?? 50,
     protein_pct: form.protein_pct ?? p?.protein_pct ?? 35,
     carb_pct: form.carb_pct ?? p?.carb_pct ?? 40,
     fat_pct: form.fat_pct ?? p?.fat_pct ?? 25,
@@ -98,6 +99,7 @@ export function Onboarding() {
         activity_level: v.activity_level,
         goal: v.goal,
         deficit_kcal: v.goal === "maintain" ? 0 : v.deficit_kcal,
+        eat_back_pct: v.eat_back_pct,
         protein_pct: v.protein_pct,
         carb_pct: v.carb_pct,
         fat_pct: v.fat_pct,
@@ -298,6 +300,39 @@ export function Onboarding() {
         )}
       </section>
 
+      {/* #21. Lives beside the goal because it is the other half of the same
+          question: how big is the deficit, and how much of a run gives back. */}
+      <section>
+        <div className="sec-head">
+          <span className="eyebrow">Eat-back</span>
+          <span className="mono">{v.eat_back_pct}%</span>
+        </div>
+        <p className="sheet-sub">
+          How much of a run's calories get added to that day's budget.
+        </p>
+        <div className="field">
+          <div className="field-pair">
+            <input
+              type="range"
+              min={0}
+              max={100}
+              step={10}
+              aria-label="Eat-back percentage"
+              value={v.eat_back_pct}
+              onChange={(e) => set({ eat_back_pct: Number(e.target.value) })}
+            />
+            <span className="mono">{v.eat_back_pct}%</span>
+          </div>
+          <span className="opt-hint">
+            {v.eat_back_pct === 0
+              ? "Runs won't change your budget at all."
+              : v.eat_back_pct === 100
+                ? "All of it. A watch's calorie estimate tends to run high, so this can quietly cancel your deficit."
+                : `A 500 kcal run would add ${Math.round((500 * v.eat_back_pct) / 100)} kcal that day. Half is the usual hedge against watches over-reporting.`}
+          </span>
+        </div>
+      </section>
+
       <section>
         <div className="sec-head">
           <span className="eyebrow">Macro split</span>
@@ -395,6 +430,7 @@ type Form = {
   activity_level: ActivityLevel;
   goal: Goal;
   deficit_kcal: number;
+  eat_back_pct: number;
   protein_pct: number;
   carb_pct: number;
   fat_pct: number;
