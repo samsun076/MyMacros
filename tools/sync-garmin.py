@@ -55,26 +55,52 @@ MIN_KG, MAX_KG = 20.0, 400.0
 
 def do_login() -> int:
     """Interactive, once. Exchanges a password for tokens and stores those."""
+    import getpass
+
     from garminconnect import Garmin
 
     print("Signing in to Garmin Connect. The password is exchanged for tokens")
     print(f"and is not stored; the tokens go to {TOKEN_DIR}.\n")
 
     email = input("Garmin email: ").strip()
-    import getpass
-
     password = getpass.getpass("Garmin password: ")
 
+    # return_on_mfa makes an MFA challenge a value rather than a blocking
+    # prompt raised from inside the library — the same code then works under
+    # launchd, where a prompt would hang forever instead of failing.
     garmin = Garmin(email=email, password=password, return_on_mfa=True)
-    result = garmin.login()
 
-    # Garmin prompts for a code when MFA is on. return_on_mfa makes that a
-    # value we handle rather than an exception in a launchd log.
-    if isinstance(result, tuple) and result[0] == "needs_mfa":
+    try:
+        # login() returns ("needs_mfa", client_state) or (None, None), and
+        # dumps to this path itself on a clean credential login.
+        result = garmin.login(TOKEN_DIR)
+    except Exception as err:  # noqa: BLE001 — every failure here is terminal
+        # Garmin rate-limits login by IP, and it is the failure most likely to
+        # be met on a first attempt. Worth naming, because "429" alone reads
+        # like a bug in this script rather than a wait-and-retry.
+        if "429" in str(err) or "too many" in str(err).lower():
+            sys.exit(
+                "Garmin is rate-limiting logins from this IP (429).\n"
+                "It clears on its own — wait ~15-30 minutes and run this again.\n"
+                "Repeated attempts extend the block, so don't retry in a loop."
+            )
+        sys.exit(f"Garmin login failed: {err}")
+
+    if result and result[0] == "needs_mfa":
         code = input("MFA code: ").strip()
         garmin.resume_login(result[1], code)
 
-    garmin.garth.dump(TOKEN_DIR)
+    # Dump unconditionally rather than trusting login()'s own write: the MFA
+    # branch above returns before login() reaches its dump, so the resumed
+    # session would otherwise be lost the moment this process exits.
+    os.makedirs(TOKEN_DIR, exist_ok=True)
+    garmin.client.dump(TOKEN_DIR)
+
+    # Prove it rather than announce it — a token directory that exists but is
+    # empty would send every later run back to the password path.
+    if not os.listdir(TOKEN_DIR):
+        sys.exit(f"Login reported success but wrote no tokens to {TOKEN_DIR}.")
+
     print(f"\nTokens written to {TOKEN_DIR}. Future runs need no password.")
     return 0
 
@@ -89,6 +115,8 @@ def connect():
     try:
         garmin.login(TOKEN_DIR)
     except Exception as err:  # noqa: BLE001 — any failure here is terminal
+        if "429" in str(err) or "too many" in str(err).lower():
+            sys.exit("Garmin is rate-limiting this IP (429). Try again in ~15-30 minutes.")
         sys.exit(f"Garmin tokens rejected ({err}). Re-run: uv run tools/sync-garmin.py login")
     return garmin
 
