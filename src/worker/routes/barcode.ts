@@ -109,7 +109,7 @@ type OffResponse = {
 
 /** "Ferrero Nutella" — brand first, the way a label reads, skipping the brand
  *  when the product name already carries it. */
-function nameOf(product: NonNullable<OffResponse["product"]>) {
+export function nameOf(product: NonNullable<OffResponse["product"]>) {
   const name = str(product.product_name);
   const brand = str(product.brands).split(",")[0]?.trim() ?? "";
   if (!name) return brand;
@@ -120,7 +120,7 @@ function nameOf(product: NonNullable<OffResponse["product"]>) {
 /** The per-100g nutriments, or null when the product has no usable energy
  *  value. `_100g` is the field family OpenFoodFacts computes for every
  *  product regardless of how the contributor entered it. */
-function macrosPer100g(n: Record<string, unknown>) {
+export function macrosPer100g(n: Record<string, unknown>) {
   let kcal = num(n["energy-kcal_100g"]);
   // Plenty of EU products carry only kilojoules; the rest of the row is fine,
   // so converting beats discarding the product.
@@ -154,7 +154,7 @@ function macrosPer100g(n: Record<string, unknown>) {
  *  The regex this replaced only understood metric-first strings and matched
  *  nothing against a US label's "2.40 oz (68 g)" — a second silent fallback to
  *  100 g underneath the first. */
-function defaultGrams(product: NonNullable<OffResponse["product"]>) {
+export function defaultGrams(product: NonNullable<OffResponse["product"]>) {
   const serving = positive(num(product.serving_quantity));
   const packaged = positive(num(product.product_quantity));
 

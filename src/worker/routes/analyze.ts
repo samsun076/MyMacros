@@ -357,8 +357,9 @@ function upstreamHeaders(headers: Headers) {
 }
 
 /** The schema guarantees presence and type; this guards the ranges the
- *  schema can't. */
-function normalize(item: unknown): AnalyzedItem | null {
+ *  schema can't. Exported for its tests (#47) — it is the only thing standing
+ *  between a model's out-of-range number and the database. */
+export function normalize(item: unknown): AnalyzedItem | null {
   const it = item as Record<string, unknown>;
   if (typeof it?.name !== "string" || !it.name.trim()) return null;
   const num = (v: unknown, max: number) =>

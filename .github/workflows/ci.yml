@@ -1,0 +1,26 @@
+name: CI
+
+# Deploys do not come from here — Workers Builds deploys on push to main (#7),
+# and `npm run build` runs check + test before `vite build`, so a red test
+# already stops a deploy. This workflow exists so a failure is *visible* as a
+# failure rather than as a deploy that quietly didn't happen, and so a pull
+# request gets the same signal before it is merged.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      # typecheck and tests, not `npm run build` — building needs the
+      # Cloudflare plugin to resolve bindings, which is Workers Builds' job
+      - run: npm run check
+      - run: npm test

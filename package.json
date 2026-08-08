@@ -5,9 +5,11 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "npm run check && vite build",
+    "build": "npm run check && npm test && vite build",
     "preview": "vite preview",
     "check": "tsc --noEmit -p tsconfig.app.json && tsc --noEmit -p tsconfig.worker.json && tsc --noEmit -p tsconfig.node.json",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "cf-typegen": "wrangler types ./src/worker/worker-configuration.d.ts",
     "db:migrate": "wrangler d1 migrations apply mymacros-db --local",
     "db:migrate:remote": "wrangler d1 migrations apply mymacros-db --remote",
@@ -40,6 +42,7 @@
     "@vitejs/plugin-react": "^6.0.5",
     "typescript": "^7.0.2",
     "vite": "^8.2.0",
+    "vitest": "^4.1.10",
     "wrangler": "^4.118.0"
   }
 }
