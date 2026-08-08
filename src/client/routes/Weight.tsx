@@ -59,7 +59,7 @@ export function Weight() {
   const latest = data?.latest ? displayWeight(data.latest.weight_kg, imperial ? "imperial" : "metric") : null;
 
   return (
-    <main className="shell onboard">
+    <main className="frame onboard">
       <header className="log-top">
         <span className="eyebrow">
           <span className="tick" />

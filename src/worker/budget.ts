@@ -20,13 +20,16 @@ import { loadProfile } from "./profile";
  *  wide enough for both and small enough to stay one cheap indexed read. */
 const WEIGH_IN_LOOKBACK_DAYS = 60;
 
-/** Recent weigh-ins, newest first, for a user. */
-export async function recentWeighIns(db: Db, userId: string, on: string): Promise<WeighIn[]> {
-  return db
+/** Recent weigh-ins, newest first. `on` bounds the query for an as-of read
+ *  (the trends screen asking what the trend was on some past day); omit it to
+ *  get the newest regardless of date. */
+export async function recentWeighIns(db: Db, userId: string, on?: string): Promise<WeighIn[]> {
+  const q = db
     .selectFrom("weights")
     .select(["measured_on", "weight_kg"])
-    .where("user_id", "=", userId)
-    .where("measured_on", "<=", on)
+    .where("user_id", "=", userId);
+
+  return (on ? q.where("measured_on", "<=", on) : q)
     .orderBy("measured_on", "desc")
     .limit(WEIGH_IN_LOOKBACK_DAYS)
     .execute();
@@ -66,7 +69,27 @@ export async function refreshTarget(
 ): Promise<Budget | null> {
   const profile = await loadProfile(db, userId);
   const today = dayInTimezone(now, profile.timezone);
-  const weight_kg = await trendWeightFor(db, userId, today);
+
+  /* Anchored at the LATER of the server's idea of today and the newest
+   * weigh-in on file.
+   *
+   * Clamping to `today` alone silently drops a weigh-in dated ahead of it,
+   * and the two disagree more often than they look like they should:
+   * `profiles.timezone` is a stored default until the client overwrites it
+   * (#44), the client owns its own day, and the two are on opposite sides of
+   * midnight for several hours every evening. The symptom is the worst kind —
+   * the newest weight is invisible, computeBudget declines for want of data,
+   * and the stored target simply stays where it was. Caught during M4's own
+   * verification: a fresh profile stayed on the M2 default of 1,810 while the
+   * day endpoint happily reported `onboarded: true`.
+   *
+   * There is nothing to protect here by refusing a future date. This function
+   * answers "what is this person's target now", and the newest weight is the
+   * best evidence available whichever day it is stamped with. */
+  const entries = await recentWeighIns(db, userId);
+  const newest = entries[0]?.measured_on;
+  const anchor = newest && newest > today ? newest : today;
+  const weight_kg = trendWeightKg(entries, anchor);
 
   const budget = computeBudget(
     {

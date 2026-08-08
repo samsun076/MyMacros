@@ -1653,10 +1653,18 @@ section {
 
 /* ── onboarding + weigh-in (#17, #18) ─────────────────────── */
 
-/* Both are modal task screens (their own routes, no tab bar), so they own
-   their bottom padding rather than inheriting the shell's tab-bar gap. */
+/* Both are modal task screens with their own routes and no tab bar, so they
+   sit on `.frame` (which owns the 22px gutters and the 430px max width) and
+   NOT on `.shell`, whose only job is reserving room for a tab bar that isn't
+   there. Taking `.shell` alone is what put these screens edge-to-edge at 375
+   the first time — no overflow, so verify:viewport passed, and only the PNG
+   showed it. */
 .onboard {
-  padding-bottom: calc(32px + env(safe-area-inset-bottom));
+  padding-bottom: calc(32px + env(safe-area-inset-bottom, 0px));
+}
+
+.onboard .btn {
+  margin-top: 26px;
 }
 
 .onboard section {

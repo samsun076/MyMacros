@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import type { DayResponse } from "../../shared/api";
 import { missingBudgetInputs } from "../../shared/budget";
-import { trendWeightFor } from "../budget";
+import { recentWeighIns } from "../budget";
 import { loadProfile } from "../profile";
 import type { AppEnv } from "../types";
 import { isDay } from "../validate";
@@ -43,12 +43,18 @@ day.get("/:date", async (c) => {
   // Whether the stored target was computed for this person or is still the
   // migration's default (#17). The weigh-in is part of the answer, so this
   // can't be read off `profiles` alone.
+  //
+  // "Has this person ever weighed in", not "as of this date" — onboarding is
+  // a question about setup, not about the day being viewed. Asking as-of
+  // would report an un-onboarded past, and would disagree with refreshTarget
+  // about a weigh-in dated ahead of the server's day.
+  const weighIns = await recentWeighIns(c.var.db, c.var.user.id);
   const onboarded =
     missingBudgetInputs({
       sex: profile.sex,
       birth_date: profile.birth_date,
       height_cm: profile.height_cm,
-      weight_kg: await trendWeightFor(c.var.db, c.var.user.id, date),
+      weight_kg: weighIns[0]?.weight_kg ?? null,
       activity_level: profile.activity_level,
       goal: profile.goal,
       deficit_kcal: profile.deficit_kcal,

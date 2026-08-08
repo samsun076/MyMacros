@@ -114,7 +114,7 @@ export function Onboarding() {
   const ft = v.height_cm ? cmToFtIn(v.height_cm) : null;
 
   return (
-    <main className="shell onboard">
+    <main className="frame onboard">
       <header>
         <span className="eyebrow">
           <span className="tick" />

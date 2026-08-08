@@ -59,7 +59,20 @@ for (let i = 0; i < argv.length; i++) {
 // screen, so checking six of them would be checking one thing six times.
 if (!routes) {
   routes = cookies.length
-    ? ["/", "/log", "/log#barcode", "/log#text", "/log#confirm", "/#saved", "/trends", "/settings"]
+    ? [
+        "/",
+        "/log",
+        "/log#barcode",
+        "/log#text",
+        "/log#confirm",
+        "/#saved",
+        "/trends",
+        "/settings",
+        // M4's task screens (#17, #18) — both are long forms, which is the
+        // shape most likely to push a field past the edge at 375
+        "/onboarding",
+        "/weight",
+      ]
     : ["/"];
 }
 

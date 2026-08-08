@@ -151,6 +151,28 @@ describe("refreshTarget", () => {
     expect(await trendWeightFor(db, USER, "2026-08-08")).toBe(78);
   });
 
+  /** Regression, found by driving the real API during M4's verification: a
+   *  fresh profile stayed on the M2 default of 1,810 while /api/day happily
+   *  reported `onboarded: true`.
+   *
+   *  The engine derives its day from `profiles.timezone`, the client owns its
+   *  own day (#44), and the two sit on opposite sides of midnight for several
+   *  hours every evening — so a weigh-in stamped with the client's "today"
+   *  can be dated *after* the server's. Clamped to the server's day it looked
+   *  like the future, was filtered out, and the engine declined for want of a
+   *  weight it actually had. Nothing errored; the target just never moved. */
+  it("uses a weigh-in dated ahead of the server's day", async () => {
+    await seed({ timezone: "America/New_York" });
+    // 01:30Z is still the 7th in New York, but the client is on the 8th
+    const now = new Date("2026-08-08T01:30:00Z");
+    await weigh("2026-08-08", 80);
+
+    const budget = await refreshTarget(db, USER, now);
+    expect(budget).not.toBeNull();
+    expect(await storedTarget()).toBe(budget?.target_kcal);
+    expect(await storedTarget()).not.toBe(1800);
+  });
+
   it("never writes another user's row", async () => {
     await seed();
     await weigh("2026-08-06", 80);
