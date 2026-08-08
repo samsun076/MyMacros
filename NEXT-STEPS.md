@@ -505,132 +505,111 @@ Everything below is honest gap, not oversight. Nothing here blocks M4.
 - **The analyze deadline firing.** Never hit in practice; the instrumentation logs
   `outcome: "deadline"` if it ever does.
 
-## Session F — build M4, the budget engine (Opus 5 @ xhigh)
+## Session F — M4, the budget engine — ⚠️ half done 2026-08-07
 
-Issues **#17–#21**, plus **#47** first. This is where the app stops being a food diary
-and starts being the thing PLAN.md describes: a budget that breathes with the running.
+**Landed and deployed:** #47 and #17 closed; #18 all but its chart. The app now
+computes a real budget: Mifflin-St Jeor → TDEE → deficit → target, recalculated
+from the 7-day weight trend, with onboarding and a weigh-in screen behind it.
 
-### Order of work (dependencies, not preference)
+**Not started: #19, #20, #21.** They are the second half of M4 and they are
+ordered — #21 has nothing to show until #19 supplies run data, so stopping after
+#18 is a clean boundary rather than a ragged one.
 
-1. **#47 — test infrastructure, before the budget math.** Filed by Dave after C1 and
-   explicitly scheduled "before M4's budget math lands". M3 is the argument for it: the
-   money-costing routes and the file upload now exist and were verified by hand-rolled
-   CDP drivers in a scratch directory. Those drivers proved real bugs (the `loadeddata`
-   race, the CDN default) and then evaporated. TDEE arithmetic is the first thing in this
-   codebase where a wrong number is silently wrong rather than visibly broken — it earns
-   real tests, and M3's routes are the first customers.
-2. **#17 — onboarding: TDEE (Mifflin-St Jeor) + deficit + macro split.** `profiles`
-   already carries every input (`sex`, `birth_date`, `height_cm`, `activity_level`,
-   `goal`, `deficit_kcal`, the three `*_pct` columns). M2 shipped `target_kcal` as a
-   static column in migration 0002 — M4 changes how it is *calculated*, not where it
-   lives.
-3. **#18 — weight log: manual entry + 7-day smoothed trend.** `weights` exists with a
-   unique index on `(user_id, measured_on)`, which is what makes the smoothing
-   well-defined and lets a sync re-POST the same day forever.
-4. **#19 — sync endpoint + the debrief `runs.db` push script.** `runs` exists with a
-   unique `(user_id, external_id)`; NULLs stay distinct in SQLite so manual runs don't
-   collide while synced ones stay idempotent.
-5. **#20 — Garmin Connect weight sync** via `python-garminconnect` in the same local
-   pipeline. Needs Dave's credentials — pair on it.
-6. **#21 — eat-back: a configurable share of run calories adjusts today's budget.**
+### What changed that the next session should know
 
-### The two things M4 turns on that are already built waiting
+- **There is a test suite now** (#47). `npm test` runs two vitest projects: unit
+  (Node, ~150ms) and worker (real workerd + real D1 + the real migrations).
+  Conventions are in CLAUDE.md. **`npm run build` runs check + test**, and since
+  push-to-main deploys, that build is the only gate this workflow has — a red
+  test stops a deploy rather than annotating one.
+- **`target_kcal` is derived, not writable.** It comes from the profile plus the
+  weight trend via `refreshTarget`, which runs after any profile PATCH and any
+  weight write. It was removed from `me.ts`'s EDITABLE allowlist deliberately: a
+  hand-set value would give one number two writers, and the derived one wins
+  silently on the next weigh-in. A real override needs its own column.
+- **The activity multiplier excludes exercise, and the onboarding copy says so.**
+  Runs arrive as the earned bonus (#21). If that copy ever goes, #21 starts
+  double-counting every mile and the budget is a few hundred kcal too generous
+  every day with nothing looking wrong. `ACTIVITY_FACTORS` carries the note.
+- **`dayInTimezone` is how the server resolves "today"** with no client present.
+  #19 needs it: `ran_on`/`measured_on` written by a script have exactly the
+  problem it solves.
+- **The maths is in `src/shared/`** so onboarding previews the same function the
+  Worker runs on save. Keep it that way — two implementations drift invisibly.
 
-- **`DayResponse.run` is `null` by construction and typed that way on purpose** (#48).
-  #19/#21 fill it; the Today screen's arithmetic is already written against
-  `base + earned`.
-- **The budget meter's `.earned` layer already renders**, at zero width with its boundary
-  tick suppressed, and the scale already shows `0 … BASE 1,810 ▸`. M4 restores the
-  sketch's three-label scale **by supplying data, not by re-laying-out the hero.** If you
-  find yourself editing `BudgetMeter`'s layout, stop and check whether the data is what's
-  missing.
+### The bug worth not re-introducing
 
-### Worth deciding early
+A weigh-in dated *ahead* of the server's idea of today was filtered out as
+future, so the engine declined for want of a weight it already had and the
+target silently stayed on the M2 default — while `/api/day` reported
+`onboarded: true`. Found by driving the real API, not by a test; the test came
+after. `refreshTarget` now anchors at the later of the server's day and the
+newest weigh-in. **Any new code that compares a client-supplied day against a
+server-derived one is the same trap.**
 
-- **Today fetches `/api/me` alongside `/api/day/:date`** because the day bundle carries
-  `target_kcal` but not the macro split or focus macro. D flagged that if M4's day
-  payload grows anyway — and #19/#21 grow it — that's the moment to fold the profile
-  fields the screen needs into it and drop to one request.
-- **`#37` (deployment-neutral defaults) is M6, but M4 is where the schema stops being
-  neutral** — TDEE assumes imperial-vs-metric handling, and `profiles.timezone` starts
-  being read server-side with no client present. Worth a glance at #37 before choosing
-  defaults, so M6 has less to undo.
+Second one, cheaper: both new screens sat on `.shell` when the gutters and the
+430px max-width live on `.frame`, so they ran edge-to-edge at 375.
+`verify:viewport` passed throughout and was right to — nothing overflowed, the
+content just had no margins. Only the PNG showed it. Look at the PNGs.
 
-### Guardrails that exist and shouldn't be broken
+## Session G — finish M4 (Opus 5 @ xhigh, Dave present for #20)
 
-- **Every new API route under the `secure` sub-app**; `c.var.user`, never a userId from
-  the request. The sync endpoint (#19) is the exception worth thinking hard about — it's
-  called by a machine, not a browser, so it needs its own auth story rather than a
-  session. Decide that with Dave before writing it.
-- **`npm run verify:routing -- https://fuel.debrief.run`** after any `wrangler.jsonc`
-  change and after the final push. **`npm run verify:viewport -- --camera --cookie …`**
-  for layout. `npm run check` green before every commit.
-- **Migrations are append-only.** M4 will add columns; new file every time.
-- Never hardcode a color/font/radius — add a token. Motif slots only through the registry.
+Issues **#19 → #20 → #21**, in that order.
 
-### Deliberate — don't let a session "fix" these
+### Decisions already made with Dave — don't re-open
 
-Everything in D's and E's lists above, plus:
+- **#19's auth is a per-user token, hashed in D1** (settled 2026-08-07). Not a
+  single `SYNC_TOKEN` Worker secret: that has no user attached, so the Worker
+  would need a second setting to know whose rows to write, which bakes "there is
+  exactly one user" into the schema — the thing #37 exists to prevent. Needs a
+  migration (append-only), a token issued from Settings, and resolution to a
+  `user_id` that puts the same `c.var.user` on the context every other route
+  reads. **Don't weaken that rule for the machine caller — extend it.**
+- **#20 is a pairing task and Dave wants it done.** Garmin credentials stay on
+  his Mac: Doppler plus `garth`'s own login, never in the repo and never in the
+  conversation. The script reads them from the environment.
 
-- **`thinking: disabled` + `effort: low` on both analyze routes.** Latency is the product
-  promise; the label read measured 4.3s and the text path 4.6s.
-- **1568px at q0.8 on upload**, not Sonnet 5's 2576px ceiling — a deliberate cost choice
-  (~3× the image tokens at the limit), revisited per-mode only if label reads go lossy.
-- **The camera stage's fallback has no button** — the shutter itself hands off to the
-  system camera, so there is one control where the user already expects it.
-- **Barcode mode has no shutter.** Scanning is continuous; the ring is a status, and it
-  keeps the deck's geometry so switching modes doesn't jump.
-- **A row typed from scratch is not `edited`.** That flag answers "how good are the AI's
-  estimates?", and a manual entry had no estimate to correct.
-- **The scan loop pauses on a failed lookup.** Without it the next frame re-reads the
-  same code and the failure repeats forever.
+### Then #21, which is now small
 
-### Carried over, not blocking M4
+`DayResponse.run` is still typed `null` and the budget meter's `.earned` layer
+still renders at zero width — both waiting for data, exactly as #48 left them.
+Fill them; if you find yourself re-laying-out `BudgetMeter`, stop and check
+whether data is what's missing. `eat_back_pct` already exists on `profiles`
+(default 50). Base and earned always draw separately (build rule 7).
 
-**#49** prod analyze latency — instrumentation is live on both routes and now logs a
-`deadline` outcome; still never reproduced · **#38/#39** standalone chrome + theme-color
-→ M5's device pass · **#51** was fixed and closed in the pre-E session · **#30/#35/#46/
-#36/#32/#52/#53/#54** → M5 (note **#35** and the barcode wasm are the same class of
-problem, and the wasm half is now solved — the pattern in `vite.config.ts` is reusable
-for the fonts) · **#33/#37/#55** → M6.
+### Still owed from this session
 
-### Starter prompt (paste verbatim)
+- **#18's trend line is a list of numbers**, not a chart. Drawing it belongs with
+  the trends screen (#22, M5) rather than inventing a second chart idiom.
+- **Theme QA for M4's two new screens** — build rule 4. `/onboarding` and
+  `/weight` have Night Athletic only; the light packs port in M5 (#30).
+- **The `.warn` class** on the macro-split total is accent-colored, which is a
+  placeholder. There is still no destructive/alert color in the pack — #52 wants
+  a `--danger` token for the same reason.
 
+### Verification recipe that worked
+
+Local dev may land on **5174** if something is already on 5173, and better-auth
+rejects the origin because `APP_URL` in `.dev.vars` says 5173. Cookies ignore
+ports, so signing in with a spoofed `Origin: http://localhost:5173` header
+against the 5174 server produces a cookie that works:
+
+```bash
+CREDS='{"email":"dev@mymacros.local","password":"dev-password-not-for-production","name":"Dev"}'
+curl -s -H 'Origin: http://localhost:5173' -H 'Content-Type: application/json' \
+  -D /tmp/h -o /dev/null -X POST http://localhost:5174/api/auth/sign-in/email -d "$CREDS"
+COOKIE=$(grep -i '^set-cookie' /tmp/h | sed -E 's/^[Ss]et-[Cc]ookie: *//;s/;.*//' | head -1)
+node tools/shot-matrix.mjs --cookie "$COOKIE" http://localhost:5174/onboarding
+npm run verify:viewport -- --cookie "$COOKIE" http://localhost:5174
 ```
-Working on MyMacros (~/Projects/MyMacros, github.com/samsun076/MyMacros).
-M0–M3 are done and live at https://fuel.debrief.run — photo, barcode and
-text all log a meal end to end. This is Session F: build M4, the budget
-engine, issues #17–#21, with #47 first.
 
-Read CLAUDE.md, PLAN.md (Locked decisions + Build rules), design/TOKENS.md,
-and the Session F section of NEXT-STEPS.md. Use GH_PAGER=cat for every gh
-read — it prints nothing otherwise.
+**Confirm a deploy actually landed** before believing it — `/api/health` answers
+200 from the *old* build the whole time Workers Builds is still building. Grep
+the served bundle for a string only the new code has:
 
-Start with #47, test infrastructure. It's scheduled before the budget math
-on purpose: TDEE arithmetic is the first thing in this codebase where a
-wrong number is silently wrong rather than visibly broken, and M3's analyze,
-photo, barcode and food-log routes are its first customers. Pick the
-lightest thing that runs in CI and against the Worker; don't build a
-framework.
-
-Then #17 → #18 → #19 → #21 in that order. #20 (Garmin) needs my credentials
-— surface it when you get there rather than blocking on it. Two things are
-already built waiting for M4's data: DayResponse.run is typed null on
-purpose (#48), and the budget meter's earned layer already renders at zero
-width. Fill them with data; if you find yourself re-laying-out BudgetMeter,
-stop and check whether data is what's actually missing.
-
-#19's sync endpoint is called by a machine, not a browser, so it needs its
-own auth story rather than a session — settle that with me before writing
-it, and don't weaken the rule that every other route reads c.var.user.
-
-Verify screens at 375/390/428 with the signed-in shot-matrix recipe and LOOK
-at the PNGs; run npm run verify:viewport -- --camera --cookie <name>=<token>.
-npm run check stays green; migrations are append-only. Commit per issue,
-"closes #N" only where genuinely finished, push when done (push deploys),
-re-run npm run verify:routing -- https://fuel.debrief.run after the final
-push, and rewrite the Session F section of NEXT-STEPS.md as the M5 runway
-before you stop.
+```bash
+ASSET=$(curl -s https://fuel.debrief.run/ | grep -oE '/assets/[^"]+\.js' | head -1)
+curl -s "https://fuel.debrief.run$ASSET" | grep -c "Not counting workouts"
 ```
 
 ### One device check owed from M3 (5 minutes, any time)
