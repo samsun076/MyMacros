@@ -1,6 +1,6 @@
 import { env } from "cloudflare:test";
 import { beforeEach, describe, expect, it } from "vitest";
-import { latestWeightKg, refreshTarget } from "./budget";
+import { refreshTarget, trendWeightFor } from "./budget";
 import { createDb } from "./db";
 
 /** The stored half of the engine, against real D1. The arithmetic is covered
@@ -10,7 +10,11 @@ import { createDb } from "./db";
  *  overwriting it with something worse. */
 const db = createDb(env as unknown as Env);
 const USER = "budget-test-user";
-const TODAY = new Date(2026, 7, 7);
+/** An explicit UTC instant, not a local Date: profiles default to
+ *  America/New_York, so this is noon on 2026-08-07 for the user under test
+ *  whatever timezone the suite runs in. */
+const NOW = new Date("2026-08-07T16:00:00Z");
+const TODAY = "2026-08-07";
 
 /** better-auth owns `users`, but a profile's FK points at it, so a row has to
  *  exist. Inserted directly rather than through the library — this is a
@@ -20,7 +24,7 @@ async function seed(profile: Record<string, unknown> = {}) {
   await env.DB.prepare(
     "INSERT INTO users (id, name, email, emailVerified, createdAt, updatedAt) VALUES (?, ?, ?, 0, ?, ?)",
   )
-    .bind(USER, "Test", `${USER}@example.com`, TODAY.toISOString(), TODAY.toISOString())
+    .bind(USER, "Test", `${USER}@example.com`, NOW.toISOString(), NOW.toISOString())
     .run();
 
   await db
@@ -65,31 +69,31 @@ beforeEach(async () => {
   await env.DB.prepare("DELETE FROM users WHERE id = ?").bind(USER).run();
 });
 
-describe("latestWeightKg", () => {
+describe("trendWeightFor", () => {
   it("is null when nobody has ever weighed in", async () => {
     await seed();
-    expect(await latestWeightKg(db, USER)).toBeNull();
+    expect(await trendWeightFor(db, USER, TODAY)).toBeNull();
   });
 
-  it("takes the most recent weigh-in, not the first", async () => {
+  it("smooths the window rather than taking the last number on the scale", async () => {
     await seed();
-    await weigh("2026-08-01", 82);
+    await weigh("2026-08-05", 82);
     await weigh("2026-08-06", 80);
-    await weigh("2026-08-03", 81);
-    expect(await latestWeightKg(db, USER)).toBe(80);
+    await weigh("2026-08-07", 81);
+    expect(await trendWeightFor(db, USER, TODAY)).toBe(81);
   });
 
-  it("can be asked as of a past day", async () => {
+  it("can be asked as of a past day, ignoring later weigh-ins", async () => {
     await seed();
     await weigh("2026-08-01", 82);
-    await weigh("2026-08-06", 80);
-    expect(await latestWeightKg(db, USER, "2026-08-03")).toBe(82);
+    await weigh("2026-08-06", 70);
+    expect(await trendWeightFor(db, USER, "2026-08-03")).toBe(82);
   });
 
   it("is scoped to the user", async () => {
     await seed();
     await weigh("2026-08-06", 80);
-    expect(await latestWeightKg(db, "somebody-else")).toBeNull();
+    expect(await trendWeightFor(db, "somebody-else", TODAY)).toBeNull();
   });
 });
 
@@ -98,7 +102,7 @@ describe("refreshTarget", () => {
     await seed();
     await weigh("2026-08-06", 80);
 
-    const budget = await refreshTarget(db, USER, TODAY);
+    const budget = await refreshTarget(db, USER, NOW);
     expect(budget).toMatchObject({ bmr: 1730, tdee: 2682, target_kcal: 2182 });
     expect(await storedTarget()).toBe(2182);
   });
@@ -106,11 +110,11 @@ describe("refreshTarget", () => {
   it("follows the weight down", async () => {
     await seed();
     await weigh("2026-08-01", 80);
-    await refreshTarget(db, USER, TODAY);
+    await refreshTarget(db, USER, NOW);
     const before = await storedTarget();
 
     await weigh("2026-08-07", 78);
-    await refreshTarget(db, USER, TODAY);
+    await refreshTarget(db, USER, NOW);
     expect(await storedTarget()).toBeLessThan(before);
   });
 
@@ -120,21 +124,37 @@ describe("refreshTarget", () => {
     await weigh("2026-08-06", 80);
 
     const before = await storedTarget();
-    expect(await refreshTarget(db, USER, TODAY)).toBeNull();
+    expect(await refreshTarget(db, USER, NOW)).toBeNull();
     expect(await storedTarget()).toBe(before);
   });
 
   it("declines when the profile is complete but nobody has weighed in", async () => {
     await seed();
     const before = await storedTarget();
-    expect(await refreshTarget(db, USER, TODAY)).toBeNull();
+    expect(await refreshTarget(db, USER, NOW)).toBeNull();
     expect(await storedTarget()).toBe(before);
+  });
+
+  /** The sharp edge #47 was filed over: this runs with no client present, so
+   *  "today" has to come from the profile's timezone rather than the Worker's
+   *  UTC clock. Read as UTC, the instant below is the 7th and a weigh-in
+   *  dated the 8th looks like the future — so it would be filtered out and
+   *  the user would be budgeted against a stale weight, with nothing broken
+   *  on screen to say so. */
+  it("resolves today in the user's timezone, not the Worker's", async () => {
+    await seed({ timezone: "Australia/Sydney" });
+    // 20:00Z on the 7th is already 06:00 on the 8th in Sydney
+    const now = new Date("2026-08-07T20:00:00Z");
+    await weigh("2026-08-08", 78);
+
+    expect(await refreshTarget(db, USER, now)).not.toBeNull();
+    expect(await trendWeightFor(db, USER, "2026-08-08")).toBe(78);
   });
 
   it("never writes another user's row", async () => {
     await seed();
     await weigh("2026-08-06", 80);
-    await refreshTarget(db, USER, TODAY);
+    await refreshTarget(db, USER, NOW);
 
     const others = await db
       .selectFrom("profiles")

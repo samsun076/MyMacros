@@ -201,6 +201,45 @@ export type RecentMeal = {
 /** GET /api/food-logs/recent — newest first, deduped by name. */
 export type RecentsResponse = { meals: RecentMeal[] };
 
+/** A weigh-in row (#18). `measured_on` is YYYY-MM-DD local to the user, and
+ *  unique per user per day — weighing twice in a morning corrects the day
+ *  rather than adding a second row that would drag the mean. */
+export type Weight = {
+  id: string;
+  user_id: string;
+  measured_on: string;
+  weight_kg: number;
+  /** The Garmin Index reports it; manual entry usually won't. */
+  body_fat_pct: number | null;
+  source: "garmin" | "manual";
+  created_at: string;
+};
+
+/** POST /api/weights. `source` is not accepted — a manual entry is manual by
+ *  virtue of arriving here, and the sync endpoint (#19/#20) writes 'garmin'. */
+export type WeightCreate = {
+  measured_on: string;
+  weight_kg: number;
+  body_fat_pct?: number | null;
+};
+
+/** One point of the trend line: the day's raw weight and its smoothed value. */
+export type WeightPoint = {
+  measured_on: string;
+  weight_kg: number;
+  trend_kg: number;
+};
+
+/** GET /api/weights — recent history, oldest first, plus the smoothed series
+ *  the trends screen draws and the single number the budget engine uses. */
+export type WeightsResponse = {
+  entries: Weight[];
+  series: WeightPoint[];
+  latest: Weight | null;
+  /** 7-day smoothed weight as of the latest weigh-in; null with no data. */
+  trend_kg: number | null;
+};
+
 export type DayTotals = {
   kcal: number;
   protein_g: number;

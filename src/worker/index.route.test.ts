@@ -41,6 +41,7 @@ describe("the authenticated mount", () => {
     "/api/favorites",
     "/api/barcode/737628064502",
     "/api/photos/someone/00000000-0000-4000-8000-000000000000.jpg",
+    "/api/weights",
   ];
 
   it.each(SECURE)("refuses %s without a session", async (path) => {

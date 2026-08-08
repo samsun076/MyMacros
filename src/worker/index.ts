@@ -9,6 +9,7 @@ import favorites from "./routes/favorites";
 import foodLogs from "./routes/food-logs";
 import me from "./routes/me";
 import photos from "./routes/photos";
+import weights from "./routes/weights";
 import type { AppEnv } from "./types";
 
 const app = new Hono<AppEnv>();
@@ -59,6 +60,7 @@ secure.route("/barcode", barcode);
 secure.route("/food-logs", foodLogs);
 secure.route("/favorites", favorites);
 secure.route("/photos", photos);
+secure.route("/weights", weights);
 
 app.route("/api", open);
 app.route("/api", secure);

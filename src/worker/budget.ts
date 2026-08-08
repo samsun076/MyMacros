@@ -1,5 +1,7 @@
 import type { Budget } from "../shared/budget";
 import { computeBudget } from "../shared/budget";
+import { dayInTimezone } from "../shared/day";
+import { TREND_WINDOW_DAYS, trendWeightKg, type WeighIn } from "../shared/weight";
 import type { Db } from "./db";
 import { loadProfile } from "./profile";
 
@@ -8,29 +10,41 @@ import { loadProfile } from "./profile";
  *
  *  `profiles.target_kcal` stays a stored column — M4 changes how it is
  *  calculated, not where it lives — so it has to be refreshed whenever an
- *  input to it moves. Two of those inputs live outside `profiles`: the
- *  latest weigh-in (#18), and nothing else. Runs deliberately are not an
- *  input; their calories arrive as the earned bonus (#21) and never touch the
- *  base target (build rule 7).
+ *  input moves. One of those inputs lives outside `profiles`: the weigh-ins
+ *  (#18). Runs deliberately are not an input; their calories arrive as the
+ *  earned bonus (#21) and never touch the base target (build rule 7).
  */
 
-/** The weight the engine should use: the most recent weigh-in on or before
- *  `on`, or the newest overall when that finds nothing.
- *
- *  Not `profiles.start_weight_kg` — that is where the journey began, and
- *  budgeting against it would freeze the target at day one, which is the
- *  opposite of PLAN.md's "targets recompute as logged weight drops". */
-export async function latestWeightKg(db: Db, userId: string, on?: string) {
-  const q = db
+/** How far back to read weigh-ins. The trend needs the 7-day window, and the
+ *  fallback for a sparse logger needs whatever came before it — 60 days is
+ *  wide enough for both and small enough to stay one cheap indexed read. */
+const WEIGH_IN_LOOKBACK_DAYS = 60;
+
+/** Recent weigh-ins, newest first, for a user. */
+export async function recentWeighIns(db: Db, userId: string, on: string): Promise<WeighIn[]> {
+  return db
     .selectFrom("weights")
-    .select(["weight_kg", "measured_on"])
-    .where("user_id", "=", userId);
-
-  const row = await (on ? q.where("measured_on", "<=", on) : q)
+    .select(["measured_on", "weight_kg"])
+    .where("user_id", "=", userId)
+    .where("measured_on", "<=", on)
     .orderBy("measured_on", "desc")
-    .executeTakeFirst();
+    .limit(WEIGH_IN_LOOKBACK_DAYS)
+    .execute();
+}
 
-  return row?.weight_kg ?? null;
+/** The weight the engine budgets against: the 7-day smoothed trend, not the
+ *  last number on the scale.
+ *
+ *  #18 is explicit that recalculation follows the trend, and the reason is
+ *  that raw bodyweight swings several pounds on water and salt — budgeting
+ *  against it would move the daily target by a few hundred kcal for reasons
+ *  that have nothing to do with fat.
+ *
+ *  Not `profiles.start_weight_kg` either: that is where the journey began,
+ *  and budgeting against it would freeze the target at day one, the opposite
+ *  of PLAN.md's "targets recompute as logged weight drops". */
+export async function trendWeightFor(db: Db, userId: string, on: string) {
+  return trendWeightKg(await recentWeighIns(db, userId, on), on);
 }
 
 /** Recompute and persist `target_kcal`. Returns the budget, or null when
@@ -38,15 +52,21 @@ export async function latestWeightKg(db: Db, userId: string, on?: string) {
  *
  *  **Leaves the stored value alone when it can't compute.** A user who hasn't
  *  onboarded keeps the migration's default rather than having their target
- *  zeroed by a half-filled profile — the engine declines to answer rather
- *  than answering badly. */
+ *  derived from missing inputs — the engine declines to answer rather than
+ *  answering badly.
+ *
+ *  `now` is an instant; the *day* it belongs to comes from the profile's
+ *  timezone, because this runs with no client present and a Worker's own
+ *  clock is UTC (#44). For a user in New York that is tomorrow for the last
+ *  five hours of every evening. */
 export async function refreshTarget(
   db: Db,
   userId: string,
-  today = new Date(),
+  now = new Date(),
 ): Promise<Budget | null> {
   const profile = await loadProfile(db, userId);
-  const weight_kg = await latestWeightKg(db, userId);
+  const today = dayInTimezone(now, profile.timezone);
+  const weight_kg = await trendWeightFor(db, userId, today);
 
   const budget = computeBudget(
     {
@@ -58,7 +78,9 @@ export async function refreshTarget(
       goal: profile.goal,
       deficit_kcal: profile.deficit_kcal,
     },
-    today,
+    // age is a calendar question, and `today` already answers it in the
+    // user's own timezone
+    new Date(`${today}T12:00:00Z`),
   );
 
   if (!budget) return null;
@@ -72,3 +94,5 @@ export async function refreshTarget(
 
   return budget;
 }
+
+export { TREND_WINDOW_DAYS };
