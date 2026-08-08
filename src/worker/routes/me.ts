@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import type { Me, ProfileUpdate } from "../../shared/api";
+import { refreshTarget } from "../budget";
 import { loadProfile } from "../profile";
 import type { AppEnv } from "../types";
 import { isDay, isNum, oneOf, pct, positive } from "../validate";
@@ -16,8 +17,12 @@ const EDITABLE = {
   activity_level: oneOf(["sedentary", "light", "moderate", "active", "very_active"]),
   goal: oneOf(["cut", "maintain", "gain"]),
   deficit_kcal: (v: unknown) => (isNum(v) && v >= 0 && v <= 1500 ? Math.round(v) : undefined),
-  // the M2 base target (migration 0002) — sane-range guarded, not clinical
-  target_kcal: (v: unknown) => (isNum(v) && v >= 500 && v <= 6000 ? Math.round(v) : undefined),
+  // `target_kcal` is deliberately NOT here any more (#17). It is derived from
+  // the profile plus the latest weigh-in and rewritten by refreshTarget, so
+  // accepting a hand-set value would give one number two writers — and the
+  // derived one wins silently, on the next weigh-in, with nothing on screen
+  // to say the user's choice was discarded. If a manual override is ever
+  // wanted it needs its own column, so that both values stay visible.
   start_weight_kg: positive,
   goal_weight_kg: positive,
   eat_back_pct: (v: unknown) => (isNum(v) && v >= 0 && v <= 100 ? Math.round(v) : undefined),
@@ -78,6 +83,11 @@ me.patch("/profile", async (c) => {
     // scoped to the session user — never to an id from the request
     .where("user_id", "=", c.var.user.id)
     .execute();
+
+  // Any of sex/birth_date/height_cm/activity_level/goal/deficit_kcal moves the
+  // target, so recompute rather than making each caller remember to (#17).
+  // Cheap, and a no-op write when the number hasn't changed.
+  await refreshTarget(c.var.db, c.var.user.id);
 
   return c.json(await loadProfile(c.var.db, c.var.user.id));
 });

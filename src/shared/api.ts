@@ -24,13 +24,27 @@ export type Theme = "night-athletic" | "field-notes" | "instrument";
 export type Accent = "coral" | "gold" | "mint";
 export type Units = "imperial" | "metric";
 
+/** Named so the budget engine can refer to them without restating the union
+ *  (#17). The values are the `profiles` CHECK constraints — changing either
+ *  side alone puts a migration and a type out of step. */
+export type Sex = "male" | "female";
+export type ActivityLevel = "sedentary" | "light" | "moderate" | "active" | "very_active";
+export type Goal = "cut" | "maintain" | "gain";
+
+/** The macro split as percent of kcal. The app keeps the three at 100. */
+export type MacroSplit = {
+  protein_pct: number;
+  carb_pct: number;
+  fat_pct: number;
+};
+
 export type Profile = {
   user_id: string;
-  sex: "male" | "female" | null;
+  sex: Sex | null;
   birth_date: string | null;
   height_cm: number | null;
-  activity_level: "sedentary" | "light" | "moderate" | "active" | "very_active";
-  goal: "cut" | "maintain" | "gain";
+  activity_level: ActivityLevel;
+  goal: Goal;
   deficit_kcal: number;
   start_weight_kg: number | null;
   goal_weight_kg: number | null;
