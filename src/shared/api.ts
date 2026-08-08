@@ -256,4 +256,9 @@ export type DayResponse = {
   target_kcal: number;
   /** M4: the day's run + earned kcal; always null in M2. */
   run: null;
+  /** False until the budget engine has every Mifflin-St Jeor input (#17) —
+   *  meaning `target_kcal` above is the deployment's default, not a number
+   *  computed for this person. The Today screen says so rather than drawing a
+   *  made-up budget as though it were real. */
+  onboarded: boolean;
 };

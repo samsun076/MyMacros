@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { useLocation } from "react-router";
+import { Link, useLocation } from "react-router";
 import type { DayResponse, FoodLog, MealSlot, Me } from "../../shared/api";
 import { useApi } from "../lib/api";
 import { localDay } from "../lib/day";
@@ -109,6 +109,27 @@ export function Today() {
           {dateLine.weekday}, <span>{dateLine.date}</span>
         </h1>
       </header>
+
+      {/* Until the engine has its inputs, `target_kcal` is the deployment's
+          default rather than a number computed for this person (#17). Say so
+          instead of drawing a made-up budget as though it were real — a
+          plausible wrong number is the failure mode this milestone is most
+          able to produce. */}
+      {day && !day.onboarded && (
+        <div className="setup-call">
+          <span className="eyebrow">
+            <span className="tick" />
+            Budget not set up
+          </span>
+          <p className="opt-hint">
+            The target below is a placeholder until we know your height, weight and age.
+            It takes about a minute.
+          </p>
+          <Link className="btn btn-accent" to="/onboarding">
+            Set up my budget
+          </Link>
+        </div>
+      )}
 
       {logged && (
         <div className="toast" role="status">

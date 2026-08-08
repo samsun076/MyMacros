@@ -1650,3 +1650,143 @@ section {
   font-size: 9.5px;
   letter-spacing: 0.06em;
 }
+
+/* ── onboarding + weigh-in (#17, #18) ─────────────────────── */
+
+/* Both are modal task screens (their own routes, no tab bar), so they own
+   their bottom padding rather than inheriting the shell's tab-bar gap. */
+.onboard {
+  padding-bottom: calc(32px + env(safe-area-inset-bottom));
+}
+
+.onboard section {
+  margin-top: 28px;
+}
+
+.field {
+  display: grid;
+  gap: 7px;
+  margin-top: 16px;
+}
+
+/* number + its unit, or the two halves of a feet/inches pair */
+.field-pair {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.field input[type="date"],
+.field-pair input {
+  flex: 1;
+  min-width: 0;
+  background: var(--surface-raised);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-mark);
+  padding: 10px 12px;
+  color: var(--ink);
+  font-family: var(--body-font);
+  font-size: 16px; /* ≥16px: no iOS zoom */
+  font-variant-numeric: tabular-nums;
+}
+
+/* the range's own track/thumb, so a slider isn't the one place the theme
+   stops applying */
+.field-pair input[type="range"] {
+  padding: 0;
+  border: none;
+  background: none;
+  accent-color: var(--accent);
+}
+
+/* two or three mutually exclusive choices, side by side */
+.seg {
+  display: flex;
+  gap: 8px;
+}
+
+.seg-btn {
+  flex: 1;
+  padding: 12px 10px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-button);
+  color: var(--ink-secondary);
+  font-family: var(--body-font);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.seg-btn.on {
+  background: var(--accent-wash);
+  border-color: var(--accent);
+  color: var(--ink);
+}
+
+/* a stacked list of choices, each with a line of explanation */
+.opts {
+  display: grid;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.opt {
+  display: grid;
+  gap: 3px;
+  text-align: left;
+  padding: 12px 14px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-thumb);
+  cursor: pointer;
+}
+
+.opt.on {
+  background: var(--accent-wash);
+  border-color: var(--accent);
+}
+
+.opt-name {
+  font-family: var(--body-font);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.opt-hint {
+  font-family: var(--body-font);
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--ink-muted);
+}
+
+/* the live budget, computed by the same function the Worker runs on save */
+.preview {
+  padding: 18px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+}
+
+.preview .hero-row {
+  margin: 4px 0 12px;
+}
+
+/* a macro split that doesn't total 100 */
+.warn {
+  color: var(--accent);
+}
+
+/* the Today prompt when there is no computed budget yet */
+.setup-call {
+  display: grid;
+  gap: 10px;
+  padding: 16px;
+  margin-bottom: 20px;
+  background: var(--surface);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-card);
+}
