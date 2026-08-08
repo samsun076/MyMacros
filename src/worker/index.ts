@@ -9,6 +9,8 @@ import favorites from "./routes/favorites";
 import foodLogs from "./routes/food-logs";
 import me from "./routes/me";
 import photos from "./routes/photos";
+import sync from "./routes/sync";
+import syncTokens from "./routes/sync-tokens";
 import weights from "./routes/weights";
 import type { AppEnv } from "./types";
 
@@ -47,6 +49,13 @@ open.get("/auth-methods", (c) =>
 // endpoints, and the passkey register/authenticate ceremony.
 open.on(["GET", "POST"], "/auth/*", (c) => createAuth(c.env).handler(c.req.raw));
 
+// Machine caller (#19). "Open" only in the sense that requireAuth's session
+// check can't apply to a launchd job — the route authenticates a bearer token
+// to a real user_id before it touches anything, and scopes every write to it.
+// It is mounted here rather than under `secure` precisely so that the session
+// rule for every other route stays absolute.
+open.route("/sync", sync);
+
 // ── authenticated ────────────────────────────────────────────
 // Everything mounted here runs requireAuth first, so no handler below can be
 // reached without a session — per-user isolation is a property of the mount,
@@ -61,6 +70,9 @@ secure.route("/food-logs", foodLogs);
 secure.route("/favorites", favorites);
 secure.route("/photos", photos);
 secure.route("/weights", weights);
+// issuing/revoking is a person's job in Settings, so it stays session-only —
+// a leaked sync token must not be able to mint more of them (#19)
+secure.route("/sync-tokens", syncTokens);
 
 app.route("/api", open);
 app.route("/api", secure);

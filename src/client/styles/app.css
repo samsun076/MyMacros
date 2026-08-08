@@ -1805,3 +1805,37 @@ section {
   border: 1px solid var(--accent);
   border-radius: var(--radius-card);
 }
+
+/* ── sync tokens (#19) ────────────────────────────────────── */
+
+/* The one moment the plaintext token exists. Accent-bordered because it is
+   genuinely a now-or-never action, not decoration. */
+.token-reveal {
+  display: grid;
+  gap: 10px;
+  padding: 16px;
+  margin: 14px 0;
+  background: var(--surface);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-card);
+}
+
+/* A 47-character opaque string with no word breaks. `anywhere` rather than
+   `break-all` so it wraps at the edge instead of widening the frame — the
+   #51 failure mode, and the one verify:viewport exists to catch. */
+.token-value {
+  font-family: var(--data-font);
+  font-size: 13px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+  padding: 10px 12px;
+  background: var(--bg);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-mark);
+  color: var(--ink);
+}
+
+/* the revoke control sits beside the "last used" stamp in the kv row */
+.kv dd .btn-text {
+  margin-left: 12px;
+}

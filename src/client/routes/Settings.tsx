@@ -1,6 +1,7 @@
 import { Link } from "react-router";
 import type { Me } from "../../shared/api";
 import { PasskeyManager } from "../components/PasskeyManager";
+import { SyncTokens } from "../components/SyncTokens";
 import { useApi } from "../lib/api";
 import { authClient } from "../lib/auth";
 
@@ -84,6 +85,8 @@ export function Settings() {
           here until the trends screen (#22) gives it a better home.
         </p>
       </section>
+
+      <SyncTokens />
 
       <button className="btn btn-quiet" onClick={() => void authClient.signOut()}>
         Sign out

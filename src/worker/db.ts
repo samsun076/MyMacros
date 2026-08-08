@@ -110,7 +110,31 @@ export type FavoriteTable = {
   created_at: Generated<Instant>;
 };
 
+/** Machine credentials for /api/sync (#19). Only the hash is stored — see
+ *  migrations/0003_sync_tokens.sql for why SHA-256 and not a password hash. */
+export type SyncTokenTable = {
+  id: string;
+  user_id: string;
+  token_hash: string;
+  name: string;
+  created_at: Generated<Instant>;
+  last_used_at: Instant | null;
+};
+
+/** better-auth owns this table and nothing else should write it. It is
+ *  declared here read-only-by-convention so a sync token can be joined back
+ *  to the user it authenticates, which is what lets /api/sync put a real
+ *  `c.var.user` on the context instead of a synthetic one. */
+export type UserTable = {
+  id: string;
+  name: string;
+  email: string;
+  image: string | null;
+};
+
 export type Database = {
+  users: UserTable;
+  sync_tokens: SyncTokenTable;
   profiles: ProfileTable;
   food_logs: FoodLogTable;
   weights: WeightTable;

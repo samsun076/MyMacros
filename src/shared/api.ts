@@ -240,6 +240,58 @@ export type WeightsResponse = {
   trend_kg: number | null;
 };
 
+/** One run as the debrief pipeline pushes it (#19). `external_id` is the
+ *  Suunto workout key and is what makes a re-send an update rather than a
+ *  duplicate. */
+export type SyncRun = {
+  ran_on: string;
+  external_id: string;
+  distance_m: number;
+  kcal: number;
+  started_at?: string | null;
+  duration_s?: number | null;
+  tss?: number | null;
+};
+
+/** One weigh-in from the scale pipeline (#20). `source` is not accepted —
+ *  arriving on /api/sync is what makes it 'garmin'. */
+export type SyncWeight = {
+  measured_on: string;
+  weight_kg: number;
+  body_fat_pct?: number | null;
+};
+
+/** POST /api/sync body. Both arrays are optional; the script sends a rolling
+ *  window and the endpoint is idempotent, so re-sending is the normal case. */
+export type SyncRequest = {
+  runs?: SyncRun[];
+  weights?: SyncWeight[];
+};
+
+export type SyncResponse = {
+  runs: number;
+  weights: number;
+  /** Paths of items that failed validation, e.g. "runs[3]" — so a script
+   *  silently dropping half its payload shows up in the launchd log. */
+  rejected: string[];
+  /** Recomputed when a weigh-in arrived, otherwise null. */
+  target_kcal: number | null;
+};
+
+/** A machine credential, as listed back to its owner. The token itself is
+ *  never included — only its hash is stored (#19). */
+export type SyncToken = {
+  id: string;
+  name: string;
+  created_at: string;
+  last_used_at: string | null;
+};
+
+export type SyncTokensResponse = { tokens: SyncToken[] };
+
+/** The one and only time the plaintext token exists outside the client. */
+export type SyncTokenCreated = SyncToken & { token: string };
+
 export type DayTotals = {
   kcal: number;
   protein_g: number;
