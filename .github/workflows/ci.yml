@@ -24,3 +24,13 @@ jobs:
       # Cloudflare plugin to resolve bindings, which is Workers Builds' job
       - run: npm run check
       - run: npm test
+
+      # Advisories, deliberately NOT in `npm run build` (#61). The build gates
+      # deploys, and advisories are published upstream on a schedule nobody
+      # here controls — a new one at 3am should not stop a deploy of code that
+      # didn't change. CI reports; the build gates.
+      #
+      # `high` and above, not everything: a moderate advisory in a transitive
+      # dev dependency is noise, and a pipeline that cries wolf gets ignored,
+      # which is the state #61 exists to leave behind.
+      - run: npm audit --audit-level=high
