@@ -147,6 +147,13 @@ h1 span {
   font-stretch: 118%;
   letter-spacing: 0.14em;
   text-transform: uppercase;
+  /* `.btn` is worn by <button> AND by react-router <Link> (Today's setup
+     prompt, Settings' two budget links). A <button> centres its label and
+     draws no underline for free; an <a> does neither, so both have to be
+     said out loud or the anchors render as underlined, left-aligned odd
+     ones out beside the real buttons. */
+  text-align: center;
+  text-decoration: none;
   cursor: pointer;
   transition: opacity 0.16s ease, transform 0.16s ease;
 }

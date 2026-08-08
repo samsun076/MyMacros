@@ -46,6 +46,10 @@ export function Onboarding() {
   const [form, setForm] = useState<Partial<Form>>({});
   const p = me?.profile;
   const imperial = (p?.units ?? "imperial") === "imperial";
+  /** Already been through this once — the screen is an editor now, not an
+   *  introduction. Read off the profile rather than the form, so it doesn't
+   *  flip while someone is typing. */
+  const returning = Boolean(p?.sex && p?.birth_date && p?.height_cm);
 
   const v: Form = {
     sex: form.sex ?? p?.sex ?? null,
@@ -115,16 +119,28 @@ export function Onboarding() {
 
   return (
     <main className="frame onboard">
-      <header>
+      {/* Reachable a second time from Settings, so it can't be a one-way
+          street: someone who opens it to change a deficit needs a way out
+          that isn't saving. */}
+      <header className={returning ? "log-top" : undefined}>
         <span className="eyebrow">
           <span className="tick" />
-          Set up your budget
+          {returning ? "Your budget" : "Set up your budget"}
         </span>
-        <h1>A few numbers</h1>
-        <p className="sheet-sub">
-          Enough to work out what you burn in a day. All of it is editable later.
-        </p>
+        {returning && (
+          <button className="cam-x" aria-label="Close" onClick={() => void navigate("/settings")}>
+            ✕
+          </button>
+        )}
       </header>
+      {!returning && (
+        <>
+          <h1>A few numbers</h1>
+          <p className="sheet-sub">
+            Enough to work out what you burn in a day. All of it is editable later.
+          </p>
+        </>
+      )}
 
       <section>
         <div className="sec-head">
@@ -360,7 +376,7 @@ export function Onboarding() {
       </section>
 
       <button className="btn btn-accent" disabled={!ready || saving} onClick={() => void save()}>
-        {saving ? "Saving…" : "Start logging"}
+        {saving ? "Saving…" : returning ? "Save changes" : "Start logging"}
       </button>
       {error && (
         <p className="signin-error" role="alert">

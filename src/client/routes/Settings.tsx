@@ -1,3 +1,4 @@
+import { Link } from "react-router";
 import type { Me } from "../../shared/api";
 import { PasskeyManager } from "../components/PasskeyManager";
 import { useApi } from "../lib/api";
@@ -56,9 +57,31 @@ export function Settings() {
             </dd>
           </div>
         </dl>
+        {/* The way back into #17's flow. Without this, onboarding is a
+            one-shot: Today only offers it while `onboarded` is false, so
+            finishing it removed the only link to it and there was no way to
+            change a deficit or a goal again. The full field-by-field settings
+            screen is still #23; this is #17's own flow staying reachable. */}
+        <Link className="btn btn-quiet" to="/onboarding">
+          Edit budget inputs
+        </Link>
         <p className="placeholder-note">
-          Read-only until the settings screen lands — editing these is #23,
-          the theme and accent pickers are #29.
+          Opens the setup flow with your current numbers in it. Editing each field
+          in place is #23; the theme and accent pickers are #29.
+        </p>
+      </section>
+
+      <section>
+        <div className="sec-head">
+          <span className="eyebrow">Weight</span>
+          <span className="mono">7-DAY TREND</span>
+        </div>
+        <Link className="btn btn-quiet" to="/weight">
+          Log a weigh-in
+        </Link>
+        <p className="placeholder-note">
+          Your target follows the smoothed trend, not any single morning. This lives
+          here until the trends screen (#22) gives it a better home.
         </p>
       </section>
 
