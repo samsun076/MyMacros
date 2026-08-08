@@ -93,7 +93,18 @@ try {
      WHERE activity_id IN (${RUN_ACTIVITY_IDS.join(",")})
        AND start_time_ms >= ${sinceMs}
      ORDER BY start_time_ms DESC;`;
-  const out = execFileSync("sqlite3", ["-json", "-readonly", DB, sql], { encoding: "utf8" });
+  /* Not `-readonly`, deliberately, and this cost a debugging round.
+   *
+   * debrief's pipeline writes this database, which puts it in WAL mode, and
+   * a read-only open of a WAL database fails — SQLite needs to create the
+   * `-shm` shared-memory file to read the log, and read-only forbids it:
+   *   Error: in prepare, unable to open database file (14)
+   *
+   * It passes whenever the database happens to be quiescent, which is why an
+   * earlier run of this same script worked and the next one didn't. Nothing
+   * here issues anything but SELECT; the only files a default open creates
+   * are SQLite's own `-shm`/`-wal` housekeeping, never a change to a row. */
+  const out = execFileSync("sqlite3", ["-json", DB, sql], { encoding: "utf8" });
   rows = out.trim() ? JSON.parse(out) : [];
 } catch (err) {
   console.error(`Couldn't read ${DB}`);
