@@ -152,6 +152,18 @@ MYMACROS_SYNC_TOKEN=mms_… ./tools/install-sync-agent.sh        # launchd, ever
   database is quiescent, so it fails only sometimes — which is worse.
 - **Garmin rate-limits login by IP (429)** and repeated attempts extend the
   block. Wait 15–30 minutes; don't retry in a loop.
+- **Garmin reports a deletion by going silent** (#66). Measured against the
+  live API: no tombstone, no flag — the day just stops appearing in
+  `dateWeightList`, which for one day is identical to "didn't weigh in". So the
+  sync deletes nothing unless it sends `weights_window`, a claim that the list
+  it carries is *everything* Garmin reported for that range. The claim is
+  withheld entirely if any entry was refused, because a day we saw and dropped
+  looks exactly like a day Garmin no longer reports. Three guards, each with a
+  test that fails when it's removed: no window → no deletion; empty payload →
+  no deletion (that's the shape an API hiccup takes); more than 2 days → refuse
+  and name them (`--allow-removals N` to override). Manual rows are invisible
+  to all of it — the protection lives on the SELECT that builds the candidate
+  list, not on the DELETE.
 - **Both scripts check in even when they have nothing** (#69). `/api/sync`
   stamps a per-source heartbeat in `sync_sources`, and the Today screen uses it
   to tell a rest day apart from a dead sync — so returning early on an empty

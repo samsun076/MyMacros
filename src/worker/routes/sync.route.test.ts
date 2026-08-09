@@ -246,6 +246,236 @@ describe("idempotency", () => {
   });
 });
 
+/** Garmin reports a deletion by never mentioning the day again — no tombstone,
+ *  no flag, measured against the live API. For one day that is identical to
+ *  "didn't weigh in"; over a window the caller vouches for, it isn't (#66). */
+describe("window reconciliation", () => {
+  const WINDOW = { from: "2026-08-01", to: "2026-08-10" };
+
+  async function seedScaleDays(days: [string, number][]) {
+    for (const [day, kg] of days) {
+      await db
+        .insertInto("weights")
+        .values({
+          id: `w-${day}`,
+          user_id: ALICE,
+          measured_on: day,
+          weight_kg: kg,
+          source: "garmin",
+        })
+        .execute();
+    }
+  }
+
+  const daysLeft = async () =>
+    (
+      await db
+        .selectFrom("weights")
+        .select("measured_on")
+        .where("user_id", "=", ALICE)
+        .orderBy("measured_on")
+        .execute()
+    ).map((r) => r.measured_on);
+
+  it("removes a day the scale no longer reports", async () => {
+    const token = await seedUser(ALICE);
+    await seedScaleDays([
+      ["2026-08-05", 76.1],
+      ["2026-08-06", 76.2],
+    ]);
+
+    const res = await post(token, {
+      weights: [{ measured_on: "2026-08-06", weight_kg: 76.2 }],
+      weights_window: WINDOW,
+    });
+
+    expect(await res.json()).toMatchObject({ removed: ["2026-08-05"], removals_refused: [] });
+    expect(await daysLeft()).toEqual(["2026-08-06"]);
+  });
+
+  /** No window, no deletion, ever. */
+  it("deletes nothing when no window is declared", async () => {
+    const token = await seedUser(ALICE);
+    await seedScaleDays([["2026-08-05", 76.1]]);
+
+    await post(token, { weights: [{ measured_on: "2026-08-06", weight_kg: 76.2 }] });
+
+    expect(await daysLeft()).toEqual(["2026-08-05", "2026-08-06"]);
+  });
+
+  /** An empty list is the shape an API hiccup takes, and it would otherwise
+   *  mean "delete everything in here". */
+  it("refuses to reconcile an empty payload", async () => {
+    const token = await seedUser(ALICE);
+    await seedScaleDays([
+      ["2026-08-05", 76.1],
+      ["2026-08-06", 76.2],
+    ]);
+
+    const res = await post(token, { weights: [], weights_window: WINDOW });
+
+    expect(await res.json()).toMatchObject({ removed: [] });
+    expect(await daysLeft()).toEqual(["2026-08-05", "2026-08-06"]);
+  });
+
+  /** A person deletes one bad reading, not a fortnight. Past the cap this is
+   *  evidence about the response, not about the user. */
+  it("refuses a mass removal and names the days instead", async () => {
+    const token = await seedUser(ALICE);
+    await seedScaleDays([
+      ["2026-08-03", 76.0],
+      ["2026-08-04", 76.1],
+      ["2026-08-05", 76.2],
+      ["2026-08-06", 76.3],
+    ]);
+
+    const res = await post(token, {
+      weights: [{ measured_on: "2026-08-06", weight_kg: 76.3 }],
+      weights_window: WINDOW,
+    });
+
+    expect(await res.json()).toMatchObject({
+      removed: [],
+      removals_refused: ["2026-08-03", "2026-08-04", "2026-08-05"],
+    });
+    expect(await daysLeft()).toHaveLength(4);
+  });
+
+  it("lets the caller raise the cap deliberately", async () => {
+    const token = await seedUser(ALICE);
+    await seedScaleDays([
+      ["2026-08-03", 76.0],
+      ["2026-08-04", 76.1],
+      ["2026-08-05", 76.2],
+      ["2026-08-06", 76.3],
+    ]);
+
+    const res = await post(token, {
+      weights: [{ measured_on: "2026-08-06", weight_kg: 76.3 }],
+      weights_window: { ...WINDOW, max_removals: 5 },
+    });
+
+    expect(await res.json()).toMatchObject({ removed: ["2026-08-03", "2026-08-04", "2026-08-05"] });
+    expect(await daysLeft()).toEqual(["2026-08-06"]);
+  });
+
+  /** #20's rule is untouched: the scale cannot remove a number the user typed
+   *  any more than it can overwrite one. */
+  it("never removes a weigh-in the user typed", async () => {
+    const token = await seedUser(ALICE);
+    await db
+      .insertInto("weights")
+      .values({
+        id: "manual-x",
+        user_id: ALICE,
+        measured_on: "2026-08-05",
+        weight_kg: 74.8,
+        source: "manual",
+      })
+      .execute();
+
+    const res = await post(token, {
+      weights: [{ measured_on: "2026-08-06", weight_kg: 76.2 }],
+      weights_window: WINDOW,
+    });
+
+    expect(await res.json()).toMatchObject({ removed: [] });
+    expect(await daysLeft()).toEqual(["2026-08-05", "2026-08-06"]);
+  });
+
+  it("leaves rows outside the declared window alone", async () => {
+    const token = await seedUser(ALICE);
+    await seedScaleDays([
+      ["2026-07-01", 77.0],
+      ["2026-08-05", 76.1],
+    ]);
+
+    await post(token, {
+      weights: [{ measured_on: "2026-08-05", weight_kg: 76.1 }],
+      weights_window: WINDOW,
+    });
+
+    expect(await daysLeft()).toEqual(["2026-07-01", "2026-08-05"]);
+  });
+
+  /** Clamping a malformed window into a valid one would authorize deletions
+   *  over days the caller never claimed to know about. */
+  it("ignores a window whose dates are backwards or junk", async () => {
+    const token = await seedUser(ALICE);
+    await seedScaleDays([["2026-08-05", 76.1]]);
+
+    for (const bad of [
+      { from: "2026-08-10", to: "2026-08-01" },
+      { from: "nope", to: "2026-08-10" },
+      { from: "2026-08-01" },
+    ]) {
+      await post(token, {
+        weights: [{ measured_on: "2026-08-06", weight_kg: 76.2 }],
+        weights_window: bad,
+      });
+    }
+
+    expect(await daysLeft()).toContain("2026-08-05");
+  });
+
+  it("keeps one user's window out of another's rows", async () => {
+    const alice = await seedUser(ALICE);
+    await seedUser(BOB);
+    await db
+      .insertInto("weights")
+      .values({
+        id: "bob-1",
+        user_id: BOB,
+        measured_on: "2026-08-05",
+        weight_kg: 90,
+        source: "garmin",
+      })
+      .execute();
+
+    await post(alice, {
+      weights: [{ measured_on: "2026-08-06", weight_kg: 76.2 }],
+      weights_window: WINDOW,
+    });
+
+    const bobs = await db.selectFrom("weights").select("id").where("user_id", "=", BOB).execute();
+    expect(bobs).toHaveLength(1);
+  });
+
+  /** The removed row is usually the bad one that was dragging the trend, so
+   *  the target has to be recomputed without it — otherwise the budget stays
+   *  derived from a reading that no longer exists. */
+  it("recomputes the target after a removal", async () => {
+    const token = await seedUser(ALICE);
+    const today = new Date().toISOString().slice(0, 10);
+    const yesterday = new Date(Date.now() - 86_400_000).toISOString().slice(0, 10);
+
+    // a bad heavy reading beside a good one, both inside the 7-day trend
+    await seedScaleDays([
+      [yesterday, 96.0],
+      [today, 76.0],
+    ]);
+
+    // no window: nothing is removed, so the trend still averages in the 96
+    const before = (await (
+      await post(token, { weights: [{ measured_on: today, weight_kg: 76.0 }] })
+    ).json()) as { target_kcal: number | null };
+
+    // same payload, now vouching for the window: the 96 disappears
+    const after = (await (
+      await post(token, {
+        weights: [{ measured_on: today, weight_kg: 76.0 }],
+        weights_window: { from: yesterday, to: today },
+      })
+    ).json()) as { target_kcal: number | null; removed: string[] };
+
+    expect(after.removed).toEqual([yesterday]);
+    expect(before.target_kcal).not.toBeNull();
+    expect(after.target_kcal).not.toBeNull();
+    // 20 kg lighter on a cut is a materially smaller budget, not a rounding wobble
+    expect(after.target_kcal as number).toBeLessThan(before.target_kcal as number);
+  });
+});
+
 describe("payload handling", () => {
   it("counts what it wrote", async () => {
     const token = await seedUser(ALICE);

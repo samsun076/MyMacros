@@ -26,6 +26,19 @@ const sync = new Hono<AppEnv>();
  *  write unbounded rows in one request. */
 const MAX_ITEMS = 500;
 
+/** How many days a single sync may remove before it is treated as evidence
+ *  about the upstream response rather than about the user (#66).
+ *
+ *  Two, because someone deletes the morning the scale read them holding a
+ *  dumbbell — they don't delete a fortnight. The failure this bounds is a
+ *  partial or truncated Garmin response, which would otherwise reconcile away
+ *  a month of real weigh-ins in one silent pass. */
+const MAX_REMOVALS = 2;
+
+/** Ceiling on the caller's own override. Raising the cap is a deliberate act
+ *  (`--allow-removals`), but it must not become "delete everything". */
+const MAX_REMOVALS_CEILING = 60;
+
 sync.post("/", async (c) => {
   const token = bearerFrom(c.req.header("Authorization"));
   if (!token) {
@@ -159,11 +172,68 @@ sync.post("/", async (c) => {
     weightsWritten++;
   }
 
+  /* Reconcile the declared window (#66).
+   *
+   * Garmin announces a deletion by never mentioning the day again — measured
+   * against the live API, not assumed: no tombstone, no flag, the entry simply
+   * stops appearing in `dateWeightList`. For one day that is identical to
+   * "didn't weigh in". Over a window the caller vouches for, it isn't.
+   *
+   * Three conditions, each closing a way this could eat real data:
+   *   - a window must be declared. No window, no deletion, ever.
+   *   - the payload must be non-empty. An empty list is the shape an API
+   *     hiccup takes, and it would otherwise mean "delete everything here".
+   *   - only `source = 'garmin'` rows. #20's rule is untouched: the scale
+   *     still cannot remove a number the user typed, and a manual row inside
+   *     the window is invisible to this.
+   */
+  const removed: string[] = [];
+  const removals_refused: string[] = [];
+  const window = validWindow(body.weights_window);
+
+  if (window && weights.length) {
+    const sent = new Set(weights.map((w) => validWeight(w)?.measured_on).filter(Boolean));
+
+    const stored = await db
+      .selectFrom("weights")
+      .select("measured_on")
+      .where("user_id", "=", caller.id)
+      .where("source", "=", "garmin")
+      .where("measured_on", ">=", window.from)
+      .where("measured_on", "<=", window.to)
+      .execute();
+
+    const missing = stored.map((r) => r.measured_on).filter((day) => !sent.has(day));
+
+    if (missing.length > window.max_removals) {
+      // Loud and inert: says exactly which days, changes nothing.
+      removals_refused.push(...missing);
+    } else if (missing.length) {
+      await db
+        .deleteFrom("weights")
+        .where("user_id", "=", caller.id)
+        // Redundant with the SELECT above, which is where the protection
+        // actually lives — a manual day never reaches `missing` in the first
+        // place. Kept anyway: this is a DELETE, and the cost of the belt is
+        // one indexed predicate. Verified by experiment that removing the
+        // SELECT's copy breaks a test and removing this one does not, so
+        // don't mistake this line for the guard.
+        .where("source", "=", "garmin")
+        .where("measured_on", "in", missing)
+        .execute();
+      removed.push(...missing);
+    }
+  }
+
   // A new weigh-in moves the trend, and the trend is what the target follows
   // (#18). Skipped when only runs arrived: runs never touch the base target —
   // their calories are the earned bonus (#21), which is computed per-day at
   // read time rather than folded in here (build rule 7).
-  const budget = weightsWritten ? await refreshTarget(db, caller.id) : null;
+  // Removing a weigh-in moves the trend exactly as arriving does — often more,
+  // since the row that gets deleted is usually the bad one that was dragging
+  // it. Refreshing only on writes would leave the target computed from a
+  // reading that no longer exists (#66).
+  const budget = weightsWritten || removed.length ? await refreshTarget(db, caller.id) : null;
 
   /* The heartbeat (#69).
    *
@@ -201,9 +271,32 @@ sync.post("/", async (c) => {
     // the launchd log rather than looking like a clean run
     rejected,
     suppressed,
+    removed,
+    removals_refused,
     target_kcal: budget?.target_kcal ?? null,
   });
 });
+
+/** A window is only usable if it is a real, ordered date range. Anything else
+ *  is dropped rather than corrected — a malformed window that got clamped into
+ *  a valid one would authorize deletions over days the caller never claimed. */
+function validWindow(raw: unknown) {
+  const w = raw as Record<string, unknown> | undefined;
+  if (!w || typeof w !== "object") return null;
+
+  const from = isDay(w.from);
+  const to = isDay(w.to);
+  if (!from || !to || from > to) return null;
+
+  const asked = isNum(w.max_removals) ? Math.floor(w.max_removals) : MAX_REMOVALS;
+  return {
+    from,
+    to,
+    // the caller may raise the cap deliberately, never below the default and
+    // never past the ceiling
+    max_removals: Math.min(Math.max(asked, MAX_REMOVALS), MAX_REMOVALS_CEILING),
+  };
+}
 
 function validRun(raw: unknown) {
   const r = raw as Record<string, unknown>;

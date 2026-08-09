@@ -121,15 +121,26 @@ def connect():
     return garmin
 
 
-def weigh_ins(garmin, days: int) -> list[dict]:
+def weigh_ins(garmin, days: int) -> tuple[list[dict], dict, bool]:
+    """Returns (weigh-ins, window, complete).
+
+    `complete` is the claim the endpoint needs before it will delete anything
+    (#66): every weigh-in Garmin reported in this window is in the list. It
+    goes False the moment an entry is refused or unusable — a day we saw but
+    dropped would otherwise look identical to a day Garmin no longer reports,
+    and reconciliation would delete a reading that still exists upstream.
+    """
     end = date.today()
     start = end - timedelta(days=days)
     data = garmin.get_body_composition(start.isoformat(), end.isoformat())
+    window = {"from": start.isoformat(), "to": end.isoformat()}
+    complete = True
 
     out = []
     for entry in data.get("dateWeightList", []) or []:
         grams = entry.get("weight")
         if grams is None:
+            complete = False
             continue
 
         kg = round(float(grams) / G_PER_KG, 1)
@@ -141,6 +152,7 @@ def weigh_ins(garmin, days: int) -> list[dict]:
                 f"{MIN_KG}-{MAX_KG}. Has Garmin changed units?",
                 file=sys.stderr,
             )
+            complete = False
             continue
 
         # `calendarDate` is the local day Garmin filed it under, which is the
@@ -148,6 +160,7 @@ def weigh_ins(garmin, days: int) -> list[dict]:
         # epoch `date` field precisely because it is already local.
         measured_on = entry.get("calendarDate")
         if not measured_on:
+            complete = False
             continue
 
         item = {"measured_on": measured_on, "weight_kg": kg}
@@ -161,13 +174,19 @@ def weigh_ins(garmin, days: int) -> list[dict]:
     by_day: dict[str, dict] = {}
     for item in sorted(out, key=lambda i: i["measured_on"]):
         by_day[item["measured_on"]] = item
-    return list(by_day.values())
+    return list(by_day.values()), window, complete
 
 
-def push(weights: list[dict], token: str) -> int:
+def push(weights: list[dict], token: str, window: dict | None) -> int:
+    payload: dict = {"weights": weights}
+    # Only sent when the list above is everything Garmin reported for the
+    # window (#66). Without it the endpoint never deletes anything.
+    if window:
+        payload["weights_window"] = window
+
     req = urllib.request.Request(
         f"{API}/api/sync",
-        data=json.dumps({"weights": weights}).encode(),
+        data=json.dumps(payload).encode(),
         headers={
             "content-type": "application/json",
             "authorization": f"Bearer {token}",
@@ -204,6 +223,24 @@ def push(weights: list[dict], token: str) -> int:
         n = len(body["suppressed"])
         print(f"  {n} left alone — those days hold a weigh-in you typed, which outranks the scale")
 
+    # Deleted upstream and now gone here too (#66). Named rather than counted:
+    # a removal moves the trend and therefore the target, so it is the one
+    # outcome of a sync worth being able to point at afterwards.
+    if body.get("removed"):
+        print(f"  removed {len(body['removed'])} day(s) deleted in Garmin: {', '.join(body['removed'])}")
+
+    if body.get("removals_refused"):
+        days = body["removals_refused"]
+        print(
+            f"\nREFUSED to remove {len(days)} day(s): {', '.join(days)}\n"
+            "  That is more than a person deletes by hand, so it reads as a partial\n"
+            "  Garmin response rather than an intent. Nothing was deleted.\n"
+            "  If you really did delete them, re-run with --allow-removals "
+            f"{len(days)}.",
+            file=sys.stderr,
+        )
+        return 1
+
     if body.get("rejected"):
         print(f"REJECTED {len(body['rejected'])}: {', '.join(body['rejected'])}", file=sys.stderr)
         return 1
@@ -215,6 +252,15 @@ def main() -> int:
     parser.add_argument("command", nargs="?", choices=["login", "sync"], default="sync")
     parser.add_argument("--days", type=int, default=30)
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument(
+        "--allow-removals",
+        type=int,
+        default=None,
+        metavar="N",
+        help="raise the cap on how many days one sync may delete (#66). "
+        "For the rare case where you really did delete several upstream; "
+        "the default refuses more than a couple as a likely partial response.",
+    )
     args = parser.parse_args()
 
     if args.command == "login":
@@ -224,11 +270,23 @@ def main() -> int:
     if not token and not args.dry_run:
         sys.exit("MYMACROS_SYNC_TOKEN is not set. Issue one in Settings → Sync.")
 
-    weights = weigh_ins(connect(), args.days)
+    weights, window, complete = weigh_ins(connect(), args.days)
     print(f"{len(weights)} weigh-in(s) in the last {args.days} days")
     for w in weights[-5:]:
         bf = f"  {w['body_fat_pct']}% fat" if "body_fat_pct" in w else ""
         print(f"  {w['measured_on']}  {w['weight_kg']} kg{bf}")
+
+    if args.allow_removals is not None:
+        window["max_removals"] = args.allow_removals
+
+    # A window is a claim that this list is *everything* Garmin reported for
+    # the range. Anything refused above makes that false, and a day we saw but
+    # dropped is indistinguishable from a day Garmin no longer reports — so the
+    # claim is withheld rather than weakened, and nothing gets deleted (#66).
+    if not complete:
+        print("  (an entry was unusable — not vouching for the window, so nothing is removed)")
+    if not weights:
+        print("  (nothing to vouch for — no removals this run)")
 
     if args.dry_run:
         print("\n--dry-run: nothing sent.")
@@ -241,7 +299,7 @@ def main() -> int:
     if not weights:
         print("Nothing new — checking in anyway.")
 
-    return push(weights, token)
+    return push(weights, token, window if complete and weights else None)
 
 
 if __name__ == "__main__":

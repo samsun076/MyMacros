@@ -266,6 +266,28 @@ export type SyncWeight = {
 export type SyncRequest = {
   runs?: SyncRun[];
   weights?: SyncWeight[];
+  /** Present when the caller can honestly claim to know every weigh-in in a
+   *  date range, which lets the endpoint remove ones that have disappeared
+   *  upstream (#66). Omit it and nothing is ever deleted. */
+  weights_window?: SyncWeightsWindow;
+};
+
+/** A claim of completeness over a date range (#66).
+ *
+ *  Garmin reports a deletion by simply not mentioning the day again — measured
+ *  against the real API: no tombstone, no flag, the entry is just absent from
+ *  `dateWeightList`. For any single day that is indistinguishable from "didn't
+ *  weigh in", which is most days. A *window* is the smallest claim a collector
+ *  can honestly make that carries the information, so it is what the endpoint
+ *  requires before it will delete anything. */
+export type SyncWeightsWindow = {
+  /** YYYY-MM-DD, inclusive. */
+  from: string;
+  /** YYYY-MM-DD, inclusive. */
+  to: string;
+  /** Raise the removal cap for one run, for the rare case where the user
+   *  really did delete several days upstream. Omitted means the default. */
+  max_removals?: number;
 };
 
 export type SyncResponse = {
@@ -280,6 +302,15 @@ export type SyncResponse = {
    *  that outranks them, and reporting them as written was a lie the sync
    *  scripts repeated into the log. */
   suppressed: string[];
+  /** Days whose scale reading was removed because it has disappeared upstream
+   *  (#66), e.g. ["2026-07-27"]. Only ever `source = 'garmin'` rows inside a
+   *  declared window; a weigh-in the user typed is never touched. */
+  removed: string[];
+  /** Days that WOULD have been removed but weren't, because the batch asked to
+   *  delete more than the cap allows. A person deletes one bad reading, not
+   *  fourteen — a mass removal is evidence about the upstream response, not
+   *  about the user, so the endpoint declines and says which days. */
+  removals_refused: string[];
   /** Recomputed when a weigh-in arrived, otherwise null. */
   target_kcal: number | null;
 };
