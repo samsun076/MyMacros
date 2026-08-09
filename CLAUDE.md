@@ -152,6 +152,25 @@ MYMACROS_SYNC_TOKEN=mms_… ./tools/install-sync-agent.sh        # launchd, ever
   database is quiescent, so it fails only sometimes — which is worse.
 - **Garmin rate-limits login by IP (429)** and repeated attempts extend the
   block. Wait 15–30 minutes; don't retry in a loop.
+- **The launchd exit code is real, and one log holds everything** (#62). The
+  runner used to end each sync with `|| echo`, so `launchctl print` reported
+  `last exit code = 0` across sixteen consecutive Garmin failures. It now
+  collects failures and re-raises them after both syncs have run — independence
+  without silence. stdout and stderr both go to
+  `~/Library/Logs/mymacros/sync.log` (rotates at 1MB, one generation kept);
+  the old `sync.err.log` split is what hid those failures.
+  `launchctl print gui/$(id -u)/run.debrief.mymacros-sync | grep 'last exit'`
+  is now a real health check.
+- **`sync-runs.mjs` refuses a batch whose median is under 35 kcal/km** (#63).
+  A tripwire for the `energy_kj` unit trap, and a *median over the batch* on
+  purpose: a unit change moves every value, a dropped HR strap moves one.
+  Derived from debrief's history — 179 rolling 30-day windows sit at 56–89
+  kcal/km, and the same windows read as kJ would be 13–21. If it ever fires on
+  honest data, re-derive the floor; don't delete the guard.
+- **It also reports matched-of-total** (`15 run(s) matched of 21 workout(s)`).
+  `RUN_ACTIVITY_IDS` is copied from debrief, and the symptom of that copy going
+  stale is zero rows — indistinguishable from a rest week. 0-of-0 is quiet;
+  0-of-12 warns and prints the activity mix so the id that took over is named.
 - Garmin credentials never reach the repo: `login` exchanges the password for
   OAuth tokens in `~/.garminconnect`, and nothing afterwards needs a password.
 
