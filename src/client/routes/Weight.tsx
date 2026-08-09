@@ -53,6 +53,26 @@ export function Weight() {
     }
   }
 
+  /** Deleting a weigh-in (#71). No confirmation step, deliberately: it is
+   *  reversible in two taps on this same screen — typing the weight back also
+   *  clears the tombstone the delete wrote — and a modal in front of a
+   *  reversible action is friction that teaches people to tap through modals.
+   *
+   *  It does move the target, which is why the row disappearing isn't the only
+   *  feedback: `reload()` redraws the trend beside it. */
+  async function remove(measured_on: string) {
+    setSaving(true);
+    setError(null);
+    try {
+      await api.del(`/api/weights/${measured_on}`);
+      reload();
+    } catch {
+      setError("Couldn't delete that weigh-in.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   const trend = data?.trend_kg === null || data?.trend_kg === undefined
     ? null
     : displayWeight(data.trend_kg, imperial ? "imperial" : "metric");
@@ -150,6 +170,14 @@ export function Weight() {
                     <dd>
                       {raw.value} {raw.unit}
                       <span className="mono"> · TREND {smooth.value}</span>
+                      <button
+                        className="btn-text"
+                        disabled={saving}
+                        aria-label={`Delete the ${point.measured_on} weigh-in`}
+                        onClick={() => void remove(point.measured_on)}
+                      >
+                        Delete
+                      </button>
                     </dd>
                   </div>
                 );
