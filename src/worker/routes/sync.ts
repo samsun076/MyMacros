@@ -47,6 +47,9 @@ sync.post("/", async (c) => {
   }
 
   const rejected: string[] = [];
+  /** Valid, but deliberately not written — today only the weigh-in a user has
+   *  typed over. Not a rejection: nothing was wrong with it. See below. */
+  const suppressed: string[] = [];
   let runsWritten = 0;
   let weightsWritten = 0;
 
@@ -94,7 +97,7 @@ sync.post("/", async (c) => {
       rejected.push(`weights[${i}]`);
       continue;
     }
-    await db
+    const written = await db
       .insertInto("weights")
       .values({
         id: crypto.randomUUID(),
@@ -127,7 +130,22 @@ sync.post("/", async (c) => {
           })
           .where("source", "=", "garmin"),
       )
-      .execute();
+      .executeTakeFirst();
+
+    /* The WHERE above can decline the write, and until #68 the counter didn't
+     * know — it incremented regardless, so a day the user had corrected was
+     * reported as synced. That is the same failure `rejected` exists to
+     * prevent, one field over, and in the single line the launchd log relies
+     * on for evidence.
+     *
+     * SQLite reports 0 changes when an upsert neither inserts nor updates, so
+     * the row count is the honest signal. Undefined counts as written: a
+     * dialect that stops reporting it should degrade to the old behaviour, not
+     * silently start claiming every write was suppressed. */
+    if (Number(written?.numInsertedOrUpdatedRows ?? 1) === 0) {
+      suppressed.push(`weights[${i}]`);
+      continue;
+    }
     weightsWritten++;
   }
 
@@ -145,6 +163,7 @@ sync.post("/", async (c) => {
     // named, so a script that silently drops half its payload is visible in
     // the launchd log rather than looking like a clean run
     rejected,
+    suppressed,
     target_kcal: budget?.target_kcal ?? null,
   });
 });

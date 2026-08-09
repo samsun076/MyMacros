@@ -274,6 +274,12 @@ export type SyncResponse = {
   /** Paths of items that failed validation, e.g. "runs[3]" — so a script
    *  silently dropping half its payload shows up in the launchd log. */
   rejected: string[];
+  /** Paths of items that were valid but deliberately not written, e.g. a
+   *  weigh-in for a day the user has typed over (#68). Distinct from
+   *  `rejected` — nothing was wrong with these, they simply lost to a value
+   *  that outranks them, and reporting them as written was a lie the sync
+   *  scripts repeated into the log. */
+  suppressed: string[];
   /** Recomputed when a weigh-in arrived, otherwise null. */
   target_kcal: number | null;
 };

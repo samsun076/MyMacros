@@ -195,6 +195,15 @@ def push(weights: list[dict], token: str) -> int:
     print(f"synced {body.get('weights')} weigh-in(s)")
     if body.get("target_kcal"):
         print(f"target is now {body['target_kcal']} kcal")
+
+    # Not an error, and not silent either (#68). A day the user typed over is
+    # left alone on purpose, but "synced 3" while writing 2 is the count
+    # asserting something that didn't happen — in the one line this pipeline
+    # relies on for evidence.
+    if body.get("suppressed"):
+        n = len(body["suppressed"])
+        print(f"  {n} left alone — those days hold a weigh-in you typed, which outranks the scale")
+
     if body.get("rejected"):
         print(f"REJECTED {len(body['rejected'])}: {', '.join(body['rejected'])}", file=sys.stderr)
         return 1

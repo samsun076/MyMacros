@@ -249,6 +249,11 @@ if (!res.ok) {
 }
 
 console.log(`\nsynced ${body.runs} run(s)`);
+// runs upsert unconditionally, so this should always be empty — which is
+// exactly why it is worth printing if it ever isn't (#68)
+if (body.suppressed?.length) {
+  console.log(`  ${body.suppressed.length} left alone: ${body.suppressed.join(", ")}`);
+}
 if (body.rejected?.length) {
   // loud on purpose: silently dropping half a payload is the failure mode
   // that looks exactly like a clean run

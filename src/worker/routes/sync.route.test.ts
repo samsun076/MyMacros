@@ -188,6 +188,40 @@ describe("idempotency", () => {
     expect(row.source).toBe("manual");
   });
 
+  /** The protection above is right, but the count didn't know about it (#68):
+   *  `weightsWritten++` ran whether or not the upsert's WHERE let the write
+   *  through, so a day the user had corrected was reported as synced. Same
+   *  failure as a silently-dropped payload, one field over — and in the one
+   *  line the launchd log relies on for evidence. */
+  it("doesn't count a weigh-in it was refused permission to overwrite", async () => {
+    const token = await seedUser(ALICE);
+    await db
+      .insertInto("weights")
+      .values({
+        id: "manual-2",
+        user_id: ALICE,
+        measured_on: "2026-08-09",
+        weight_kg: 74.8,
+        source: "manual",
+      })
+      .execute();
+
+    const res = await post(token, {
+      weights: [
+        { measured_on: "2026-08-09", weight_kg: 76.6 },
+        { measured_on: "2026-08-10", weight_kg: 76.4 },
+      ],
+    });
+
+    // one written, one deferred to the typed value — and it is neither
+    // "written" nor "rejected", because nothing was wrong with it
+    expect(await res.json()).toMatchObject({
+      weights: 1,
+      suppressed: ["weights[0]"],
+      rejected: [],
+    });
+  });
+
   it("still updates a reading the scale itself wrote", async () => {
     const token = await seedUser(ALICE);
     await post(token, { weights: [{ measured_on: "2026-08-09", weight_kg: 76.6 }] });
