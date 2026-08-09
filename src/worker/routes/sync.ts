@@ -106,12 +106,26 @@ sync.post("/", async (c) => {
         // the scale pipeline (#20). Manual entry is /api/weights.
         source: "garmin",
       })
+      // Only ever overwrites a row the scale itself wrote.
+      //
+      // Without the WHERE, a manual weigh-in and the scale fight over the same
+      // day and the scale always wins — not because it is more trusted, but
+      // because it runs every 30 minutes forever. Measured in production: a
+      // typed correction was reverted four minutes later and the target moved
+      // with it. Someone who opens the app and types a number is correcting
+      // something, and a correction that silently expires is worse than no
+      // correction at all. `source` here is the stored row's, not the incoming
+      // one (SQLite reads unqualified names in DO UPDATE from the existing
+      // row), so a scale reading still updates a scale reading.
       .onConflict((oc) =>
-        oc.columns(["user_id", "measured_on"]).doUpdateSet({
-          weight_kg: w.weight_kg,
-          body_fat_pct: w.body_fat_pct,
-          source: "garmin",
-        }),
+        oc
+          .columns(["user_id", "measured_on"])
+          .doUpdateSet({
+            weight_kg: w.weight_kg,
+            body_fat_pct: w.body_fat_pct,
+            source: "garmin",
+          })
+          .where("source", "=", "garmin"),
       )
       .execute();
     weightsWritten++;

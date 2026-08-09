@@ -160,6 +160,47 @@ describe("idempotency", () => {
     expect(row.tss).toBe(45.3);
   });
 
+  /** Found in production: a manual weigh-in was reverted by the scale four
+   *  minutes later, and the target moved with it. The sync runs every 30
+   *  minutes forever, so without this the scale always wins eventually and a
+   *  typed correction can never survive. */
+  it("never overwrites a weigh-in the user typed", async () => {
+    const token = await seedUser(ALICE);
+    await db
+      .insertInto("weights")
+      .values({
+        id: "manual-1",
+        user_id: ALICE,
+        measured_on: "2026-08-09",
+        weight_kg: 74.8,
+        source: "manual",
+      })
+      .execute();
+
+    await post(token, { weights: [{ measured_on: "2026-08-09", weight_kg: 76.6 }] });
+
+    const row = await db
+      .selectFrom("weights")
+      .selectAll()
+      .where("measured_on", "=", "2026-08-09")
+      .executeTakeFirstOrThrow();
+    expect(row.weight_kg).toBe(74.8);
+    expect(row.source).toBe("manual");
+  });
+
+  it("still updates a reading the scale itself wrote", async () => {
+    const token = await seedUser(ALICE);
+    await post(token, { weights: [{ measured_on: "2026-08-09", weight_kg: 76.6 }] });
+    await post(token, { weights: [{ measured_on: "2026-08-09", weight_kg: 76.9 }] });
+
+    const row = await db
+      .selectFrom("weights")
+      .selectAll()
+      .where("measured_on", "=", "2026-08-09")
+      .executeTakeFirstOrThrow();
+    expect(row.weight_kg).toBe(76.9);
+  });
+
   it("re-sending a weigh-in corrects the day rather than adding a second", async () => {
     const token = await seedUser(ALICE);
     await post(token, { weights: [{ measured_on: "2026-08-08", weight_kg: 80 }] });
