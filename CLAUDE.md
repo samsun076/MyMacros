@@ -152,6 +152,15 @@ MYMACROS_SYNC_TOKEN=mms_… ./tools/install-sync-agent.sh        # launchd, ever
   database is quiescent, so it fails only sometimes — which is worse.
 - **Garmin rate-limits login by IP (429)** and repeated attempts extend the
   block. Wait 15–30 minutes; don't retry in a loop.
+- **Deleting a weigh-in writes a tombstone** (#71), or the scale re-adds it
+  within 30 minutes — the rolling window finds no row and the upsert takes its
+  INSERT branch. #20 can't cover that: it guards a row whose source is
+  `manual`, and a deleted row isn't manual, it's absent.
+  **The value is part of the key**, which is why tombstones never expire and
+  still aren't a trap: they say "not *this* reading for this day". Delete a
+  dumbbell-inflated 82.4, re-weigh at 76.6, and the corrected number arrives
+  normally. Typing a weight for a day clears every tombstone on it — that's the
+  escape hatch. Three directions, all three tested.
 - **Garmin reports a deletion by going silent** (#66). Measured against the
   live API: no tombstone, no flag — the day just stops appearing in
   `dateWeightList`, which for one day is identical to "didn't weigh in". So the

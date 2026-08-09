@@ -145,10 +145,20 @@ export type SyncSourceTable = {
   last_item_count: Generated<number>;
 };
 
+/** A reading the user rejected (migration 0005, #71). Keyed by value as well
+ *  as day, so a corrected re-weigh of the same date still gets through. */
+export type WeightTombstoneTable = {
+  user_id: string;
+  measured_on: Day;
+  weight_kg: number;
+  created_at: Generated<Instant>;
+};
+
 export type Database = {
   users: UserTable;
   sync_tokens: SyncTokenTable;
   sync_sources: SyncSourceTable;
+  weight_tombstones: WeightTombstoneTable;
   profiles: ProfileTable;
   food_logs: FoodLogTable;
   weights: WeightTable;

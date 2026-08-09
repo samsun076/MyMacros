@@ -84,6 +84,20 @@ weights.post("/", async (c) => {
     )
     .execute();
 
+  /* Typing a weight for a day clears every tombstone on it (#71).
+   *
+   * This is the escape hatch that lets a tombstone be permanent without being
+   * a trap: "I want a number here" is unambiguous, and it is the one act that
+   * should override an earlier "not this one". Every tombstone for the day
+   * goes, not just a matching value — otherwise deleting twice would leave a
+   * day that quietly refuses a specific reading forever with nothing on screen
+   * to explain it. */
+  await c.var.db
+    .deleteFrom("weight_tombstones")
+    .where("user_id", "=", c.var.user.id)
+    .where("measured_on", "=", measured_on)
+    .execute();
+
   // the whole point of logging a weight: the target follows the trend down
   const budget = await refreshTarget(c.var.db, c.var.user.id);
 
@@ -97,13 +111,39 @@ weights.delete("/:date", async (c) => {
   const measured_on = isDay(c.req.param("date"));
   if (!measured_on) return c.json({ error: "invalid_date" }, 400);
 
-  const result = await c.var.db
-    .deleteFrom("weights")
+  // read before deleting: the tombstone records WHICH reading was rejected
+  const existing = await c.var.db
+    .selectFrom("weights")
+    .select(["weight_kg"])
     .where("user_id", "=", c.var.user.id)
     .where("measured_on", "=", measured_on)
     .executeTakeFirst();
 
-  if (!result.numDeletedRows) return c.json({ error: "not_found" }, 404);
+  if (!existing) return c.json({ error: "not_found" }, 404);
+
+  await c.var.db
+    .deleteFrom("weights")
+    .where("user_id", "=", c.var.user.id)
+    .where("measured_on", "=", measured_on)
+    .execute();
+
+  /* Without this the delete doesn't stick (#71): the Garmin sync re-sends a
+   * rolling 30-day window every 30 minutes, finds no row for the day, and its
+   * upsert takes the INSERT branch. Measured before building — 0 rows after
+   * the delete, 1 row after the next sync.
+   *
+   * Recorded for a manual row too, not just a synced one. A delete means "I
+   * don't want this number for this day", and which collector originally
+   * supplied it doesn't change that. */
+  await c.var.db
+    .insertInto("weight_tombstones")
+    .values({
+      user_id: c.var.user.id,
+      measured_on,
+      weight_kg: existing.weight_kg,
+    })
+    .onConflict((oc) => oc.doNothing())
+    .execute();
 
   await refreshTarget(c.var.db, c.var.user.id);
   return c.json({ ok: true });

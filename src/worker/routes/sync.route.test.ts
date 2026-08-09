@@ -246,6 +246,75 @@ describe("idempotency", () => {
   });
 });
 
+/** The scale used to undo a delete within 30 minutes (#71): the rolling window
+ *  re-sent the day, found no row, and the upsert took its INSERT branch. */
+describe("readings the user has rejected", () => {
+  const tombstone = (day: string, kg: number) =>
+    db
+      .insertInto("weight_tombstones")
+      .values({ user_id: ALICE, measured_on: day, weight_kg: kg })
+      .execute();
+
+  const rows = () =>
+    db.selectFrom("weights").selectAll().where("user_id", "=", ALICE).execute();
+
+  it("never re-adds a reading that was deleted", async () => {
+    const token = await seedUser(ALICE);
+    await tombstone("2026-08-05", 82.4);
+
+    const res = await post(token, {
+      weights: [{ measured_on: "2026-08-05", weight_kg: 82.4 }],
+    });
+
+    expect(await res.json()).toMatchObject({ weights: 0, suppressed: ["weights[0]"] });
+    expect(await rows()).toHaveLength(0);
+  });
+
+  it("still refuses it on the hundredth sync, not just the next one", async () => {
+    const token = await seedUser(ALICE);
+    await tombstone("2026-08-05", 82.4);
+
+    for (let i = 0; i < 3; i++) {
+      await post(token, { weights: [{ measured_on: "2026-08-05", weight_kg: 82.4 }] });
+    }
+    expect(await rows()).toHaveLength(0);
+  });
+
+  /** The case that makes a permanent tombstone safe rather than a trap: the
+   *  scale read you holding a dumbbell, you deleted it, you weighed again. The
+   *  corrected number is a different value, so it is not what you rejected. */
+  it("lets a corrected re-weigh of the same day through", async () => {
+    const token = await seedUser(ALICE);
+    await tombstone("2026-08-05", 82.4);
+
+    await post(token, { weights: [{ measured_on: "2026-08-05", weight_kg: 76.6 }] });
+
+    const stored = await rows();
+    expect(stored).toHaveLength(1);
+    expect(stored[0]?.weight_kg).toBe(76.6);
+  });
+
+  it("leaves other days alone", async () => {
+    const token = await seedUser(ALICE);
+    await tombstone("2026-08-05", 82.4);
+
+    await post(token, { weights: [{ measured_on: "2026-08-06", weight_kg: 82.4 }] });
+
+    expect(await rows()).toHaveLength(1);
+  });
+
+  it("is one user's decision, not everyone's", async () => {
+    await seedUser(ALICE);
+    const bob = await seedUser(BOB);
+    await tombstone("2026-08-05", 82.4);
+
+    await post(bob, { weights: [{ measured_on: "2026-08-05", weight_kg: 82.4 }] });
+
+    const bobs = await db.selectFrom("weights").selectAll().where("user_id", "=", BOB).execute();
+    expect(bobs).toHaveLength(1);
+  });
+});
+
 /** Garmin reports a deletion by never mentioning the day again — no tombstone,
  *  no flag, measured against the live API. For one day that is identical to
  *  "didn't weigh in"; over a window the caller vouches for, it isn't (#66). */

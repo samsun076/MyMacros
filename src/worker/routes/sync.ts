@@ -114,10 +114,38 @@ sync.post("/", async (c) => {
     runsWritten++;
   }
 
+  /* Readings the user has already rejected (#71).
+   *
+   * Loaded once rather than probed per row: the window is 30 days and this is
+   * a machine caller running every half hour.
+   *
+   * Keyed by day AND value, which is what lets a tombstone be permanent
+   * without becoming a trap — see migration 0005. Re-sending the rejected
+   * number is ignored forever; a corrected re-weigh of the same day is a
+   * different value and arrives normally. */
+  const tombstoned = new Set(
+    weights.length
+      ? (
+          await db
+            .selectFrom("weight_tombstones")
+            .select(["measured_on", "weight_kg"])
+            .where("user_id", "=", caller.id)
+            .execute()
+        ).map((t) => `${t.measured_on}@${t.weight_kg}`)
+      : [],
+  );
+
   for (const [i, raw] of weights.entries()) {
     const w = validWeight(raw);
     if (!w) {
       rejected.push(`weights[${i}]`);
+      continue;
+    }
+
+    // not a rejection — nothing was wrong with it; it lost to an explicit
+    // decision the user already made, exactly like a typed correction (#68)
+    if (tombstoned.has(`${w.measured_on}@${w.weight_kg}`)) {
+      suppressed.push(`weights[${i}]`);
       continue;
     }
     const written = await db
