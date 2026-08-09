@@ -193,6 +193,15 @@ doppler secrets download -p mymacros -c prd --format json --no-file \
    (placeholder variants OK until M5). The four slots: earned-kcal
    annotation, budget meter, log button, timeline row chrome. See TOKENS.md.
 4. **Theme QA at the end of each milestone** — render check of the light packs.
+4b. **Reconcile one real number at the end of each milestone.** Take a figure
+   the app is showing a real user, pull its inputs out of *production*, and
+   recompute it by hand. Ten minutes. Tests prove the arithmetic and
+   screenshots prove the layout; neither can tell you an **input** is wrong,
+   and that is the failure this project keeps producing — six in M4 alone,
+   plausible-looking rather than visibly broken, four of them found only by
+   running against real data (a client-day/server-day filter that froze the
+   target, `energy_kj` holding kcal, Garmin reporting grams, and a scale that
+   silently reverted a typed weigh-in every 30 minutes).
 5. **Accent is live-switchable** — anything accent-colored references
    `--accent`, never a literal. Night Athletic users pick coral/gold/mint.
 6. **375px is the reference width** (iPhone 13 mini). Nothing is done until
