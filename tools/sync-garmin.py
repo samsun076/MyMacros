@@ -219,9 +219,15 @@ def push(weights: list[dict], token: str, window: dict | None) -> int:
     # left alone on purpose, but "synced 3" while writing 2 is the count
     # asserting something that didn't happen — in the one line this pipeline
     # relies on for evidence.
+    # Two causes since #71 — a day the user typed over (#68), and a reading
+    # they deleted — and the endpoint returns paths rather than reasons. So the
+    # wording covers both rather than naming one: it claimed "a weigh-in you
+    # typed" the first time a tombstone fired in production, which was simply
+    # untrue and is the kind of small lie that sends the next debugging session
+    # to the wrong place.
     if body.get("suppressed"):
         n = len(body["suppressed"])
-        print(f"  {n} left alone — those days hold a weigh-in you typed, which outranks the scale")
+        print(f"  {n} left alone — you've already decided those days (typed over, or deleted)")
 
     # Deleted upstream and now gone here too (#66). Named rather than counted:
     # a removal moves the trend and therefore the target, so it is the one
