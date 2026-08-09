@@ -237,7 +237,8 @@ doppler secrets download -p mymacros -c prd --format json --no-file \
    (placeholder variants OK until M5). The four slots: earned-kcal
    annotation, budget meter, log button, timeline row chrome. See TOKENS.md.
 4. **Theme QA at the end of each milestone** — render check of the light packs.
-4b. **Reconcile one real number at the end of each milestone.** Take a figure
+4b. **Reconcile one real number at the end of each milestone.** Recorded in
+   [RECONCILIATIONS.md](RECONCILIATIONS.md), one entry per milestone. Take a figure
    the app is showing a real user, pull its inputs out of *production*, and
    recompute it by hand. Ten minutes. Tests prove the arithmetic and
    screenshots prove the layout; neither can tell you an **input** is wrong,
