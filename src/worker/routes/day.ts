@@ -1,6 +1,8 @@
 import { Hono } from "hono";
-import type { DayResponse, DayRun } from "../../shared/api";
+import type { DayResponse, DayRun, FeedHealth } from "../../shared/api";
 import { earnedKcal, missingBudgetInputs } from "../../shared/budget";
+import { dayInTimezone } from "../../shared/day";
+import { feedStale } from "../../shared/sync";
 import { recentWeighIns } from "../budget";
 import { loadProfile } from "../profile";
 import type { AppEnv } from "../types";
@@ -81,12 +83,41 @@ day.get("/:date", async (c) => {
       }
     : null;
 
+  /* Is `run: null` above a rest day or a dead sync (#69)?
+   *
+   * Only asserted for the day being LIVED. A feed that died last night doesn't
+   * make last Tuesday's runs incomplete — they arrived, on time, and marking a
+   * settled day as doubtful would put a warning on screen that syncing can
+   * never clear.
+   *
+   * `>=` rather than `===` because the client owns its local day and this
+   * timezone is a stored default until it says otherwise (#44); the two sit on
+   * opposite sides of midnight for several hours each evening. Erring toward
+   * the client's day keeps the marker working during exactly that window. */
+  const source = await c.var.db
+    .selectFrom("sync_sources")
+    .select(["last_success_at", "last_item_count"])
+    .where("user_id", "=", c.var.user.id)
+    .where("source", "=", "runs")
+    .executeTakeFirst();
+
+  const runs_feed: FeedHealth | null = source
+    ? {
+        last_success_at: source.last_success_at,
+        last_item_count: source.last_item_count,
+        stale:
+          date >= dayInTimezone(new Date(), profile.timezone) &&
+          feedStale(source.last_success_at, new Date()),
+      }
+    : null;
+
   return c.json<DayResponse>({
     logs,
     totals,
     target_kcal: profile.target_kcal,
     run,
     onboarded,
+    runs_feed,
   });
 });
 

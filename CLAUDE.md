@@ -152,6 +152,19 @@ MYMACROS_SYNC_TOKEN=mms_… ./tools/install-sync-agent.sh        # launchd, ever
   database is quiescent, so it fails only sometimes — which is worse.
 - **Garmin rate-limits login by IP (429)** and repeated attempts extend the
   block. Wait 15–30 minutes; don't retry in a loop.
+- **Both scripts check in even when they have nothing** (#69). `/api/sync`
+  stamps a per-source heartbeat in `sync_sources`, and the Today screen uses it
+  to tell a rest day apart from a dead sync — so returning early on an empty
+  payload would make the feed go quiet on exactly the days there is nothing to
+  report. The signal is whether `runs`/`weights` is **present**, not non-empty:
+  `{"runs": []}` says "I speak for runs and there are none", where no key says
+  nothing at all. Don't collapse those.
+- **Per source, not per token.** One token carries both feeds, so
+  `sync_tokens.last_used_at` goes on looking healthy while half the pipeline is
+  dead — which is exactly what hid #62's sixteen Garmin failures. Staleness
+  threshold is 18h (`src/shared/sync.ts`), set by the false alarm rather than
+  the true one: a laptop shut at 11pm and an app opened on a phone at breakfast
+  is a nine-hour gap on a working system.
 - **The launchd exit code is real, and one log holds everything** (#62). The
   runner used to end each sync with `|| echo`, so `launchctl print` reported
   `last exit code = 0` across sixteen consecutive Garmin failures. It now

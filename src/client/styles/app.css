@@ -482,6 +482,46 @@ section {
   box-shadow: inset 0 0 0 1px var(--accent-soft);
 }
 
+/* Settings → Sources (#69). A stale feed is the one thing on this screen
+   worth catching an eye, but it is still not an error — --ink-muted would
+   vanish into the hints around it, so it borrows the warning weight without
+   the alarm colour. */
+.feed-stale {
+  color: var(--ink-secondary);
+  font-weight: 600;
+}
+
+.feed-count {
+  margin-left: 8px;
+}
+
+/* A sub-head inside a section — quieter than the section's own, because it
+   divides rather than announces. */
+.sec-head-sub {
+  margin-top: 22px;
+}
+
+/* Slot 1's stale variant (#69). Recessive on purpose: this fires when the
+   runs feed has been quiet past the threshold, and the overwhelmingly likely
+   cause is a laptop that's shut — a screen about food shouldn't shout about
+   it. --ink-muted rather than accent for exactly that reason, and because
+   accent here would read as something earned. */
+.earned-note.stale {
+  color: var(--ink-muted);
+  font-weight: 500;
+}
+
+/* The hatch, drained of accent — same 135° rhythm as .swatch so the two read
+   as the same family, one of them switched off. */
+.earned-note.stale .stale-mark {
+  width: 14px;
+  height: 10px;
+  border-radius: 2px;
+  background: repeating-linear-gradient(135deg, var(--ink-muted) 0 1px, transparent 1px 4px);
+  box-shadow: inset 0 0 0 1px var(--line-soft);
+  opacity: 0.65;
+}
+
 /* slot 4 · timeline row chrome — hairline rail, node dots, accent run dot.
    The rail narrows below 390px (from the sketch's 375 fix). */
 .tl {

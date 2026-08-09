@@ -327,6 +327,84 @@ describe("side effects", () => {
     expect(after.target_kcal).toBe(before.target_kcal);
   });
 
+  /** The heartbeat (#69). `run: null` on the Today screen means both "rest
+   *  day" and "sync died three days ago", and only this can tell them apart. */
+  describe("per-source heartbeat", () => {
+    const sources = () =>
+      db.selectFrom("sync_sources").selectAll().where("user_id", "=", ALICE).execute();
+
+    it("records a check-in for a feed that reported nothing", async () => {
+      const token = await seedUser(ALICE);
+      await post(token, { runs: [] });
+
+      const rows = await sources();
+      expect(rows).toHaveLength(1);
+      expect(rows[0]?.source).toBe("runs");
+      expect(rows[0]?.last_item_count).toBe(0);
+      expect(rows[0]?.last_success_at).toBeTruthy();
+    });
+
+    /** The distinction the whole feature rests on: an empty array is a
+     *  collector saying "there are none", an absent key is a caller that
+     *  doesn't speak for that feed at all. Collapsing them would mark the
+     *  Garmin feed alive every time the runs sync ran. */
+    it("says nothing about a feed that didn't check in", async () => {
+      const token = await seedUser(ALICE);
+      await post(token, { runs: [] });
+
+      expect((await sources()).map((s) => s.source)).toEqual(["runs"]);
+    });
+
+    it("records both when both report", async () => {
+      const token = await seedUser(ALICE);
+      await post(token, { runs: [RUN], weights: [{ measured_on: "2026-08-08", weight_kg: 80 }] });
+
+      const rows = await sources();
+      expect(rows.map((s) => s.source).sort()).toEqual(["runs", "weights"]);
+      expect(rows.every((s) => s.last_item_count === 1)).toBe(true);
+    });
+
+    it("moves forward on the next check-in rather than adding a row", async () => {
+      const token = await seedUser(ALICE);
+      await post(token, { runs: [RUN] });
+      const first = (await sources())[0]?.last_success_at;
+
+      await post(token, { runs: [] });
+      const rows = await sources();
+
+      expect(rows).toHaveLength(1);
+      expect(rows[0]?.last_item_count).toBe(0);
+      expect(Date.parse(rows[0]?.last_success_at ?? "")).toBeGreaterThanOrEqual(
+        Date.parse(first ?? ""),
+      );
+    });
+
+    /** A payload that arrived and was wholly invalid still proves the
+     *  collector is running and can reach us, which is all this timestamp
+     *  claims. */
+    it("counts a rejected payload as a check-in", async () => {
+      const token = await seedUser(ALICE);
+      await post(token, { runs: [{ ran_on: "nope" }] });
+
+      const rows = await sources();
+      expect(rows).toHaveLength(1);
+      expect(rows[0]?.last_item_count).toBe(0);
+    });
+
+    it("keeps one user's feed health out of another's", async () => {
+      const alice = await seedUser(ALICE);
+      await seedUser(BOB);
+      await post(alice, { runs: [] });
+
+      const bobs = await db
+        .selectFrom("sync_sources")
+        .selectAll()
+        .where("user_id", "=", BOB)
+        .execute();
+      expect(bobs).toHaveLength(0);
+    });
+  });
+
   it("stamps last_used_at so a dead launchd job is visible", async () => {
     const token = await seedUser(ALICE);
     await post(token, {});

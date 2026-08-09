@@ -293,7 +293,19 @@ export type SyncToken = {
   last_used_at: string | null;
 };
 
-export type SyncTokensResponse = { tokens: SyncToken[] };
+/** One feed, as Settings → Sources lists it (#69). */
+export type SyncSourceHealth = FeedHealth & {
+  /** Which feed — matches the top-level keys of a /api/sync payload. */
+  source: "runs" | "weights";
+};
+
+export type SyncTokensResponse = {
+  tokens: SyncToken[];
+  /** Per-feed health, distinct from any token's `last_used_at`: one token
+   *  carries both feeds, so a credential goes on looking healthy while half
+   *  the pipeline is dead. Empty until something has actually synced. */
+  sources: SyncSourceHealth[];
+};
 
 /** The one and only time the plaintext token exists outside the client. */
 export type SyncTokenCreated = SyncToken & { token: string };
@@ -339,4 +351,26 @@ export type DayResponse = {
    *  computed for this person. The Today screen says so rather than drawing a
    *  made-up budget as though it were real. */
   onboarded: boolean;
+  /** The runs feed's own health (#69). Null when it has never checked in —
+   *  a feed that was never set up isn't broken, and a fresh install must not
+   *  be told its runs are stale.
+   *
+   *  Exists because `run: null` above means two very different things: a rest
+   *  day, and a sync that died three days ago. Only this can tell them
+   *  apart. */
+  runs_feed: FeedHealth | null;
+};
+
+/** When a sync feed last checked in, and whether that was long enough ago to
+ *  stop trusting what's on screen (#69). */
+export type FeedHealth = {
+  /** ISO-8601 UTC instant of the last check-in — an attempt, not a write. A
+   *  collector that ran and found nothing new is healthy. */
+  last_success_at: string;
+  /** How many items came with it. Zero is a normal, healthy answer. */
+  last_item_count: number;
+  /** Past the staleness threshold, and relevant to the day being viewed.
+   *  False for past days: a feed that died last night doesn't make last
+   *  Tuesday's runs incomplete. */
+  stale: boolean;
 };

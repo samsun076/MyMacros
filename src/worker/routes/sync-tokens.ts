@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import type { SyncTokenCreated, SyncTokensResponse } from "../../shared/api";
+import { feedStale } from "../../shared/sync";
 import { issueSyncToken } from "../sync-token";
 import type { AppEnv } from "../types";
 
@@ -25,7 +26,35 @@ syncTokens.get("/", async (c) => {
     .orderBy("created_at", "desc")
     .execute();
 
-  return c.json<SyncTokensResponse>({ tokens });
+  /* Feed health rides along on this same request (#69).
+   *
+   * The screen asks one question — "what is feeding this app, and is it still
+   * arriving?" — and answering it in two round trips would let the panel paint
+   * credentials before it can say anything about them. It also keeps the
+   * revoke button and the thing it silences on screen together, which is what
+   * makes revocation legible as the off switch it already is.
+   *
+   * Distinct from `last_used_at` above, which is per credential: one token
+   * carries both feeds, so it goes on looking healthy while half the pipeline
+   * is dead. That is not hypothetical — it is what hid sixteen consecutive
+   * Garmin failures while the runs half kept stamping the same token. */
+  const sources = await c.var.db
+    .selectFrom("sync_sources")
+    .select(["source", "last_success_at", "last_item_count"])
+    .where("user_id", "=", c.var.user.id)
+    .execute();
+
+  const now = new Date();
+  return c.json<SyncTokensResponse>({
+    tokens,
+    sources: sources.map((s) => ({
+      source: s.source,
+      last_success_at: s.last_success_at,
+      last_item_count: s.last_item_count,
+      // the threshold is policy, so the server owns it — the client formats
+      stale: feedStale(s.last_success_at, now),
+    })),
+  });
 });
 
 syncTokens.post("/", async (c) => {

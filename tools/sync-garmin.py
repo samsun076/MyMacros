@@ -233,9 +233,13 @@ def main() -> int:
     if args.dry_run:
         print("\n--dry-run: nothing sent.")
         return 0
+
+    # Pushed even when empty (#69). The endpoint stamps a per-source heartbeat
+    # on the attempt, and returning early here would make the feed go quiet on
+    # exactly the days there is nothing to report — so a week of not standing
+    # on the scale would look identical to a broken collector.
     if not weights:
-        print("Nothing to send.")
-        return 0
+        print("Nothing new — checking in anyway.")
 
     return push(weights, token)
 

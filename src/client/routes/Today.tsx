@@ -55,6 +55,10 @@ export function Today() {
     // nothing here folds the bonus into the target (build rule 7).
     earned: day?.run?.earned_kcal ?? 0,
     earnedLabel: day?.run ? runLabel(day.run, me?.profile.units ?? "imperial") : null,
+    // #69: only when the server says the feed is both quiet and relevant to
+    // the day being viewed — a feed that died last night doesn't make last
+    // Tuesday's runs incomplete, and a feed that was never set up isn't broken.
+    staleSince: day?.runs_feed?.stale ? day.runs_feed.last_success_at : null,
   };
   const adjusted = budget.base + budget.earned;
   const remaining = adjusted - budget.eaten;

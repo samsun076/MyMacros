@@ -132,9 +132,23 @@ export type UserTable = {
   image: string | null;
 };
 
+/** Which feed, matching the top-level keys of a /api/sync payload. */
+export type SyncSource = "runs" | "weights";
+
+/** When each feed last checked in (migration 0004, #69). Per source rather
+ *  than per token: one token carries both, so `sync_tokens.last_used_at` goes
+ *  on looking healthy while half the pipeline is dead. */
+export type SyncSourceTable = {
+  user_id: string;
+  source: SyncSource;
+  last_success_at: Instant;
+  last_item_count: Generated<number>;
+};
+
 export type Database = {
   users: UserTable;
   sync_tokens: SyncTokenTable;
+  sync_sources: SyncSourceTable;
   profiles: ProfileTable;
   food_logs: FoodLogTable;
   weights: WeightTable;

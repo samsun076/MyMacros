@@ -16,6 +16,15 @@ export type BudgetData = {
   earned: number;
   /** Where the earned kcal came from, e.g. "6.2 mi run". Null when none. */
   earnedLabel: string | null;
+  /** Set only when the runs feed has gone quiet past the threshold (#69):
+   *  the ISO instant it last checked in.
+   *
+   *  Lives on BudgetData rather than being a prop of its own because the
+   *  doubt belongs to the same number the slot already draws — `earned: 0`
+   *  means "no run today" or "we haven't heard from your Mac since Thursday",
+   *  and only this distinguishes them. Each theme decides how to voice it,
+   *  which is what makes it a motif concern rather than a screen one. */
+  staleSince: string | null;
 };
 
 export type TimelineRowProps = {

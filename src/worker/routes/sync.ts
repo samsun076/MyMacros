@@ -40,8 +40,18 @@ sync.post("/", async (c) => {
   const body = await c.req.json<SyncRequest>().catch(() => null);
   if (!body || typeof body !== "object") return c.json({ error: "invalid_body" }, 400);
 
-  const runs = Array.isArray(body.runs) ? body.runs : [];
-  const weights = Array.isArray(body.weights) ? body.weights : [];
+  /* PRESENT, not non-empty (#69).
+   *
+   * The heartbeat below records that a feed checked in, and the difference
+   * between `{"runs": []}` and a payload with no `runs` key at all is the
+   * whole signal: the first is a collector reporting a quiet week, the second
+   * is a caller that doesn't speak for runs. Collapsing them would make a rest
+   * week indistinguishable from a dead sync — which is the bug this issue
+   * exists to fix, reintroduced one layer down. */
+  const hasRuns = Array.isArray(body.runs);
+  const hasWeights = Array.isArray(body.weights);
+  const runs = hasRuns ? (body.runs ?? []) : [];
+  const weights = hasWeights ? (body.weights ?? []) : [];
   if (runs.length > MAX_ITEMS || weights.length > MAX_ITEMS) {
     return c.json({ error: "too_many_items", max: MAX_ITEMS }, 413);
   }
@@ -154,6 +164,33 @@ sync.post("/", async (c) => {
   // their calories are the earned bonus (#21), which is computed per-day at
   // read time rather than folded in here (build rule 7).
   const budget = weightsWritten ? await refreshTarget(db, caller.id) : null;
+
+  /* The heartbeat (#69).
+   *
+   * Stamped on the ATTEMPT, not on rows written — a collector that checked in
+   * and found nothing new is healthy, and the commonest reason for an empty
+   * runs payload is a rest day. Keying this on rows would mark the feed dead
+   * every time it worked perfectly and had nothing to say.
+   *
+   * Rejections don't count as success either way: a payload that arrived and
+   * was wholly invalid still proves the collector is running and can reach us,
+   * which is the only thing this timestamp claims. */
+  const now = new Date().toISOString();
+  for (const [source, present, count] of [
+    ["runs", hasRuns, runsWritten],
+    ["weights", hasWeights, weightsWritten],
+  ] as const) {
+    if (!present) continue;
+    await db
+      .insertInto("sync_sources")
+      .values({ user_id: caller.id, source, last_success_at: now, last_item_count: count })
+      .onConflict((oc) =>
+        oc
+          .columns(["user_id", "source"])
+          .doUpdateSet({ last_success_at: now, last_item_count: count }),
+      )
+      .execute();
+  }
 
   await markSyncTokenUsed(db, caller.token_id);
 

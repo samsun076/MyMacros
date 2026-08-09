@@ -1,7 +1,7 @@
 import { Link } from "react-router";
 import type { Me } from "../../shared/api";
 import { PasskeyManager } from "../components/PasskeyManager";
-import { SyncTokens } from "../components/SyncTokens";
+import { Sources } from "../components/Sources";
 import { useApi } from "../lib/api";
 import { authClient } from "../lib/auth";
 
@@ -86,7 +86,7 @@ export function Settings() {
         </p>
       </section>
 
-      <SyncTokens />
+      <Sources />
 
       <button className="btn btn-quiet" onClick={() => void authClient.signOut()}>
         Sign out

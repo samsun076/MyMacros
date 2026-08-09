@@ -45,6 +45,13 @@ variants** (placeholder variants OK until the M5 port, per build rule 3):
    Night Athletic: hatched fuel-zone extension (45° `--accent-soft` hatch,
    solid `--accent` boundary tick) + matching legend swatch. Field Notes:
    vermilion rubber stamp. Instrument: machined groove.
+   **Also carries the stale state (#69).** This slot rendering nothing is how
+   a dead sync used to disappear — no runs synced looks exactly like no runs
+   taken — so when `staleSince` is set it speaks instead of going silent.
+   Night Athletic: the same 135° hatch drained of accent (`--ink-muted`),
+   with `--ink-muted` text. Never accent-coloured: accent here would read as
+   something earned. Recessive on purpose — the likeliest cause is a laptop
+   that's shut, and the screen is still about food.
 2. **Budget meter** — the hero meter. Night Athletic: 18px rounded bar, solid
    accent fill, hatched earned extension. Instrument: dial. Field Notes:
    ledger bar. Convention regardless of theme: **base target and earned bonus

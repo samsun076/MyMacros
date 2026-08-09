@@ -230,10 +230,17 @@ if (DRY) {
   console.log("\n--dry-run: nothing sent.");
   process.exit(0);
 }
-if (!runs.length) {
-  console.log("Nothing to send.");
-  process.exit(0);
-}
+/* Sent even when empty (#69).
+ *
+ * The endpoint stamps a per-source heartbeat on the ATTEMPT, and the Today
+ * screen uses it to tell a rest day apart from a dead sync. Returning early
+ * here would mean the feed goes quiet on precisely the days there is nothing
+ * to report — so a genuine rest week would look exactly like a broken
+ * collector, which is the bug the heartbeat exists to fix.
+ *
+ * The empty array is the signal, not the absence of one: `{"runs": []}` says
+ * "I speak for runs and there are none", where no key at all says nothing. */
+if (!runs.length) console.log("Nothing new — checking in anyway.");
 
 const res = await fetch(`${API}/api/sync`, {
   method: "POST",
