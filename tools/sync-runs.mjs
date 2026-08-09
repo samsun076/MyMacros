@@ -74,6 +74,23 @@ const MIN_MEDIAN_KCAL_PER_KM = 35;
  *  says so rather than pretending to have checked. */
 const MIN_SAMPLE_FOR_GUARD = 3;
 
+/** How far a SINGLE run may sit from the batch median before it is called out
+ *  as an implausible reading (#64). Reported, never corrected — see the note
+ *  at the check itself.
+ *
+ *  Relative rather than an absolute kcal/min band, because the honest figure
+ *  depends on the runner's mass and fitness; an absolute floor would bake one
+ *  ~80 kg body into a tool meant to be self-hosted (#37).
+ *
+ *  Both sit in the natural gap in debrief's history: the lowest ratios are
+ *  0.26, 0.29 and 0.39, then jump to 0.58 and cluster upward, and nothing in
+ *  621 runs exceeds 1.38. 0.5 catches the three genuinely broken readings and
+ *  nothing else — a 0.5% flag rate, which is what makes a flag worth reading.
+ *  2.0 has never fired; it is there because an over-reported run silently
+ *  inflates the eat-back bonus, which is the more expensive direction. */
+const IMPLAUSIBLE_LOW_RATIO = 0.5;
+const IMPLAUSIBLE_HIGH_RATIO = 2.0;
+
 const args = process.argv.slice(2);
 const flag = (name, fallback) => {
   const i = args.indexOf(`--${name}`);
@@ -200,17 +217,19 @@ if (!runs.length && workoutsInWindow > 0) {
   );
 }
 
-/* The unit tripwire (#63). Runs before the push, so a corrupted batch is never
- * sent — an upsert would overwrite good stored values with bad ones, and the
- * rolling window means the next run would do it again. */
+const kcalPerKm = (r) => r.kcal / (r.distance_m / 1000);
+
 if (runs.length >= MIN_SAMPLE_FOR_GUARD) {
   const perKm = runs
     .filter((r) => r.distance_m > 0)
-    .map((r) => r.kcal / (r.distance_m / 1000))
+    .map(kcalPerKm)
     .sort((a, b) => a - b);
   const mid = perKm.length >> 1;
   const median = perKm.length % 2 ? perKm[mid] : (perKm[mid - 1] + perKm[mid]) / 2;
 
+  /* The unit tripwire (#63). Runs before the push, so a corrupted batch is
+   * never sent — an upsert would overwrite good stored values with bad ones,
+   * and the rolling window means the next run would do it again. */
   if (perKm.length && median < MIN_MEDIAN_KCAL_PER_KM) {
     console.error(
       `\nREFUSING TO SYNC: median ${median.toFixed(1)} kcal/km is below ${MIN_MEDIAN_KCAL_PER_KM}.\n` +
@@ -222,8 +241,54 @@ if (runs.length >= MIN_SAMPLE_FOR_GUARD) {
     process.exit(1);
   }
   console.log(`  median ${median.toFixed(1)} kcal/km`);
+
+  /* Per-run implausibility (#64) — REPORTED, never corrected.
+   *
+   * The median guard above deliberately tolerates these: a unit change moves
+   * every value at once, a dropped HR strap moves one, and telling those apart
+   * is the entire reason it's a median. So the individual bad readings pass
+   * straight through it, and they are real — 9.7 km in 62 minutes for 186 kcal
+   * is in debrief's own history, along with 4.84 km for 83 kcal. Both are at or
+   * below the metabolic cost of walking.
+   *
+   * They still sync, with the number the watch recorded. Substituting a
+   * distance-derived estimate would put a calorie figure on screen that no
+   * sensor ever produced, and nothing in the UI would say so — which is
+   * precisely the class of failure build rule 4b exists to catch, committed
+   * deliberately this time. Holding them back is worse still: the day would
+   * show no run at all, which is the exact ambiguity #69 spent a milestone
+   * removing. So: sync it, say so here, and let the fix happen upstream where
+   * the bad reading actually lives.
+   *
+   * Relative to this batch's own median rather than an absolute kcal/min band,
+   * because the honest figure depends on the runner's mass and fitness — an
+   * absolute floor would bake one ~80 kg body into a tool other people are
+   * meant to run (#37). Thresholds sit in the natural gap in the data: ratios
+   * run 0.26, 0.29, 0.39, then jump to 0.58 and cluster upward from there, and
+   * nothing in 621 runs exceeds 1.38. Historic flag rate 0.5%, which is what
+   * makes a flag worth reading. */
+  const suspect = runs
+    .filter((r) => r.distance_m > 0)
+    .map((r) => ({ r, ratio: kcalPerKm(r) / median }))
+    .filter(({ ratio }) => ratio < IMPLAUSIBLE_LOW_RATIO || ratio > IMPLAUSIBLE_HIGH_RATIO);
+
+  if (suspect.length && median > 0) {
+    console.warn(
+      `\nWARNING: ${suspect.length} run(s) carry an implausible calorie figure.\n` +
+        `  Synced anyway, exactly as recorded — nothing here invents a number.\n` +
+        `  The bad reading is upstream (watch or HR strap); fix it there and the\n` +
+        `  next sync will correct the row.`,
+    );
+    for (const { r, ratio } of suspect) {
+      const perMin = r.duration_s ? ` ${(r.kcal / (r.duration_s / 60)).toFixed(1)} kcal/min` : "";
+      console.warn(
+        `    ${r.ran_on}  ${(r.distance_m / 1000).toFixed(2)} km  ${r.kcal} kcal  ` +
+          `${kcalPerKm(r).toFixed(1)} kcal/km (${ratio.toFixed(2)}× median)${perMin}`,
+      );
+    }
+  }
 } else if (runs.length) {
-  console.log(`  (fewer than ${MIN_SAMPLE_FOR_GUARD} runs — median unit check skipped)`);
+  console.log(`  (fewer than ${MIN_SAMPLE_FOR_GUARD} runs — median checks skipped)`);
 }
 
 if (DRY) {
