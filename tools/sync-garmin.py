@@ -168,7 +168,17 @@ def push(weights: list[dict], token: str) -> int:
     req = urllib.request.Request(
         f"{API}/api/sync",
         data=json.dumps({"weights": weights}).encode(),
-        headers={"content-type": "application/json", "authorization": f"Bearer {token}"},
+        headers={
+            "content-type": "application/json",
+            "authorization": f"Bearer {token}",
+            # Cloudflare sits in front of the Worker and blocks requests by
+            # browser signature. urllib's default announces itself as
+            # "Python-urllib/3.x", which it refuses with 403 and its own error
+            # code 1010 — a Cloudflare page, not anything our Worker said, so
+            # the token and the payload are never even looked at. The Node
+            # sync passes only because fetch() sends an ordinary UA.
+            "user-agent": "MyMacros-sync/0.1 (https://fuel.debrief.run)",
+        },
         method="POST",
     )
     try:
