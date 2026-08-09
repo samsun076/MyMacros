@@ -50,6 +50,30 @@ import { join } from "node:path";
 /** From debrief's pipeline/src/weekly.js. */
 const RUN_ACTIVITY_IDS = [1, 53];
 
+/** Floor for the batch's median kcal/km, below which this refuses to push
+ *  (#63).
+ *
+ *  A tripwire for the unit trap above, not a physiological constant. The whole
+ *  reason it is a MEDIAN over the batch rather than a bound on each run: a
+ *  unit change upstream moves every value at once, while a single dropped HR
+ *  strap moves one. Per-run bounds cannot tell those apart — see #64.
+ *
+ *  Derived from debrief's own history rather than picked: across 179 rolling
+ *  30-day windows and 629 runs, the window median ranges 55.9–88.6 kcal/km.
+ *  Read as kilojoules the same windows would land at 13.4–21.2. 35 sits in the
+ *  empty middle, a factor of 1.6 clear of both edges.
+ *
+ *  That margin has to absorb real drift, and there is some: 2022 windows median
+ *  ~88, 2026 windows ~56, as a runner gets more efficient. The floor leaves
+ *  room for the median to fall another 37% before it cries wolf. If it ever
+ *  does fire on honest data, the fix is to re-derive it from the history — not
+ *  to delete it. */
+const MIN_MEDIAN_KCAL_PER_KM = 35;
+
+/** Below this many runs a median means nothing, so the guard steps aside and
+ *  says so rather than pretending to have checked. */
+const MIN_SAMPLE_FOR_GUARD = 3;
+
 const args = process.argv.slice(2);
 const flag = (name, fallback) => {
   const i = args.indexOf(`--${name}`);
@@ -84,33 +108,54 @@ const localDay = (ms) => {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 };
 
-let rows;
-try {
-  const sql = `
-    SELECT workout_key, start_time_ms, total_distance_m, total_time_s,
-           energy_kj, COALESCE(tss_hr, tss) AS tss
-      FROM workouts
-     WHERE activity_id IN (${RUN_ACTIVITY_IDS.join(",")})
-       AND start_time_ms >= ${sinceMs}
-     ORDER BY start_time_ms DESC;`;
-  /* Not `-readonly`, deliberately, and this cost a debugging round.
-   *
-   * debrief's pipeline writes this database, which puts it in WAL mode, and
-   * a read-only open of a WAL database fails — SQLite needs to create the
-   * `-shm` shared-memory file to read the log, and read-only forbids it:
-   *   Error: in prepare, unable to open database file (14)
-   *
-   * It passes whenever the database happens to be quiescent, which is why an
-   * earlier run of this same script worked and the next one didn't. Nothing
-   * here issues anything but SELECT; the only files a default open creates
-   * are SQLite's own `-shm`/`-wal` housekeeping, never a change to a row. */
-  const out = execFileSync("sqlite3", ["-json", DB, sql], { encoding: "utf8" });
-  rows = out.trim() ? JSON.parse(out) : [];
-} catch (err) {
-  console.error(`Couldn't read ${DB}`);
-  console.error(err instanceof Error ? err.message : err);
-  process.exit(1);
-}
+/* Not `-readonly`, deliberately, and this cost a debugging round.
+ *
+ * debrief's pipeline writes this database, which puts it in WAL mode, and a
+ * read-only open of a WAL database fails — SQLite needs to create the `-shm`
+ * shared-memory file to read the log, and read-only forbids it:
+ *   Error: in prepare, unable to open database file (14)
+ *
+ * It passes whenever the database happens to be quiescent, which is why an
+ * earlier run of this same script worked and the next one didn't. Nothing here
+ * issues anything but SELECT; the only files a default open creates are
+ * SQLite's own `-shm`/`-wal` housekeeping, never a change to a row. */
+const query = (sql) => {
+  try {
+    const out = execFileSync("sqlite3", ["-json", DB, sql], { encoding: "utf8" });
+    return out.trim() ? JSON.parse(out) : [];
+  } catch (err) {
+    console.error(`Couldn't read ${DB}`);
+    console.error(err instanceof Error ? err.message : err);
+    process.exit(1);
+  }
+};
+
+const rows = query(`
+  SELECT workout_key, start_time_ms, total_distance_m, total_time_s,
+         energy_kj, COALESCE(tss_hr, tss) AS tss
+    FROM workouts
+   WHERE activity_id IN (${RUN_ACTIVITY_IDS.join(",")})
+     AND start_time_ms >= ${sinceMs}
+   ORDER BY start_time_ms DESC;`);
+
+/* The denominator (#65).
+ *
+ * `RUN_ACTIVITY_IDS` is copied from debrief rather than imported — MyMacros
+ * reads that database as an outside consumer and coupling the repos would be
+ * worse. But a copied constant drifts, and the symptom of drift is zero rows,
+ * which is indistinguishable from a quiet fortnight. debrief's database holds
+ * 14 distinct activity ids; if Suunto ever files runs under a new one, this
+ * script matches nothing and every screen downstream stays plausible.
+ *
+ * So report the ratio, never either number alone: 0-of-0 is a rest week,
+ * 0-of-12 is a broken filter. */
+const activityMix = query(`
+  SELECT activity_id, COUNT(*) AS n
+    FROM workouts
+   WHERE start_time_ms >= ${sinceMs}
+   GROUP BY activity_id
+   ORDER BY n DESC;`);
+const workoutsInWindow = activityMix.reduce((t, a) => t + a.n, 0);
 
 const runs = rows
   .map((r) => ({
@@ -129,7 +174,10 @@ const runs = rows
 
 const skipped = rows.length - runs.length;
 
-console.log(`${runs.length} run(s) in the last ${DAYS} days from ${DB}`);
+console.log(
+  `${runs.length} run(s) matched of ${workoutsInWindow} workout(s) ` +
+    `in the last ${DAYS} days from ${DB}`,
+);
 if (skipped) console.log(`  ${skipped} skipped for having no energy figure`);
 for (const r of runs.slice(0, 5)) {
   console.log(
@@ -137,6 +185,46 @@ for (const r of runs.slice(0, 5)) {
   );
 }
 if (runs.length > 5) console.log(`  … and ${runs.length - 5} more`);
+
+/* Suspicion, not proof — so it warns rather than exits (#65). A month of
+ * cycling through an injury looks exactly like this and is entirely honest.
+ * The activity mix is printed because it is the thing that answers the
+ * question: if runs are now being filed under an id we don't match, it is
+ * sitting right there in the list. */
+if (!runs.length && workoutsInWindow > 0) {
+  const mix = activityMix.map((a) => `${a.activity_id}×${a.n}`).join(" ");
+  console.warn(
+    `\nWARNING: 0 runs matched, but ${workoutsInWindow} workout(s) are in the window.\n` +
+      `  Looking for activity_id ${RUN_ACTIVITY_IDS.join(" or ")}; the window holds: ${mix}\n` +
+      `  If debrief has re-filed runs under another id, RUN_ACTIVITY_IDS here is stale.`,
+  );
+}
+
+/* The unit tripwire (#63). Runs before the push, so a corrupted batch is never
+ * sent — an upsert would overwrite good stored values with bad ones, and the
+ * rolling window means the next run would do it again. */
+if (runs.length >= MIN_SAMPLE_FOR_GUARD) {
+  const perKm = runs
+    .filter((r) => r.distance_m > 0)
+    .map((r) => r.kcal / (r.distance_m / 1000))
+    .sort((a, b) => a - b);
+  const mid = perKm.length >> 1;
+  const median = perKm.length % 2 ? perKm[mid] : (perKm[mid - 1] + perKm[mid]) / 2;
+
+  if (perKm.length && median < MIN_MEDIAN_KCAL_PER_KM) {
+    console.error(
+      `\nREFUSING TO SYNC: median ${median.toFixed(1)} kcal/km is below ${MIN_MEDIAN_KCAL_PER_KM}.\n` +
+        `  Every honest 30-day window in debrief's history sits at 56-89 kcal/km.\n` +
+        `  ${(median * 4.184).toFixed(1)} would be normal — which is what this batch\n` +
+        `  looks like if energy_kj has started holding actual kilojoules.\n` +
+        `  Nothing was sent. See tools/sync-runs.mjs (#63) before overriding.`,
+    );
+    process.exit(1);
+  }
+  console.log(`  median ${median.toFixed(1)} kcal/km`);
+} else if (runs.length) {
+  console.log(`  (fewer than ${MIN_SAMPLE_FOR_GUARD} runs — median unit check skipped)`);
+}
 
 if (DRY) {
   console.log("\n--dry-run: nothing sent.");
