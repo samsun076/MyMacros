@@ -779,8 +779,26 @@ in the site repo is where those live.
 
 Started as issue triage off two phone screenshots and turned into three defects,
 all shipped. **Closed: #78, #84, #85** (one commit, `a2b4896`, deployed and
-verified). **Filed: #76, #77, #79, #80, #81, #82, #83, #86.** Build rules
-consolidated into CLAUDE.md (`d7f6bbe`).
+verified). Build rules consolidated into CLAUDE.md (`d7f6bbe`).
+
+### What was filed, and what each one is
+
+Titles, not bare numbers — this section should be readable without GitHub open.
+
+| | Issue | Why it exists | Where |
+|---|---|---|---|
+| **#76** | Store the AI's original numbers beside the saved ones | `food_logs.edited` is a boolean; the row never keeps *by how much* or *which way* the estimate was wrong. Cannot be backfilled. | M9 |
+| **#77** | Protein is a percent of energy, so a run inflates it | A 5 mi run added 22 g to the protein target. Anchor it to body weight instead. | M9 |
+| **#79** | Ask for an athlete profile instead of three macro percentages | Onboarding asks a novice to make three sliders sum to 100. Replaces that question rather than adding one. | M9 |
+| **#83** | Dump the reconciliation inputs, and never the answer | Rule 4b's mechanical half is the same five-table production pull every time. Must print **no** derived figure, or the check is dead. | M9 |
+| **#86** | Sweep for duplicated sources of truth | The fault type behind #78/#84/#85. Run at the milestone close. | M9 |
+| **#80** | Today timeline: newest first, drop the node dots, centre the time | The just-saved entry appends below the fold; the node dot and the fresh accent bar collide at 0.5px. | M11 |
+| **#81** | Build one meal from several captures | Scan the patty, scan the bun, type the mustard — one meal. Mostly built already; only the navigation replaces instead of appends. | M7 |
+| **#82** | Favorites are built and invisible | Fully working since #12, and rendered only inside the text branch — unreachable from PHOTO, the default mode. | M7 |
+
+Closed the same day: **#78** (Settings and Today disagreed on the base target),
+**#84** (editing a deficit wrote a weeks-old weight as today's weigh-in),
+**#85** (the stored target goes stale as the trend window slides).
 
 ### The board was restructured — read this before looking for M5
 
@@ -792,26 +810,41 @@ list lie about what was in flight.
 | Milestone | What it is |
 |---|---|
 | **M9 Budget truth** | The app showing wrong numbers. #78/#84/#85 done; #76, #77, #79, #83, #86 open |
-| **M10 Launch & offline** | #53, #35, #54 — first paint, fonts, service worker |
-| **M11 Look & feel** | #23, #24, #29, #30, #38, #39, #52, #80 |
+| **M10 Launch & offline** | #53 cold-launch white screen, #35 self-host fonts, #54 service worker |
+| **M11 Look & feel** | #23 editable Settings, #24 polish pass, #29 theme/accent picker, #30 light packs, #38 standalone tab bar, #39 theme-color question, #52 swipe-to-delete, #80 timeline |
 | **M7** renamed | "Log flow: multi-item meals and corrections" — a basket is a capability, not a correction |
 
 **#32 has no milestone on purpose** (its own body says it is an epic awaiting
 concrete issues) and **#36 moved to M6** — what an unauthenticated visitor sees
 is positioning, not polish.
 
-### Next up: #76 first, then #77
+### Next up, in this order
 
-**#76 before anything else.** It is the only issue whose cost grows daily and
-cannot be backfilled — one migration, four nullable columns on `food_logs`, no
-UI. Every meal logged before it is a row that can never answer how good the
-estimates are.
-
-Then **#77 → #79**, which are sequenced and rewrite the budget. Then **#83**,
-then **#86 plus the rule 4b reconciliation** at the milestone close.
+1. **#76 — store the AI's original numbers.** Before anything else, because it
+   is the only issue whose cost *grows daily* and cannot be backfilled. One
+   migration, four nullable columns on `food_logs`, the confirm sheet sending
+   what it already holds, no UI. Independent of everything below — different
+   table, different concern — so it cannot collide with the budget work.
+2. **#77 — protein anchored to g/kg.** The user-visible wrong number. **Read
+   the 2026-08-10 comment on it before planning the migration:** the body still
+   suggests keeping `protein_pct` as a stored-but-derived column, and the
+   comment overrides that. Cut 2.0 / maintain 1.6 / gain 2.0 — a U, not a
+   ladder.
+3. **#79 — the athlete profile.** Depends on #77: the carb:fat ratio has
+   nowhere to live until protein is an absolute anchor. Ships **Runner and
+   General only**; Lifter and CrossFit wait for an exercise input that isn't a
+   run (#27 or #70).
+4. **#83 — the reconciliation input dumper.** Wanted before the milestone's
+   rule 4b entry, not after.
+5. **#86 — the duplication sweep, plus the rule 4b reconciliation**, both at
+   the close.
 
 **#86 belongs at the close, not before** — it sweeps for duplicated sources of
-truth, and #77/#79 are about to rewrite the code it would sweep.
+truth, and #77/#79 are about to rewrite the code it would sweep. Its figure for
+4b is already chosen by the work: the protein and base targets.
+
+**Clean stopping points** are after #76 or after #77. Mid-#77 is not one — it
+spans a migration, the shared maths and two screens.
 
 ### What Session J settled, worth not re-deriving
 
