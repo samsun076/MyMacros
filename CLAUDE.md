@@ -285,7 +285,14 @@ doppler secrets download -p mymacros -c prd --format json --no-file \
   2/12 requests served a stale value). Redeploy to recycle isolates, then
   sample several times before believing a secret landed.
 
-## Build rules (from PLAN.md — these are not suggestions)
+## Build rules — canonical here, and not suggestions
+
+**This list is the source.** PLAN.md carried an earlier copy that drifted: 4b, 8 and 9
+never reached it, and its rule 7 was a *different rule* from this one's. Two sources for
+one name is the same defect the Doppler note warns about, so as of 2026-08-10 PLAN.md
+points here and the numbering below is the only numbering. Issue bodies and code comments
+cite these by number — changing one renumbers the references, so append rather than
+reorder.
 
 1. **Night Athletic first.** It's the primary/default dark theme; polish
    happens there. Light packs (Field Notes, Instrument) port in M5 (#30).
@@ -296,16 +303,37 @@ doppler secrets download -p mymacros -c prd --format json --no-file \
    (placeholder variants OK until M5). The four slots: earned-kcal
    annotation, budget meter, log button, timeline row chrome. See TOKENS.md.
 4. **Theme QA at the end of each milestone** — render check of the light packs.
-4b. **Reconcile one real number at the end of each milestone.** Recorded in
-   [RECONCILIATIONS.md](RECONCILIATIONS.md), one entry per milestone. Take a figure
+4b. **Reconcile one real number whenever a milestone changes how a number is
+   computed.** Recorded in [RECONCILIATIONS.md](RECONCILIATIONS.md). Take a figure
    the app is showing a real user, pull its inputs out of *production*, and
-   recompute it by hand. Ten minutes. Tests prove the arithmetic and
-   screenshots prove the layout; neither can tell you an **input** is wrong,
-   and that is the failure this project keeps producing — six in M4 alone,
-   plausible-looking rather than visibly broken, four of them found only by
-   running against real data (a client-day/server-day filter that froze the
-   target, `energy_kj` holding kcal, Garmin reporting grams, and a scale that
-   silently reverted a typed weigh-in every 30 minutes).
+   recompute it by hand — **independently**, because importing `computeBudget` to
+   check `computeBudget` proves nothing.
+
+   **Trigger, not calendar.** A milestone that changes a computation owes an entry.
+   One that changes how the app looks, loads or navigates owes none: M10 (service
+   worker, fonts, first paint) and M11 (theme packs, timeline order) have no
+   user-facing figure to reconcile, and a forced entry there is theatre.
+
+   **Record the skip.** A milestone with nothing to reconcile still gets a one-line
+   entry saying so. An absent entry looks like negligence; "no computed figure — not
+   applicable" is a decision. Same principle as #69's sync heartbeat: silence and
+   nothing-to-report must not look identical.
+
+   **Budget 45–90 minutes, not ten.** Measured against the two entries that exist —
+   M5 took a production D1 pull across six input categories, five days of
+   hand-computed BMR → TDEE → deficit, and two cross-checks. A rule that advertises
+   ten minutes and costs sixty gets skipped the first time a milestone closes late.
+   #83 exists to remove the mechanical half, and must never print a derived figure.
+
+   **Why it earns the time.** Tests prove the arithmetic and screenshots prove the
+   layout; neither can tell you an **input** is wrong, and that is the failure this
+   project keeps producing — six in M4 alone, plausible-looking rather than visibly
+   broken, four of them found only by running against real data (a
+   client-day/server-day filter that froze the target, `energy_kj` holding kcal,
+   Garmin reporting grams, and a scale that silently reverted a typed weigh-in every
+   30 minutes). Two entries so far, two findings: **#74** (a weekly deficit reading
+   ~2× the truth because a 77-kcal day counted as fully logged) and a soft weigh-in
+   worth 13 kcal/day.
 5. **Accent is live-switchable** — anything accent-colored references
    `--accent`, never a literal. Night Athletic users pick coral/gold/mint.
 6. **375px is the reference width** (iPhone 13 mini). Nothing is done until

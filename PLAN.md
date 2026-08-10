@@ -39,13 +39,24 @@ The exception is **motif slots** — 3–4 components that render per-theme vari
 
 ### Build rules going forward
 
-1. **Build every screen against Night Athletic first.** It's the primary; polish happens here.
-2. **Never hardcode a color/font/radius** — everything through semantic tokens, so the light packs stay portable.
-3. **New motif slots need a named variant per theme** before the component is considered done (placeholder variants OK until the M5 port).
-4. **Theme QA pass at the end of each milestone** — quick render check of the two light packs; full port + QA lands in M5 (#30).
-5. **Accent-aware accents** — anything colored accent must reference `--accent`, since Night Athletic users can switch it live.
-6. **375px is the reference width** — Dave's phone is an iPhone 13 mini. No design is done until verified at 375 (then 390/428); screenshot matrix tooling in #31.
-7. **Safari chrome blend** — the tab bar's *surface* color (never accent) bleeds through the bottom safe area with no seam, so iOS Safari tints its chrome to match. Field-tested mechanics: the bottom-edge surface must be **fully opaque** (Safari won't tint from translucent/backdrop-filtered edges), and the *top* chrome follows the **body background** (set it to the page-top color on phone widths — `theme-color` meta is ignored in-browser, kept for the PWA case).
+**Moved to [CLAUDE.md](CLAUDE.md#build-rules--canonical-here-and-not-suggestions) on
+2026-08-10. That list is canonical; this section is a pointer, not a copy.**
+
+The two had drifted. Rules 4b, 8 and 9 were added to CLAUDE.md and never reached here, and
+the rule numbered **7** was a *different rule* in each file — "Safari chrome blend" here,
+"Budget display convention" there. Issue bodies and code comments cite build rules by
+number, so two numberings made every one of those references ambiguous.
+
+Rather than reconcile two copies that will drift again, there is now one. CLAUDE.md won
+because that is where every rule since M1 actually landed — the plan proposed them; the
+working document maintained them.
+
+The Safari chrome-blend mechanics that used to be rule 7 here are not lost: they live in
+CLAUDE.md's own **"Safari chrome blend (field-tested on device — don't re-derive)"**
+section, in more detail than this list ever carried.
+
+**Everything else in PLAN.md remains canonical** — stack, theming decisions, v1 scope, the
+data model. Only the build-rules list moved.
 
 ## V1 scope — the daily loop
 
