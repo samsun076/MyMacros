@@ -1,7 +1,12 @@
 import type { Budget } from "../shared/budget";
 import { computeBudget } from "../shared/budget";
 import { dayInTimezone } from "../shared/day";
-import { TREND_WINDOW_DAYS, trendWeightKg, type WeighIn } from "../shared/weight";
+import {
+  currentTrendWeightKg,
+  TREND_WINDOW_DAYS,
+  trendWeightKg,
+  type WeighIn,
+} from "../shared/weight";
 import type { Db } from "./db";
 import { loadProfile } from "./profile";
 
@@ -70,26 +75,13 @@ export async function refreshTarget(
   const profile = await loadProfile(db, userId);
   const today = dayInTimezone(now, profile.timezone);
 
-  /* Anchored at the LATER of the server's idea of today and the newest
-   * weigh-in on file.
-   *
-   * Clamping to `today` alone silently drops a weigh-in dated ahead of it,
-   * and the two disagree more often than they look like they should:
-   * `profiles.timezone` is a stored default until the client overwrites it
-   * (#44), the client owns its own day, and the two are on opposite sides of
-   * midnight for several hours every evening. The symptom is the worst kind —
-   * the newest weight is invisible, computeBudget declines for want of data,
-   * and the stored target simply stays where it was. Caught during M4's own
-   * verification: a fresh profile stayed on the M2 default of 1,810 while the
-   * day endpoint happily reported `onboarded: true`.
-   *
-   * There is nothing to protect here by refusing a future date. This function
-   * answers "what is this person's target now", and the newest weight is the
-   * best evidence available whichever day it is stamped with. */
+  /* The anchoring rule this used to spell out inline now lives in
+   * `currentTrendWeightKg` — `/api/me` has to answer the same question so the
+   * Settings preview and the stored target agree, and two copies of it would
+   * drift. That drift is #78: the preview read `start_weight_kg` instead and
+   * the two screens showed different base targets. */
   const entries = await recentWeighIns(db, userId);
-  const newest = entries[0]?.measured_on;
-  const anchor = newest && newest > today ? newest : today;
-  const weight_kg = trendWeightKg(entries, anchor);
+  const weight_kg = currentTrendWeightKg(entries, today);
 
   const budget = computeBudget(
     {

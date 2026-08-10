@@ -30,6 +30,48 @@ export function shiftDay(day: string, delta: number): string {
   return `${t.getUTCFullYear()}-${pad(t.getUTCMonth() + 1)}-${pad(t.getUTCDate())}`;
 }
 
+/** What this person weighs *now* — the trend measured at [[anchorDay]].
+ *
+ *  The one function anything outside this module should call to ask that
+ *  question. `refreshTarget` derives the stored target from it and `/api/me`
+ *  reports it, so the budget a screen previews and the budget the Worker
+ *  stores are computed from the same number by construction.
+ *
+ *  #78 is what happens without it: the Settings preview read
+ *  `profiles.start_weight_kg` — the weight typed at onboarding and never
+ *  updated — so two screens showed two different base targets, each arithmetically
+ *  perfect. */
+export function currentTrendWeightKg(entries: WeighIn[], today: string): number | null {
+  return trendWeightKg(entries, anchorDay(entries, today));
+}
+
+/** The day the trend is measured *at*: the later of the server's idea of today
+ *  and the newest weigh-in on file.
+ *
+ *  Clamping to `today` alone silently drops a weigh-in dated ahead of it, and
+ *  the two disagree more often than they look like they should:
+ *  `profiles.timezone` is a stored default until the client overwrites it
+ *  (#44), the client owns its own day, and the two sit on opposite sides of
+ *  midnight for several hours every evening. The symptom is the worst kind —
+ *  the newest weight is invisible, `computeBudget` declines for want of data,
+ *  and the stored target simply stays where it was. Caught during M4's own
+ *  verification: a fresh profile stayed on the M2 default of 1,810 while the
+ *  day endpoint happily reported `onboarded: true`.
+ *
+ *  There is nothing to protect by refusing a future date. The question is
+ *  "what does this person weigh now", and the newest weight is the best
+ *  evidence available whichever day it is stamped with.
+ *
+ *  Lives here, not in `refreshTarget`, because `/api/me` has to answer the
+ *  same question and two copies of this rule would drift (#78). */
+export function anchorDay(entries: WeighIn[], today: string): string {
+  const newest = entries.reduce<string | null>(
+    (max, e) => (max === null || e.measured_on > max ? e.measured_on : max),
+    null,
+  );
+  return newest && newest > today ? newest : today;
+}
+
 /** The smoothed weight for `on`: the mean of every weigh-in in the trailing
  *  7-day window ending that day, inclusive.
  *
@@ -40,7 +82,10 @@ export function shiftDay(day: string, delta: number): string {
  *  **Falls back to the most recent weigh-in on or before `on`** when the
  *  window is empty. Someone who weighs in fortnightly still needs a target,
  *  and a null there would silently freeze their budget at whatever it last
- *  was. Returns null only when there is genuinely nothing to go on. */
+ *  was. Returns null only when there is genuinely nothing to go on.
+ *
+ *  Takes an explicit day because the trends screen asks it for every past day
+ *  in a window. For "now", call [[currentTrendWeightKg]] instead. */
 export function trendWeightKg(entries: WeighIn[], on: string): number | null {
   const from = shiftDay(on, -(TREND_WINDOW_DAYS - 1));
 

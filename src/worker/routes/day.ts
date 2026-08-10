@@ -1,8 +1,9 @@
 import { Hono } from "hono";
 import type { DayResponse, DayRun, FeedHealth } from "../../shared/api";
-import { earnedKcal, missingBudgetInputs } from "../../shared/budget";
+import { computeBudget, earnedKcal, missingBudgetInputs } from "../../shared/budget";
 import { dayInTimezone } from "../../shared/day";
 import { feedStale } from "../../shared/sync";
+import { currentTrendWeightKg, trendWeightKg } from "../../shared/weight";
 import { recentWeighIns } from "../budget";
 import { loadProfile } from "../profile";
 import type { AppEnv } from "../types";
@@ -111,10 +112,53 @@ day.get("/:date", async (c) => {
       }
     : null;
 
+  /* Computed here, not read from `profiles.target_kcal` (#85).
+   *
+   * The stored column is refreshed on write — a profile PATCH, a weight write,
+   * or a sync that carried weights. But the 7-day window slides with *time*, so
+   * on a day when nothing is written the readings age out, the real trend moves
+   * and the stored number does not. Measured: a stored 2,154 against a live
+   * 2,183, converging only when the next PATCH happened to fire refreshTarget.
+   *
+   * Trends already recomputes rather than reading the column
+   * (`shared/trends.ts`), so this is what makes the two screens agree by
+   * construction instead of by coincidence — the same "one quantity, two
+   * answers" defect as #78, one layer down.
+   *
+   * Costs no extra query: `weighIns` and `profile` are both already loaded.
+   *
+   * As-of for a past date, anchored for the current one. Anchoring forward to
+   * a weigh-in dated ahead of the day is only right when the day IS today;
+   * for a past date it would answer with a weight from after it. */
+  const asOfToday = date >= dayInTimezone(new Date(), profile.timezone);
+  const trendKg = asOfToday
+    ? currentTrendWeightKg(weighIns, date)
+    : trendWeightKg(
+        weighIns.filter((w) => w.measured_on <= date),
+        date,
+      );
+
+  const budget = computeBudget(
+    {
+      sex: profile.sex,
+      birth_date: profile.birth_date,
+      height_cm: profile.height_cm,
+      weight_kg: trendKg,
+      activity_level: profile.activity_level,
+      goal: profile.goal,
+      deficit_kcal: profile.deficit_kcal,
+    },
+    // age is a calendar question, answered on the day being viewed
+    new Date(`${date}T12:00:00Z`),
+  );
+
   return c.json<DayResponse>({
     logs,
     totals,
-    target_kcal: profile.target_kcal,
+    /* Falls back to the stored value when the engine declines, which keeps
+     * #17's un-onboarded behaviour: Today deliberately shows the deployment's
+     * default target until the inputs exist (`Today.tsx:120`). */
+    target_kcal: budget?.target_kcal ?? profile.target_kcal,
     run,
     onboarded,
     runs_feed,

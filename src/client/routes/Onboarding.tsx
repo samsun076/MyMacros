@@ -55,7 +55,14 @@ export function Onboarding() {
     sex: form.sex ?? p?.sex ?? null,
     birth_date: form.birth_date ?? p?.birth_date ?? "",
     height_cm: form.height_cm ?? p?.height_cm ?? null,
-    weight_kg: form.weight_kg ?? p?.start_weight_kg ?? null,
+    /* The trend, not `start_weight_kg` (#78). That column is the weight typed
+     * at onboarding and never updated, so previewing from it froze this
+     * screen's budget at day one while Today moved with the scale — two
+     * screens, two base targets, both arithmetically perfect. `trend_weight_kg`
+     * is the same number `refreshTarget` stores from, so they cannot disagree.
+     * It is null only before the first weigh-in, which is what the fallback is
+     * for. */
+    weight_kg: form.weight_kg ?? me?.trend_weight_kg ?? p?.start_weight_kg ?? null,
     activity_level: form.activity_level ?? p?.activity_level ?? "moderate",
     goal: form.goal ?? p?.goal ?? "cut",
     deficit_kcal: form.deficit_kcal ?? p?.deficit_kcal ?? 500,
@@ -85,17 +92,38 @@ export function Onboarding() {
     setSaving(true);
     setError(null);
     try {
-      // Weight first: the Worker recomputes target_kcal on the profile write,
-      // and it can only do that once a weigh-in exists to compute from.
-      await api.post("/api/weights", {
-        measured_on: localDay(),
-        weight_kg: v.weight_kg,
-      });
+      /* Only when the user actually supplied a weight (#84).
+       *
+       * This posted unconditionally, and `v.weight_kg` falls back to a value
+       * nobody typed today — so opening this screen to change a deficit wrote
+       * a weeks-old weight as today's weigh-in. That row lands as `manual`,
+       * which #20 protects from sync overwrite, so it then outranked the real
+       * reading from the scale; and it cleared the day's tombstones (#71),
+       * which can resurrect a weigh-in someone deliberately deleted.
+       *
+       * `form.weight_kg` is undefined until the field is touched, so it is
+       * already the exact test. The second clause keeps first-run onboarding
+       * working, where the typed weight is the only one that exists.
+       *
+       * Weight first when it is written at all: the Worker recomputes
+       * target_kcal on the profile write, and can only do that once a weigh-in
+       * exists to compute from. */
+      const typedWeight = form.weight_kg !== undefined;
+      const firstRun = me?.trend_weight_kg == null;
+      if (typedWeight || firstRun) {
+        await api.post("/api/weights", {
+          measured_on: localDay(),
+          weight_kg: v.weight_kg,
+        });
+      }
       await api.patch("/api/me/profile", {
         sex: v.sex,
         birth_date: v.birth_date,
         height_cm: v.height_cm,
-        start_weight_kg: v.weight_kg,
+        // Written on first onboarding only. It means *start* weight; rewriting
+        // it on every edit makes the name a lie and re-persists whatever stale
+        // value this screen was seeded with (#84).
+        ...(firstRun ? { start_weight_kg: v.weight_kg } : {}),
         activity_level: v.activity_level,
         goal: v.goal,
         deficit_kcal: v.goal === "maintain" ? 0 : v.deficit_kcal,
@@ -212,7 +240,19 @@ export function Onboarding() {
           )}
         </Field>
 
-        <Field label="Current weight" hint="The scale's number today. It updates as you log more.">
+        {/* The hint has to say which number this is. Returning, it shows the
+            7-day trend — the weight the budget actually follows — and typing
+            into it logs a weigh-in for today, which is the only thing that
+            writes to `weights` from this screen (#84). Calling that "the
+            scale's number today" is what made #78 easy to miss. */}
+        <Field
+          label="Current weight"
+          hint={
+            returning
+              ? "Your 7-day trend — the weight your budget follows. Type here only to log today's weigh-in."
+              : "The scale's number today. It updates as you log more."
+          }
+        >
           <div className="field-pair">
             <input
               type="number"

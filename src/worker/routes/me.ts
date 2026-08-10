@@ -1,6 +1,8 @@
 import { Hono } from "hono";
 import type { Me, ProfileUpdate } from "../../shared/api";
-import { refreshTarget } from "../budget";
+import { dayInTimezone } from "../../shared/day";
+import { currentTrendWeightKg } from "../../shared/weight";
+import { recentWeighIns, refreshTarget } from "../budget";
 import { loadProfile } from "../profile";
 import type { AppEnv } from "../types";
 import { isDay, isNum, oneOf, pct, positive } from "../validate";
@@ -40,9 +42,24 @@ me.get("/", async (c) => {
   const user = c.var.user;
   const profile = await loadProfile(c.var.db, user.id);
 
+  /* The weight the budget is actually computed from (#78).
+   *
+   * Reported rather than left to the client to derive, because the client
+   * previously derived it from `profiles.start_weight_kg` — the number typed
+   * at onboarding and never updated — and the Settings preview and the Today
+   * screen showed two different base targets, each arithmetically perfect.
+   * Same function `refreshTarget` uses, so the previewed budget and the
+   * stored one cannot disagree.
+   *
+   * Null when there is no weigh-in to go on. First-run onboarding is exactly
+   * that case, and it must keep asking for a typed weight. */
+  const entries = await recentWeighIns(c.var.db, user.id);
+  const trend_weight_kg = currentTrendWeightKg(entries, dayInTimezone(new Date(), profile.timezone));
+
   return c.json<Me>({
     user: { id: user.id, name: user.name, email: user.email, image: user.image ?? null },
     profile,
+    trend_weight_kg,
   });
 });
 

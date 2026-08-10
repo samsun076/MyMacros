@@ -67,6 +67,17 @@ export type Profile = {
 export type Me = {
   user: { id: string; name: string; email: string; image: string | null };
   profile: Profile;
+  /** The smoothed weight the budget is computed from — **not**
+   *  `profile.start_weight_kg`, which is frozen at onboarding.
+   *
+   *  Served so a screen previewing a budget uses the same number the Worker
+   *  stored. #78 is what the alternative looked like: Settings previewed
+   *  1,889 from the onboarding weight while Today showed 1,909 from the
+   *  trend, both arithmetically exact.
+   *
+   *  Null when no weigh-in exists yet — first-run onboarding, where the typed
+   *  weight is the only input there is. */
+  trend_weight_kg: number | null;
 };
 
 /** Any subset of the writable profile fields. */

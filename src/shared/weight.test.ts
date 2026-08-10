@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { shiftDay, trendSeries, trendWeightKg, type WeighIn } from "./weight";
+import {
+  anchorDay,
+  currentTrendWeightKg,
+  shiftDay,
+  trendSeries,
+  trendWeightKg,
+  type WeighIn,
+} from "./weight";
 
 describe("shiftDay", () => {
   it("moves whole days", () => {
@@ -107,5 +114,51 @@ describe("trendSeries", () => {
 
   it("is empty for no data", () => {
     expect(trendSeries([])).toEqual([]);
+  });
+});
+
+/* #78: the Settings preview and the stored target must be computed from one
+   number. These cover the function both sides now call. */
+
+describe("anchorDay", () => {
+  it("uses today when every weigh-in is on or behind it", () => {
+    const w = series(["2026-08-09", 76.6], ["2026-08-05", 76]);
+    expect(anchorDay(w, "2026-08-10")).toBe("2026-08-10");
+  });
+
+  it("uses a future weigh-in when there is one", () => {
+    // the client owns its own day and the profile's timezone is a stored
+    // default (#44) — for hours every evening they sit either side of midnight
+    const w = series(["2026-08-11", 76.2], ["2026-08-09", 76.6]);
+    expect(anchorDay(w, "2026-08-10")).toBe("2026-08-11");
+  });
+
+  it("does not depend on the order rows arrive in", () => {
+    const w = series(["2026-08-05", 76], ["2026-08-11", 76.2], ["2026-08-09", 76.6]);
+    expect(anchorDay(w, "2026-08-10")).toBe("2026-08-11");
+  });
+
+  it("is today when there is nothing on file", () => {
+    expect(anchorDay([], "2026-08-10")).toBe("2026-08-10");
+  });
+});
+
+describe("currentTrendWeightKg", () => {
+  it("reproduces the production figure behind #78", () => {
+    // the three weigh-ins live in production on 2026-08-10; 76.3 is what
+    // target_kcal 1,909 back-solves to, where start_weight_kg gave 1,889
+    const w = series(["2026-08-10", 76.2], ["2026-08-09", 76.6], ["2026-08-05", 76]);
+    expect(currentTrendWeightKg(w, "2026-08-10")).toBe(76.3);
+  });
+
+  it("sees a weigh-in dated ahead of today", () => {
+    // clamping to today instead would drop it, computeBudget would decline,
+    // and the stored target would silently stay where it was
+    const w = series(["2026-08-11", 80]);
+    expect(currentTrendWeightKg(w, "2026-08-10")).toBe(80);
+  });
+
+  it("is null with nothing to go on, so first-run onboarding still asks", () => {
+    expect(currentTrendWeightKg([], "2026-08-10")).toBeNull();
   });
 });
