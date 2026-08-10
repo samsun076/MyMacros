@@ -774,3 +774,103 @@ placeholder" claim. Site sweep follows the milestone — the `stale-claim` label
 in the site repo is where those live.
 
 </details>
+
+## Session J — the board, and one number three screens disagreed about — ✅ 2026-08-10
+
+Started as issue triage off two phone screenshots and turned into three defects,
+all shipped. **Closed: #78, #84, #85** (one commit, `a2b4896`, deployed and
+verified). **Filed: #76, #77, #79, #80, #81, #82, #83, #86.** Build rules
+consolidated into CLAUDE.md (`d7f6bbe`).
+
+### The board was restructured — read this before looking for M5
+
+**M5 had 17 open issues and a name that stopped being true** when #22 shipped.
+It is split three ways, and **M5, M4, M3, M2, M1 and M0 are now closed**
+milestones — six completed milestones had been sitting open, which made the
+list lie about what was in flight.
+
+| Milestone | What it is |
+|---|---|
+| **M9 Budget truth** | The app showing wrong numbers. #78/#84/#85 done; #76, #77, #79, #83, #86 open |
+| **M10 Launch & offline** | #53, #35, #54 — first paint, fonts, service worker |
+| **M11 Look & feel** | #23, #24, #29, #30, #38, #39, #52, #80 |
+| **M7** renamed | "Log flow: multi-item meals and corrections" — a basket is a capability, not a correction |
+
+**#32 has no milestone on purpose** (its own body says it is an epic awaiting
+concrete issues) and **#36 moved to M6** — what an unauthenticated visitor sees
+is positioning, not polish.
+
+### Next up: #76 first, then #77
+
+**#76 before anything else.** It is the only issue whose cost grows daily and
+cannot be backfilled — one migration, four nullable columns on `food_logs`, no
+UI. Every meal logged before it is a row that can never answer how good the
+estimates are.
+
+Then **#77 → #79**, which are sequenced and rewrite the budget. Then **#83**,
+then **#86 plus the rule 4b reconciliation** at the milestone close.
+
+**#86 belongs at the close, not before** — it sweeps for duplicated sources of
+truth, and #77/#79 are about to rewrite the code it would sweep.
+
+### What Session J settled, worth not re-deriving
+
+- **One quantity, one source — and it hid behind itself.** #78, #84 and #85 are
+  one defect at three depths, not three discoveries. #85 was *invisible* until
+  #78's fix made one of the two answers right. That is why this fault type feels
+  like whack-a-mole, and why #86 hunts it deliberately.
+- **`currentTrendWeightKg` is now the only way to ask "what does this person
+  weigh now".** `refreshTarget`, `/api/me` and `/api/day` all call it. The
+  anchoring rule (accept a weigh-in dated ahead of the server's day) was inline
+  in `refreshTarget`; a second copy is what #78 was.
+- **Nothing user-facing reads `profiles.target_kcal` any more.** `/api/day`
+  computes it. The column stays as a write-only cache — dropping it is a
+  migration for no gain — but it is stale by however long since the last write.
+- **`manual` on a weights row is load-bearing.** #20 protects manual rows from
+  sync overwrite and #71 lets them clear tombstones. Both assume the word means
+  *a human typed this today*. #84 broke that premise silently, and both
+  protections then worked correctly against the user.
+- **Two fault classes, two checks, neither substitutes.** #86 finds what reading
+  can find; rule 4b finds what only production data can. Four of six findings
+  this session were plain code reads nobody had run; #74 and the `energy_kj`
+  unit were not findable that way at all.
+- **Rule 4b is amended** — it fires when a milestone *changes how a number is
+  computed*, not on every close; it budgets 45–90 minutes, not ten (measured
+  against the two entries that exist); and a milestone with nothing to reconcile
+  **records that it had nothing**, the way #69's syncs check in on empty days.
+  So M10 and M11 owe a one-line "not applicable", not an entry.
+- **Build rules live in CLAUDE.md now.** PLAN.md had a stale copy where rule 7
+  was a *different rule*, and issue bodies cite these by number. Append, never
+  reorder.
+- **Favourites and the multi-item basket are both mostly built already.** The
+  confirm sheet is already an N-item editor and the save already folds one
+  `logged_at` into one meal; only the navigation replaces instead of appends
+  (#81). Favourites work fully and render only inside the text branch (#82).
+- **Protein is the wrong shape, and the goal presets are a U.** Cut 2.0,
+  maintain 1.6, gain 2.0 g/kg — both ends elevated for *different* reasons.
+  An earlier draft put gain in the middle and was wrong; #77 records that so
+  nobody re-derives the bad version.
+
+### Starter prompt (paste verbatim)
+
+```
+Working on MyMacros (~/Projects/MyMacros). Read CLAUDE.md and the Session J
+section of NEXT-STEPS.md first — the milestones were restructured on
+2026-08-10 and M5 no longer exists as an open milestone.
+
+Do #76 first: store the AI's original numbers beside the saved ones. It is
+the only issue whose cost grows daily and cannot be backfilled. One
+migration, four nullable columns on food_logs, the confirm sheet sending what
+it already holds, the save route validating them beside confidence and
+edited. No UI.
+
+Then #77 (protein anchored to g/kg, not a percent of energy) and #79 (the
+athlete profile) in that order — read the comment on #77 about not leaving
+protein_pct as a stored-but-derived column before you plan the migration.
+
+Verify at 375 with tools/shot-matrix.mjs and look at the PNGs, not just the
+green check. Commit per issue with "closes #N" only where it is genuinely
+finished. Push deploys, so confirm the build off GitHub check-runs and fetch
+the shell WITH its asset to check the content-type — the hash alone marks the
+start of a rollout, not the end.
+```
