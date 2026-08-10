@@ -612,3 +612,60 @@ and confidence are sane; scan a real package's barcode; confirm the camera permi
 prompt and the standalone viewfinder behave. None of it blocks M4 — but it's the half of
 M3 that headless Chrome structurally cannot reach, and the sooner it's known the cheaper
 any fix is.
+
+## Session H — the site onto its own domain — ✅ done 2026-08-10
+
+**Shipped:** **https://mymacros.debrief.run**, built from `samsun076/mymacros-site`
+(**private** — this repo is public, so never hyperlink it; the link 404s for
+every reader. Link the site, name the repo).
+
+Ported out of the Session F Claude artifact rather than rebuilt. That was one
+1.29MB HTML file with fonts, video and stills inlined as base64, because the
+artifact CSP forbids external requests. Off-platform: 16KB of markup, 18KB of
+CSS, 944KB of separately cacheable assets. The throwaway Python script did not
+survive — `build.mjs` walks `src/pages/`, so an article is a new file.
+
+**Closed:** #73 (the README claimed the budget engine's routes didn't exist,
+which M4 falsified — and the profile README already described it as working,
+so the one public repo was contradicting the profile pointing at it).
+
+**Deploys are manual on purpose.** A `wrangler login` OAuth session already
+carries `workers_scripts`, `workers_routes`, `zone read` and `ssl_certs` write
+— enough to create the Worker *and* the custom domain with no dashboard visit
+and no API token at all. Push-to-deploy is the only thing a token would buy,
+and at this cadence it's a credential that expires silently on a repo touched
+twice a year. `program-cf/prd`'s existing `CLOUDFLARE_API_TOKEN` is
+**Pages-scoped** — measured: it 403s on Workers scripts and can't see the zone.
+
+**The site is Night Athletic only.** It shipped a light pack because artifacts
+*must* honour the viewer's colour scheme, plus `:root[data-theme]` overrides for
+the host's toggle. Off-platform nothing sets `data-theme` (dead CSS), and the
+light values were the unported "Instrument" pack — a bone-white page wrapped
+around eight dark screenshots, advertising a theme the app can't render. It
+comes back with #30, alongside artwork that matches.
+
+### Next up: #22, the Trends screen
+
+Four things point at it:
+
+- **It's the last of M4.** Session G left #18's trend line as a list of numbers
+  and said drawing it belongs to #22. `GET /api/weights` already returns the
+  smoothed `series` ready to plot.
+- **It unblocks #67**, which is explicitly deferred "until trends sum runs".
+- **Both public surfaces name it as the gap** — the README, and the site's
+  "Trends is a placeholder", which is the last *true* not-built claim on it.
+- `src/client/routes/Trends.tsx` is four lines importing `Placeholder`.
+
+**Pairs with it:** #46 (the tab label stops being decorative once the screen is
+real), #18's leftovers (the weigh-in link lives in Settings, wrong home for a
+daily action), and `--danger` — still no destructive/alert colour in the pack,
+which #52 wants and the macro-split `.warn` is currently faking with `--accent`.
+
+**Two debts to clear in the same pass:** theme QA for M4's four screens
+(/onboarding, /weight, Settings' two new sections are Night Athletic only —
+build rule 4), and the M3 device check headless Chrome structurally cannot do
+— photograph a real meal on the phone, scan a real package.
+
+**Close the loop after:** shipping #22 falsifies the site's "Trends is a
+placeholder" claim. Site sweep follows the milestone — the `stale-claim` label
+in the site repo is where those live.
