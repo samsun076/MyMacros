@@ -380,6 +380,21 @@ export function Log() {
           fat_g: it.fat_g,
           confidence: it.confidence,
           edited: !manual && isEdited(it),
+          // #76: what the reader proposed, sent alongside what's being saved.
+          // `orig` already exists — `isEdited` has always compared against it;
+          // this stops it from being thrown away at save time, which is the
+          // one moment those numbers can still be captured. Sent even when
+          // nothing was edited, so the row distinguishes "the reader agreed"
+          // from "we never recorded it". Withheld for #16's blank row: that
+          // `orig` is a zero placeholder, not a read.
+          ...(manual
+            ? {}
+            : {
+                ai_kcal: it.orig.calories,
+                ai_protein_g: it.orig.protein_g,
+                ai_carbs_g: it.orig.carbs_g,
+                ai_fat_g: it.orig.fat_g,
+              }),
         })),
       });
       // the saved toast renders on Today (sketch stage 4): slot, kcal,

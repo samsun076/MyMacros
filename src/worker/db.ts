@@ -67,6 +67,13 @@ export type FoodLogTable = {
   confidence: number | null;
   /** 0/1 — SQLite has no boolean. */
   edited: Generated<number>;
+  /** What the reader proposed, before the user touched it (#76). All four
+   *  move together — null only when no read produced numbers (a favorite
+   *  re-log, #16's blank row, or a row older than migration 0006). */
+  ai_kcal: number | null;
+  ai_protein_g: number | null;
+  ai_carbs_g: number | null;
+  ai_fat_g: number | null;
   notes: string | null;
   created_at: Generated<Instant>;
   updated_at: Generated<Instant>;

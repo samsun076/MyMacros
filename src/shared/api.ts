@@ -109,6 +109,15 @@ export type FoodLog = {
   confidence: number | null;
   /** 0/1 — the user changed the AI's numbers before saving. */
   edited: number;
+  /** What the reader proposed before the user touched it (#76) — so the row
+   *  records *by how much* and *in which direction* an estimate was wrong,
+   *  which `edited` alone cannot. Equal to the saved values on an unedited
+   *  save; null only when no read produced numbers (a favorite re-log, #16's
+   *  blank recovery row, or a row predating migration 0006). */
+  ai_kcal: number | null;
+  ai_protein_g: number | null;
+  ai_carbs_g: number | null;
+  ai_fat_g: number | null;
   notes: string | null;
   created_at: string;
   updated_at: string;
@@ -157,6 +166,14 @@ export type FoodLogItemInput = {
   confidence: number | null;
   /** True when the user changed the AI's numbers before saving. */
   edited: boolean;
+  /** The reader's own numbers for this item, before any edit (#76). Send all
+   *  four or none — the route refuses a partial set, because a row carrying
+   *  three of the four is a silently unusable record. Omit them when nothing
+   *  read the item (a favorite re-log, #16's blank row). */
+  ai_kcal?: number | null;
+  ai_protein_g?: number | null;
+  ai_carbs_g?: number | null;
+  ai_fat_g?: number | null;
 };
 
 /** POST /api/food-logs body. One save = one meal = one shared `logged_at`

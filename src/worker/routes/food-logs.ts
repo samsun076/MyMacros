@@ -50,6 +50,13 @@ function round1(n: number) {
   return Math.round(n * 10) / 10;
 }
 
+/** The two per-item number shapes, shared by the saved values and by #76's
+ *  record of what the reader proposed — same bounds and same rounding on both
+ *  sides, so a stored pair can be subtracted without one of them having been
+ *  quantised differently from the other. `null` means "not a valid figure". */
+const energy = (v: unknown) => (isNum(v) && v >= 0 && v <= 10000 ? Math.round(v) : null);
+const grams = (v: unknown) => (isNum(v) && v >= 0 && v <= 1000 ? Math.round(v * 10) / 10 : null);
+
 const slotOf = oneOf(["breakfast", "lunch", "dinner", "snack"] as const);
 // the schema's four sources are all writable from M3 — the CHECK constraint
 // in migration 0001 already named photo and barcode, so nothing migrates
@@ -100,8 +107,7 @@ foodLogs.post("/", async (c) => {
   const rows = [];
   for (const item of body.items) {
     const name = typeof item?.name === "string" ? item.name.trim().slice(0, 120) : "";
-    const kcal = isNum(item?.kcal) && item.kcal >= 0 && item.kcal <= 10000 ? Math.round(item.kcal) : null;
-    const grams = (v: unknown) => (isNum(v) && v >= 0 && v <= 1000 ? Math.round(v * 10) / 10 : null);
+    const kcal = energy(item?.kcal);
     const protein = grams(item?.protein_g);
     const carbs = grams(item?.carbs_g);
     const fat = grams(item?.fat_g);
@@ -113,6 +119,31 @@ foodLogs.post("/", async (c) => {
           : undefined;
     if (!name || kcal === null || protein === null || carbs === null || fat === null || confidence === undefined) {
       return c.json({ error: "invalid_item" }, 400);
+    }
+
+    /* What the reader proposed, before this item was edited (#76).
+     *
+     * All four together or none at all. A partial set is refused rather than
+     * stored with holes: the question these columns exist to answer is "by
+     * how much, and in which direction", and a row holding three of four
+     * macros answers it for none of them. The absent case is a real one and
+     * stays legal — a favorite re-log and #16's blank recovery row never had
+     * a read behind them.
+     *
+     * Not folded into the `edited` check: an UNEDITED save writes these equal
+     * to the saved values, so that "the reader agreed" and "we never recorded
+     * it" don't both look like null. */
+    const raw = [item?.ai_kcal, item?.ai_protein_g, item?.ai_carbs_g, item?.ai_fat_g];
+    const ai = raw.every((v) => v === undefined || v === null)
+      ? null
+      : {
+          kcal: energy(item?.ai_kcal),
+          protein_g: grams(item?.ai_protein_g),
+          carbs_g: grams(item?.ai_carbs_g),
+          fat_g: grams(item?.ai_fat_g),
+        };
+    if (ai && Object.values(ai).some((v) => v === null)) {
+      return c.json({ error: "invalid_ai_estimate" }, 400);
     }
     rows.push({
       id: crypto.randomUUID(),
@@ -133,6 +164,10 @@ foodLogs.post("/", async (c) => {
       barcode: scanned,
       confidence,
       edited: item.edited === true ? 1 : 0,
+      ai_kcal: ai?.kcal ?? null,
+      ai_protein_g: ai?.protein_g ?? null,
+      ai_carbs_g: ai?.carbs_g ?? null,
+      ai_fat_g: ai?.fat_g ?? null,
     });
   }
 
