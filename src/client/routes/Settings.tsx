@@ -72,19 +72,11 @@ export function Settings() {
         </p>
       </section>
 
-      <section>
-        <div className="sec-head">
-          <span className="eyebrow">Weight</span>
-          <span className="mono">7-DAY TREND</span>
-        </div>
-        <Link className="btn btn-quiet" to="/weight">
-          Log a weigh-in
-        </Link>
-        <p className="placeholder-note">
-          Your target follows the smoothed trend, not any single morning. This lives
-          here until the trends screen (#22) gives it a better home.
-        </p>
-      </section>
+      {/* The weigh-in link used to live here, and Settings was the wrong home
+          for a daily action — two taps into a settings screen. It moved to
+          Trends with #22, which is one tap from the tab bar and the screen
+          where you'd already be looking at the number. `/weight` is still its
+          own route; only the entry point moved, so nothing is duplicated. */}
 
       <Sources />
 

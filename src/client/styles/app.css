@@ -1852,9 +1852,12 @@ section {
   margin: 4px 0 12px;
 }
 
-/* a macro split that doesn't total 100 */
+/* a macro split that doesn't total 100. Was --accent as a placeholder until
+   the pack had a destructive colour at all (#22); accent is the focus-macro
+   colour (build rule 8) and the user switches it live, so an invalid-input
+   warning built on it changed colour when they picked gold. */
 .warn {
-  color: var(--accent);
+  color: var(--danger);
 }
 
 /* the Today prompt when there is no computed budget yet */
@@ -1900,4 +1903,289 @@ section {
 /* the revoke control sits beside the "last used" stamp in the kv row */
 .kv dd .btn-text {
   margin-left: 12px;
+}
+
+/* ── trends (#22) — the one screen with no frozen sketch behind it ──
+   Built in the system's own idiom instead: the sec-head/eyebrow/mono bones,
+   the .fuel meter's layer structure for the weekly bars, and the sketch's
+   weight-spark colour assignments for the chart. No motif slot — a chart is
+   data marks, and data marks already re-skin through tokens (see TOKENS.md). */
+
+/* range chips. A segmented control in the mono micro-caption voice, so it
+   reads as a scale label rather than a second primary action competing with
+   the log button. */
+.range {
+  display: flex;
+  gap: 6px;
+  margin-top: 18px;
+}
+
+.range button {
+  flex: 1;
+  padding: 8px 0;
+  font-family: var(--data-font);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  color: var(--ink-muted);
+  background: var(--surface);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-mark);
+  cursor: pointer;
+}
+
+.range button.on {
+  color: var(--ink);
+  border-color: var(--line);
+  background: var(--surface-raised);
+}
+
+/* the verdict block: the screen's answer, with the charts below as evidence */
+.verdict {
+  margin-top: 26px;
+}
+
+.stat + .stat {
+  margin-top: 22px;
+  padding-top: 18px;
+  border-top: 1px solid var(--line-soft);
+}
+
+.stat-row {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-top: 6px;
+}
+
+.stat .num {
+  font-family: var(--numeral-font);
+  font-size: 44px;
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: 0.005em;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+  white-space: nowrap;
+}
+
+/* the direction glyph is a qualifier, not the number — at full size the
+   triangle outweighs the figure it describes */
+.stat .dir {
+  font-size: 0.58em;
+  vertical-align: 0.16em;
+  margin-right: 0.14em;
+}
+
+/* Moving the way the goal asks. Never --danger for a direction: a fortnight
+   can go the wrong way on water alone, and colouring that teaches the reader
+   to ignore the colour when it matters. */
+.stat.good .num {
+  color: var(--positive);
+}
+
+/* The one alert on this screen (#22): a surplus averaged across the WHOLE
+   window while the goal is a cut — the screen's own question answered "no".
+   Not --accent, which build rule 8 spends on the focus macro and which the
+   user switches live. */
+.stat.bad .num {
+  color: var(--danger);
+}
+
+.stat .unit {
+  font-family: var(--numeral-font);
+  font-size: 15px;
+  font-weight: 400;
+  color: var(--ink-secondary);
+  letter-spacing: 0.01em;
+}
+
+.stat .unit small {
+  display: block;
+  font-family: var(--body-font);
+  font-size: 10px;
+  font-weight: 500;
+  line-height: 1.35;
+  letter-spacing: 0.01em;
+  text-transform: none;
+  color: var(--ink-muted);
+  margin-top: 4px;
+}
+
+.stat .mono,
+.stat .placeholder-note {
+  display: block;
+  margin-top: 10px;
+}
+
+.stat.bad .mono {
+  color: var(--danger);
+}
+
+/* ── the weight chart ── */
+
+.wchart {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+
+/* the smoothed trend — the subject of the panel, so it takes --ink. Accent is
+   spent on the focus macro (build rule 8) and would lie about what it means. */
+.wchart-trend {
+  fill: none;
+  stroke: var(--ink);
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* the raw mornings: the noise the trend exists to see through */
+.wchart-raw {
+  fill: var(--mark-neutral);
+}
+
+/* where you are now — follows the frozen sketch's weight spark, which fills
+   its latest-point circle with --accent */
+.wchart-now {
+  fill: var(--accent);
+}
+
+.wchart-goal {
+  stroke: var(--line);
+  stroke-width: 1;
+  stroke-dasharray: 3 4;
+}
+
+.wchart-tag {
+  font-family: var(--data-font);
+  font-size: 9px;
+  letter-spacing: 0.04em;
+  fill: var(--ink-muted);
+}
+
+.chart-key {
+  font-family: var(--body-font);
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--ink-muted);
+  margin-top: 10px;
+}
+
+.chart-key b {
+  font-weight: 600;
+  color: var(--ink-secondary);
+}
+
+/* ── the weekly intake bars ── */
+
+.wk-row {
+  display: grid;
+  grid-template-columns: 62px 1fr 74px;
+  align-items: center;
+  gap: 12px;
+  padding: 9px 0;
+}
+
+.wk-row + .wk-row {
+  border-top: 1px solid var(--line-soft);
+}
+
+.wk-row .lbl {
+  font-family: var(--data-font);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  color: var(--ink-secondary);
+}
+
+.wk-row .lbl .mono {
+  display: block;
+  font-size: 9px;
+  margin-top: 3px;
+}
+
+/* Same three-layer structure as the budget meter, and for the same reason:
+   build rule 7 is structural, not decorative. The base target is a tick and
+   the earned bonus a hatched extension BEYOND it — never one merged length. */
+.wkbar {
+  position: relative;
+  display: block;
+  height: var(--week-bar-height);
+  border-radius: var(--radius-mark);
+  background: var(--track);
+}
+
+/* nothing logged: a hairline where the bar would be, so the row still lines
+   up but never reads as a measured zero */
+.wkbar.none {
+  height: 1px;
+  background: var(--line-soft);
+}
+
+.wkbar i {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+}
+
+.wkbar .fill {
+  left: 0;
+  background: var(--mark-neutral);
+  border-radius: var(--radius-mark);
+}
+
+/* The earned extension — the 135° hatch of motif slot 1, so the two read as
+   the same idea in two places. Pitched at the legend swatch's tighter rhythm
+   (2/5) rather than the hero meter's (2/7): the hero is 18px tall and these
+   are 11px, and at that height the looser hatch reads as a smudge. */
+.wkbar .earned {
+  background: repeating-linear-gradient(135deg, var(--accent-soft) 0 2px, transparent 2px 5px);
+  border-radius: 0 var(--radius-mark) var(--radius-mark) 0;
+}
+
+/* on top of the fill, so a week that ate past its target still shows where
+   the target was */
+.wkbar .base {
+  width: 2px;
+  background: var(--ink-secondary);
+  border-radius: var(--radius-pill);
+}
+
+.wk-row .val {
+  text-align: right;
+  font-family: var(--numeral-font);
+  font-size: 17px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.01em;
+  color: var(--ink);
+  white-space: nowrap;
+}
+
+.wk-row .val .per {
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--ink-muted);
+  margin-left: 2px;
+}
+
+.wk-row .val .wk-none {
+  color: var(--ink-muted);
+  font-size: 15px;
+}
+
+/* 375 is the reference width (build rule 6): the deficit column is the first
+   thing to crowd, so it sheds its per-day suffix before the label wraps.
+   Scoped to `.per` and not to every span in the cell — the em-dash that marks
+   an unlogged week is also a span, and hiding it left those rows silent
+   rather than explicitly empty. */
+@media (max-width: 389px) {
+  .wk-row {
+    grid-template-columns: 58px 1fr 64px;
+    gap: 10px;
+  }
+
+  .wk-row .val .per {
+    display: none;
+  }
 }

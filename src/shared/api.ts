@@ -240,6 +240,93 @@ export type WeightsResponse = {
   trend_kg: number | null;
 };
 
+/** One calendar week on the trends screen (#22), Monday-start.
+ *
+ *  **Every average below is over `logged_days`, not over `days`.** A day with
+ *  no food logged is not a day of zero intake, and averaging it in is a
+ *  whole-day-sized lie — the single largest way this screen can be wrong. The
+ *  target and earned means use the same denominator on purpose: comparing
+ *  "intake on the days I logged" against "target across every day" would
+ *  inflate the comparison by whatever happened on the unlogged ones. */
+export type TrendWeek = {
+  /** Monday of the week, YYYY-MM-DD. */
+  starts_on: string;
+  /** How many of this week's days fall inside the window — 7 except at the
+   *  window's edges. Distinct from `partial` below: a week can hold all seven
+   *  days and still be unfinished, which is every Sunday evening. */
+  days: number;
+  /** Days with at least one food log. The denominator for every mean here,
+   *  and shown on screen next to them so the reader can weigh them. */
+  logged_days: number;
+  /** The week being lived: its bar covers fewer days than the ones above it. */
+  partial: boolean;
+  /** Mean daily intake over the logged days; null when there were none. */
+  intake_kcal: number | null;
+  /** Mean daily BASE target. Never includes the earned bonus — base and
+   *  earned draw separately (build rule 7). Null before onboarding. */
+  target_kcal: number | null;
+  /** Mean daily earned bonus: run kcal × eat_back_pct (#21). */
+  earned_kcal: number;
+  /** Mean daily realized deficit — expenditure minus intake.
+   *
+   *  **Expenditure uses the FULL run calories, not the eaten-back share.**
+   *  `eat_back_pct` is a budgeting hedge that decides what you may eat; it is
+   *  not a claim about physiology. Applying it here would apply the hedge
+   *  twice and understate every deficit by half a run. So the bar (a budget
+   *  view) and this number (a physiology view) use different run figures on
+   *  purpose. */
+  deficit_kcal: number | null;
+  /** Total run calories in the week as the watch reported them — the figure
+   *  the deficit is built on, exposed so it can be checked rather than
+   *  trusted. */
+  run_kcal: number;
+};
+
+/** How fast the weight is actually moving, answered twice (#22).
+ *
+ *  The two answers are independent and will disagree. The screen ranks them
+ *  rather than reconciling them: the scale is measurement, the model is a
+ *  model, and closing the gap between them is #28's job, not this screen's. */
+export type TrendRate = {
+  /** Least-squares slope of the smoothed trend across the window. The
+   *  measured answer. Null until the weigh-ins span enough days that a slope
+   *  means anything. */
+  observed_kg_per_week: number | null;
+  /** Mean deficit converted at KCAL_PER_KG. The modelled answer. Null until
+   *  there are enough logged days to average. */
+  predicted_kg_per_week: number | null;
+  /** Mean daily realized deficit across the window. Same gate as above — an
+   *  average over four days is exactly as misleading as the rate from it. */
+  deficit_kcal: number | null;
+  /** Days in the window with food logged. The reason the two fields above are
+   *  present or absent, so the screen can say which. */
+  logged_days: number;
+  /** Days the weigh-ins span, which gates `observed_kg_per_week`. */
+  weigh_in_span_days: number;
+};
+
+/** GET /api/trends/:date — the "is this working?" screen (#22).
+ *
+ *  Carries only what `/api/me` can't: the profile fields this screen needs
+ *  (units, goal, goal_weight_kg, focus) already come from there, the way the
+ *  Today screen already pairs `/api/day` with `/api/me`. */
+export type TrendsResponse = {
+  /** Monday of the oldest week in the window. */
+  from: string;
+  /** The client's own today (#44) — the window ends where the user is. */
+  to: string;
+  /** Oldest first. */
+  weeks: TrendWeek[];
+  /** The weight trend, one point per day with a weigh-in (#18). Reuses the
+   *  shape `/api/weights` already returns; the smoothing is not redone. */
+  series: WeightPoint[];
+  rate: TrendRate;
+  /** False when the budget engine has no inputs (#17), which makes every
+   *  target and deficit above null. The screen sends you to onboarding
+   *  rather than drawing empty bars it can't explain. */
+  onboarded: boolean;
+};
+
 /** One run as the debrief pipeline pushes it (#19). `external_id` is the
  *  Suunto workout key and is what makes a re-send an update rather than a
  *  duplicate. */

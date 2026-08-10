@@ -94,7 +94,19 @@ npm run verify:viewport -- --camera --cookie <name>=<token>
 ```
 
 The log flow's modes are addressable: `/log#photo`, `/log#barcode`, `/log#text`. Unlike
-`#confirm` they inject no demo data, so they aren't DEV-gated.
+`#confirm` they inject no demo data, so they aren't DEV-gated. Trends adds `/trends#empty`
+and `/trends#sparse` (#22), both DEV-gated — they build a real `TrendsResponse` by running
+`buildTrends` over fabricated inputs, so a stage can't drift into a shape the route would
+never produce.
+
+**shot-matrix names its output from the hash**, so `/trends#empty` writes
+`app-trends-empty@*.png` and hash stages do *not* overwrite each other. Copying files
+aside afterwards clobbers the correctly-named output.
+
+**The trends screen needs weeks of data to be worth shooting.** `seed-demo.mjs --weeks 12`
+seeds a deterministic window — weigh-ins with a nine-day gap, unlogged days, a sparse week,
+runs — so the irregularities the screen exists to handle are actually exercised. Without it
+every PNG of `/trends` is the empty state.
 
 `.dev.vars` holds local secrets (gitignored) — **copy it from `.dev.vars.example` before
 anything else**, including before `npm run cf-typegen`: `wrangler types` reads `.dev.vars`
@@ -305,6 +317,34 @@ doppler secrets download -p mymacros -c prd --format json --no-file \
    targeted* (default protein, per-user in `profiles.focus_macro`). Other
    macros use `--mark-neutral`, plus an accent tick under the focused label
    and a screen-reader "— focus macro" suffix.
+9. **`--danger` is the alert colour, and it is deliberately narrow** (#22).
+   Never `--accent` — rule 8 spends that on the focus macro, and Night
+   Athletic switches it live, so an alert built on it changes colour when the
+   user picks gold. On Trends it fires only for a surplus averaged across the
+   *whole* window while the goal is a cut: one heavy week is noise, and
+   colouring noise teaches people to ignore the colour. `design/TOKENS.md`
+   records its measured CVD limit — under deuteranopia no colour separates
+   from all three accents, so every use must be sign-carrying and labelled.
+
+### Trends (#22) — four things not to re-derive
+
+- **The realized deficit uses the FULL run calories, never the eaten-back
+  share.** `eat_back_pct` is a budgeting hedge that decides what you may eat,
+  not a claim about physiology; applying it to the deficit applies it twice and
+  understates every week by half a run. The weekly bar (budget view) and the
+  weekly deficit (physiology view) therefore use *different* run figures on
+  purpose. There's a test that fails if anyone "fixes" it.
+- **Both rates must carry the same sign.** A positive deficit predicts weight
+  going *down*, so `predicted_kg_per_week` is negated. They render as bare
+  magnitudes side by side, so a sign mismatch reads as agreement — it shipped
+  wrong once and was caught by reading the live payload, not by a test.
+- **Averages run over `logged_days`, never over calendar days** — including the
+  target and earned means, or the bar compares two different weeks. Note the
+  live limitation in #74: a day with one coffee in it counts as fully logged.
+- **Historical targets are reconstructed, not recalled.** `profiles.target_kcal`
+  is one stored current value, so each past day is recomputed from that day's
+  trend weight and the *current* profile. Changing activity level rewrites every
+  week on the screen retroactively.
 
 ### Safari chrome blend (field-tested on device — don't re-derive)
 

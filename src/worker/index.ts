@@ -11,6 +11,7 @@ import me from "./routes/me";
 import photos from "./routes/photos";
 import sync from "./routes/sync";
 import syncTokens from "./routes/sync-tokens";
+import trends from "./routes/trends";
 import weights from "./routes/weights";
 import type { AppEnv } from "./types";
 
@@ -70,6 +71,7 @@ secure.route("/food-logs", foodLogs);
 secure.route("/favorites", favorites);
 secure.route("/photos", photos);
 secure.route("/weights", weights);
+secure.route("/trends", trends);
 // issuing/revoking is a person's job in Settings, so it stays session-only —
 // a leaked sync token must not be able to mint more of them (#19)
 secure.route("/sync-tokens", syncTokens);

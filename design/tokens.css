@@ -52,6 +52,14 @@
   --mark-neutral: #66748a;      /* non-focus macro bars, weight spark line —
                                    deliberately recessive; ≥3:1 on --surface */
   --positive: #4ec77a;          /* trending the right way (weight delta) */
+  --danger: #f36884;            /* destructive actions, and the state where
+                                   the app's own question answers "no" (#22,
+                                   #52). NOT --accent: rule 8 spends that on
+                                   the focus macro, and a user switches it
+                                   live — an alert colour that changes when
+                                   you pick gold is not an alert colour */
+  --on-danger: #16202e;         /* ink on a danger surface (#52's trash panel);
+                                   same dark blue-black as --on-accent */
 
   /* ── accent ─ dawn coral (default); data-accent switches ── */
   --accent: #f88b68;
@@ -87,6 +95,10 @@
   --scrim: rgba(5, 9, 15, 0.55); /* dim wash behind the sheet */
   --meter-height: 18px;         /* budget meter */
   --macro-bar-height: 6px;
+  --week-bar-height: 11px;      /* trends' weekly intake bars (#22) — between
+                                   the two above: a dozen of them stacked can't
+                                   be 18px, and the earned hatch is illegible
+                                   at 6px */
   --tabbar-height: 62px;        /* bottom chrome, excluding the safe area —
                                    screens pad their bottom by this so the
                                    fixed bar never covers content */

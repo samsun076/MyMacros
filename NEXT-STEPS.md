@@ -644,6 +644,89 @@ light values were the unported "Instrument" pack — a bone-white page wrapped
 around eight dark screenshots, advertising a theme the app can't render. It
 comes back with #30, alongside artwork that matches.
 
+## Session I — #22, the Trends screen — ✅ done 2026-08-10
+
+**Closed:** #22, #18 (its trend line, the last thing M4 left undrawn), #46.
+**Filed:** #74. `GET /api/trends/:date?weeks=4|12|24`, a hand-rolled SVG weight
+chart, weekly intake bars, and the first `--danger` in the pack.
+
+### What Session I settled or discovered
+
+- **Two rates, ranked.** Observed (least-squares slope of the smoothed trend)
+  is the big number; the energy model (`deficit × 7 / 7700`) is a mono line
+  under it. They disagree — on the demo fixture, 0.5 vs 1.6 lb/week — and the
+  screen doesn't pretend to reconcile them. That gap is #28's job.
+- **A sign bug the tests couldn't see.** The modelled rate came out `+0.72`
+  while the observed was `−0.23`: a positive deficit predicts weight going
+  *down*, so it has to arrive negative. Both render as bare magnitudes, so on
+  screen it read as agreement. **Found by reading the live payload, not by a
+  test** — the arithmetic was right and the convention was not. The fix is one
+  negation; the guard is two tests plus a direction glyph on the model line so
+  a disagreement is visible rather than implied.
+- **The deficit uses FULL run calories, never the eaten-back share.**
+  `eat_back_pct` is a budgeting hedge, not a claim about physiology; applying
+  it here would apply it twice. So the weekly bar (budget view) and the weekly
+  deficit (physiology view) use different run figures **on purpose**. There is
+  a test that fails if anyone "corrects" it.
+- **Historical targets are reconstructed, not recalled.** `target_kcal` is one
+  stored current value, so each past day's target is recomputed from that day's
+  trend weight and the *current* profile. Changing your activity level rewrites
+  every week on this screen retroactively. Named in the route's doc comment.
+- **One rule for everything absent: withhold, don't caveat.** Charts draw
+  whatever exists; the rate figures are null until ≥14 logged days and a ≥14-day
+  weigh-in span. Same posture as `computeBudget` returning null. In production
+  today (7 logged days) that means most of the screen is withheld — which is
+  the design working, not a bug.
+- **No fifth motif slot, and that was the deliberate call.** A chart is data
+  marks, and data marks already re-skin through `--mark-neutral` / `--track` /
+  `--accent-soft` with no per-theme code. A fifth slot is permanent work for
+  every future pack. If the earned hatch ever needs to vary, widen slot 2's
+  contract instead.
+- **`--danger` #f36884, and the thing it can't do.** A hue sweep of the whole
+  red-through-rose range at every lightness clearing 5.2:1 tops out at ΔE ≈ 10.9
+  worst-case under deuteranopia — reds converge with coral, roses converge with
+  mint, and the failures cross before either clears. That is the colour space,
+  not a search failure; `design/TOKENS.md` records it as a measured deviation.
+  Every use is sign-carrying and direct-labelled, which is why it's acceptable.
+- **#46 was misdiagnosed until it was measured.** The obvious fix
+  (`space-evenly` → `space-around`) moved the label gap 4.9px → 7.3px, which is
+  arithmetically +50% and visually nothing. The real shortage: both zones get
+  `1fr`, the solo zone sat on **90px of unused slack** while the right zone had
+  14.6px, and the centre column was 88px around a 58px button. Narrowing the
+  column to the button's own width keeps the grid symmetric (so the button
+  doesn't move) and takes the gap to 14.8px. **Measure before changing frozen
+  ground truth.**
+- **`seed-demo.mjs --weeks N`** seeds a deterministic window — weigh-ins with a
+  nine-day gap, unlogged days, a sparse week, runs. Without it every screenshot
+  of this screen is the empty state.
+- **`shot-matrix` names by hash now**, so `/trends#empty` writes
+  `app-trends-empty@*.png`. The Session D note above saying hash stages
+  overwrite each other is **stale** — copying files aside afterwards clobbers
+  the correctly-named output, which cost a confused round here.
+- **A chart's y axis must have a floor.** Auto-fitting the domain magnified a
+  first week's 0.8 kg of water into a cliff. `MIN_DOMAIN_KG = 2`. A small range
+  is exactly the case that must not look big.
+- **A media query ate an em-dash.** `.wk-row .val span { display: none }` at
+  ≤389px was meant for the "/day" suffix and also hid the dash marking an
+  unlogged week, so those rows went silent instead of explicitly empty. Scope
+  display rules to a class, not to an element.
+
+### What Session I did NOT do
+
+- **#74** — a day logged with one coffee counts as a fully logged day, so the
+  weekly deficit can read ~2× the truth next to a reassuring "6/7 DAYS".
+  Deliberately not patched: the obvious floor is a guess about whether someone
+  fasted. Full write-up on the issue and in RECONCILIATIONS.md.
+- **#67** stays in M8. The measured exposure is on the issue now.
+- **The M3 device check** is still owed — photograph a real meal, scan a real
+  package. Headless Chrome structurally cannot do it.
+- **The site's "Trends is a placeholder" claim is now false.** Sweep it in the
+  site repo under the `stale-claim` label; the budget-meter diagram and the
+  "day route returns no run" claim are already there.
+
+<details>
+<summary>The pre-session brief for #22, kept for reference</summary>
+
 ### Next up: #22, the Trends screen
 
 Four things point at it:
@@ -669,3 +752,5 @@ build rule 4), and the M3 device check headless Chrome structurally cannot do
 **Close the loop after:** shipping #22 falsifies the site's "Trends is a
 placeholder" claim. Site sweep follows the milestone — the `stale-claim` label
 in the site repo is where those live.
+
+</details>

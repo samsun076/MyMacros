@@ -67,6 +67,12 @@ if (!routes) {
         "/log#confirm",
         "/#saved",
         "/trends",
+        // #22's staged empty states. They aren't cosmetic variants — each
+        // swaps a chart for a paragraph, which is a different layout, and the
+        // sparse one is the only route that renders a bar list with a
+        // single-digit coverage label in it.
+        "/trends#empty",
+        "/trends#sparse",
         "/settings",
         // M4's task screens (#17, #18) — both are long forms, which is the
         // shape most likely to push a field past the edge at 375

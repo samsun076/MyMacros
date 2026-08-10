@@ -21,13 +21,14 @@ forks a component, with the sole exception of the motif slots below.
 | `--ink` / `--ink-secondary` / `--ink-muted` | Text tiers (Night Athletic: no pure white anywhere) |
 | `--mark-neutral` | Non-focus data marks — deliberately recessive, ≥3:1 on `--surface` |
 | `--positive` | "Trending the right way" (e.g. weight delta on a cut) |
+| `--danger` / `--on-danger` | Destructive actions (#52's trash panel) and the one state where the app's own question answers "no" — a surplus across the whole trends window while the goal is a cut (#22). **Never `--accent`**: rule 8 spends accent on the focus macro, and Night Athletic switches it live, so an alert built on it changes colour when the user picks gold. Deliberately narrow — a single high week is noise, and every red pixel on the trends screen is a judgment about a body |
 | `--accent` + `--accent-soft/-wash/-glow`, `--on-accent` | The one hero color; soft = hatch/dim marks, wash = tinted fills, glow = page-top radial, on-accent = ink on accent |
 | `--display-font` / `--body-font` / `--numeral-font` / `--data-font` | Numerals always set `font-variant-numeric: tabular-nums`; data-font is timestamps/scales/micro-captions |
 | `--radius-card/-thumb/-button/-mark/-pill` | Shape scale; `-pill` is fully-rounded ends (accent tick, chips) |
 | `--shadow-lift` | The accent buttons' lift (log button, primary action) — drop plus inset bottom highlight. A theme's *material*, not a constant: Night Athletic's deep blue-black drop means nothing on Field Notes' ivory paper, so each pack sets its own |
 | `--shadow-card` / `--shadow-sheet` | Elevation for raised cards (run card, toast) and the confirm bottom sheet — same material caveat as `--shadow-lift` |
 | `--scrim` | Dim wash behind the confirm sheet |
-| `--meter-height` / `--macro-bar-height` | Meter metrics |
+| `--meter-height` / `--macro-bar-height` / `--week-bar-height` | Meter metrics; the last is trends' weekly intake bar (#22), sized so a dozen stack while the earned hatch still reads |
 | `--tabbar-height` | Bottom chrome height, excluding the safe area. Screens pad their bottom by it so the fixed bar never covers content |
 
 Mapping from the sketch's local names (`sketches/c2-night-athletic.html`):
@@ -92,3 +93,26 @@ above the series-lightness band (they are hero colors, not series colors) and
 `--mark-neutral`'s chroma is below the "reads gray" floor *by design* — it is
 the recessive non-focus mark, and every mark it colors is direct-labeled
 (PROTEIN / CARBS / FAT rows, labeled spark). Identity is never color-alone.
+
+### `--danger` (#22), and the one thing it can't do
+
+`#f36884` — 5.23:1 on `--surface` (clears AA for body text; comparable to
+`--ink-muted`'s 5.22, the pack's own floor for readable text). Only one accent
+is ever live, so the bar is separation from whichever the user picked:
+
+| vs the active accent | normal | protan | deutan |
+|---|---|---|---|
+| coral | 18.8 | 21.7 | 11.1 |
+| gold | 40.8 | 29.8 | 15.8 |
+| mint | 65.9 | 21.5 | 10.6 |
+
+**Under deuteranopia it does not clearly separate, and no color would.** A
+hue sweep of the whole red-through-rose range at every lightness that clears
+5.2:1 tops out at ΔE ≈ 10.9 worst-case — reds converge with coral, roses
+converge with mint, and the two failures cross before either clears. This is
+the color space, not the search. It is acceptable here for the same reason the
+deviations above are: **every use is direct-labeled and sign-carrying** — the
+trends figure reads "+ 120 kcal / day" with a sentence under it, and #52's
+trash panel is a glyph, not a swatch. Do not fix this by tinting toward
+`--accent`; that reintroduces the switchable-alert problem the token exists to
+solve.
