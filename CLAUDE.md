@@ -402,6 +402,29 @@ doppler secrets download -p mymacros -c prd --format json --no-file \
 - Commit per issue, `closes #N` **only when the issue is actually finished** —
   a partial commit references `#N` without the keyword.
 - Push to `main` deploys via Workers Builds (wired in M1 #7).
+- **Read the build result off GitHub, not by polling the asset hash:**
+  ```bash
+  gh api repos/samsun076/MyMacros/commits/<sha>/check-runs \
+    --jq '.check_runs[] | select(.name|startswith("Workers Builds")) | .conclusion'
+  ```
+  Workers Builds reports back as a check-run. The *Cloudflare* Builds API is
+  unreadable with the `wrangler login` token (Session B2), which is why this
+  wasn't known — the status arrives by a different path. Better than
+  hash-polling in both directions: it distinguishes failure from still-running,
+  which polling structurally cannot (a failed build looks exactly like a slow
+  one), and it doesn't report success off a single edge node.
+- **A deploy has a mixed-version window, and the SPA fallback makes it silent.**
+  Two Worker versions serve simultaneously while isolates drain, each with its
+  own asset manifest — so a request can get the new `index.html` and then have
+  its hashed asset land on the old version, which doesn't have that file.
+  `not_found_handling: single-page-application` answers that with `index.html`
+  and HTTP 200, so the browser gets `text/html` where it asked for JavaScript:
+  a white screen, no error anywhere. Measured on the #22 deploy: 5 of 12
+  requests mid-rollout, clean after ~90s. Self-heals on reload, so it isn't
+  worth fixing at this scale — #54's service worker is the real mitigation.
+  To check a deploy honestly, fetch the shell **and its referenced asset
+  together** and assert the content-type; the hash alone marks the *start* of
+  the rollout, not the end.
 - Sketches in `sketches/` are frozen ground truth from the design rounds. Port
   from them; don't edit them to match the app.
 - Don't add a state-management library, a component library, or a CSS
