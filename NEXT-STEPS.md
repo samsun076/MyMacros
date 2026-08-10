@@ -718,19 +718,28 @@ chart, weekly intake bars, and the first `--danger` in the pack.
   Deliberately not patched: the obvious floor is a guess about whether someone
   fasted. Full write-up on the issue and in RECONCILIATIONS.md.
 - **#67** stays in M8. The measured exposure is on the issue now.
-- **The M3 device check, half done on the day** (2026-08-10, on the phone,
-  against production). Four real barcodes scanned and resolved — Barebells,
-  Bubba burger, Dave's Killer Bread, Clif Bar — which closes the gap Session E
-  named: curvature, gloss and focus are exactly what a generated flat EAN-13
-  never tested. A photographed Starbucks Americano came back correct at
-  confidence 0.85 (10 kcal against Starbucks' published 15), and identifying
-  the drink was the real work there — a latte in the same cup differs by ~180
-  kcal.
-  **Portion estimation is still untested.** A black coffee has no portion to
-  judge; the answer is "almost nothing" and the hard part was recognition, not
-  volume. The open case remains a plate of real food weighed on scales, which
-  is what the site's "Unverified" card describes and what #75 exists to make
-  measurable at scale.
+- **The M3 device check, done on the phone against production** (2026-08-09/10).
+  Corrected once already — the first version of this note said the Starbucks
+  photo was the model recognising a drink. It wasn't: Dave scanned the
+  nutrition sticker on the cup, which is the label path M3 already verified.
+  Ask what was photographed before crediting a read.
+  - **Real barcodes: verified.** Four resolved on real packaging (Barebells,
+    Bubba burger, Dave's Killer Bread, Clif Bar). That is precisely the gap
+    Session E named — curvature, gloss and focus are what a generated flat
+    EAN-13 never tested.
+  - **A real plate: one mixed result, and the interesting one.** The 08-09
+    dinner photo returned buffalo cauliflower / "fish sticks" / baby carrots.
+    Numbers judged plausible; the fish sticks were **tofu**, corrected on the
+    sheet. So the macros survived a misidentification — breaded protein in
+    buffalo sauce lands near enough either way — which is the failure mode to
+    expect here: confidently wrong about *what*, roughly right about *how
+    much*.
+  - **`confidence` may not be decoration.** That tofu row was 0.45, the lowest
+    of the day; every other item sat at 0.55–0.7 and needed no correction. n=1,
+    proves nothing, but it is the shape #75 asks about.
+  - **Still owed: anything weighed.** "Seemed accurate" is the only measure so
+    far, so the *magnitude* of error is unknown. That is what the site's
+    "Unverified" card describes and what #75 exists to make measurable.
 - **The site's "Trends is a placeholder" claim is now false.** Sweep it in the
   site repo under the `stale-claim` label; the budget-meter diagram and the
   "day route returns no run" claim are already there.
