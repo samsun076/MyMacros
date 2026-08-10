@@ -21,9 +21,15 @@ export function IntakeWeeks({ weeks }: { weeks: TrendWeek[] }) {
     ) * 1.05;
   const pct = (kcal: number) => `${Math.min((kcal / ceiling) * 100, 100)}%`;
 
+  /* Newest week first. The wire keeps them oldest-first because the chart
+     above reads left-to-right in time and `from`→`to` is the window's own
+     order — but a list is read top-down, and the week you are living is the
+     one you came here for. Scrolling to the bottom to find this morning is
+     the wrong way round. Matches the weigh-in list on /weight, which already
+     reverses for the same reason. */
   return (
     <div className="wk-list">
-      {weeks.map((w) => {
+      {[...weeks].reverse().map((w) => {
         const base = w.target_kcal ?? 0;
         return (
           <div className="wk-row" key={w.starts_on}>

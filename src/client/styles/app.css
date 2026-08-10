@@ -2189,3 +2189,17 @@ section {
     display: none;
   }
 }
+
+/* Where a weigh-in came from (#22 follow-up). Recessive: it qualifies the
+   date, it isn't a second fact competing with the number beside it. Matters
+   because the two sources behave differently on delete (#71) and on conflict
+   (#68) — the same reading, different rules. */
+.kv dt .src {
+  display: block;
+  margin-top: 3px;
+  font-family: var(--data-font);
+  font-size: 9px;
+  font-weight: 400;
+  letter-spacing: 0.08em;
+  color: var(--ink-muted);
+}

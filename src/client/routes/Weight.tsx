@@ -166,7 +166,16 @@ export function Weight() {
                 const smooth = displayWeight(point.trend_kg, imperial ? "imperial" : "metric");
                 return (
                   <div key={point.measured_on}>
-                    <dt>{point.measured_on}</dt>
+                    <dt>
+                      {point.measured_on}
+                      {/* Where the number came from. Worth saying because the
+                          two behave differently on delete (#71): removing a
+                          scale reading writes a tombstone to stop the sync
+                          re-adding it, and a row you typed outranks anything
+                          Garmin sends for that day (#68). Same number on
+                          screen, different rules behind it. */}
+                      <span className="src">{sourceOf(data, point.measured_on)}</span>
+                    </dt>
                     <dd>
                       {raw.value} {raw.unit}
                       <span className="mono"> · TREND {smooth.value}</span>
@@ -187,4 +196,13 @@ export function Weight() {
       ) : null}
     </main>
   );
+}
+
+/** "SCALE" or "TYPED" for a day. `series` carries the smoothing and `entries`
+ *  carries the rows, so the source has to be looked up rather than read off
+ *  the point — and `weights` is unique per user per day, so there is exactly
+ *  one answer. */
+function sourceOf(data: WeightsResponse, measured_on: string) {
+  const entry = data.entries.find((e) => e.measured_on === measured_on);
+  return entry?.source === "manual" ? "TYPED" : "SCALE";
 }
