@@ -18,12 +18,12 @@ and is sped up here; the sheet reports its own timing. Recorded with
 walkthrough: the log flow end to end, the three input modes, and what is and isn't built.
 </p>
 
-> **Status: in active development, built for one user so far.** It's deployed and the
-> daily loop works end to end — photograph, scan or describe a meal and it lands in the
-> timeline. It is *not* packaged for someone else to deploy: the budget engine that makes
-> the target move with your running is the milestone in flight, and a self-hoster still
-> has to wire up their own Cloudflare account by hand. [Setup](#setup) is honest about
-> what that takes. **Not accepting issues or pull requests** — see
+> **Status: in active development, built for one user so far.** It's deployed and both
+> halves work end to end — photograph, scan or describe a meal and it lands in the
+> timeline, and the day's target moves with the runs and weigh-ins that sync in on their
+> own. What's thin is everything around that: Trends is still a placeholder, and a
+> self-hoster has to wire up their own Cloudflare account by hand — [Setup](#setup) is
+> honest about what that takes. **Not accepting issues or pull requests** — see
 > [Contributing](#contributing).
 
 ## Architecture
@@ -38,10 +38,22 @@ line of text goes in, a structured list of items with per-item confidence comes 
 nothing is written until you've had a chance to edit it. Barcodes are decoded in-browser
 and resolved against OpenFoodFacts, which needs no key.
 
-The half that isn't built yet is the budget engine: run data is to arrive from
+The budget engine is the half that makes it more than a food diary, and it's built. A
+target comes from Mifflin-St Jeor plus an activity factor and your goal; runs arrive from
 [debrief](https://debrief.run)'s existing pipeline rather than a second Suunto OAuth, and
 weight from a Garmin Index scale through that same pipeline, so the day's target moves
-with what you actually did. Neither route exists in `src/worker/routes/` today.
+with what you actually did. A configurable share of run calories is eaten back, and the
+earned bonus always draws as a *visible extension* of the base target rather than a
+bigger number — a good day never hides where it came from.
+
+The trap that shapes it: those activity factors describe life **excluding** purposeful
+exercise. Runs are added separately, so a multiplier that already contained them would
+count every mile twice — a plausible-looking budget a few hundred kcal too generous,
+every day, with nothing visibly broken. That class of failure is why the project
+[reconciles one real number by hand](RECONCILIATIONS.md) at every milestone close.
+
+What's still missing is the screen that tells you whether any of it is working: Trends is
+a placeholder, and weight is synced but has no manual entry yet.
 
 No state-management library, no component library, no CSS framework — semantic design
 tokens (`design/tokens.css`) and plain stylesheets. 375px (iPhone 13 mini) is the
