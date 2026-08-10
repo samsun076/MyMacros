@@ -13,6 +13,11 @@ and is sped up here; the sheet reports its own timing. Recorded with
 <a href="tools/screencast.mjs"><code>tools/screencast.mjs</code></a>.
 </sub></p>
 
+<p align="center">
+<a href="https://mymacros.debrief.run"><strong>mymacros.debrief.run</strong></a> — the
+walkthrough: the log flow end to end, the three input modes, and what is and isn't built.
+</p>
+
 > **Status: in active development, built for one user so far.** It's deployed and the
 > daily loop works end to end — photograph, scan or describe a meal and it lands in the
 > timeline. It is *not* packaged for someone else to deploy: the budget engine that makes
@@ -147,6 +152,28 @@ node tools/assemble-cast.mjs --in shots/cast --out docs/log-flow
 The recorder needs a square `.y4m` to stand in for the camera — headless Chrome has no
 camera, and its built-in fake device is a colour-bar test pattern. Any photo will do:
 `ffmpeg -loop 1 -framerate 15 -i plate.jpg -t 8 -vf scale=720:720 meal.y4m`.
+
+### Feeding the site
+
+The same three tools produce the media on
+[mymacros.debrief.run](https://mymacros.debrief.run), which is built from a **separate
+repo** — the tooling lives here because it drives a running dev server with a seeded
+database and a real `ANTHROPIC_API_KEY`, none of which belongs in a content repo. The
+outputs are ordinary files, so the handoff is a copy.
+
+| Site asset | Made by |
+| --- | --- |
+| `media/log-flow.mp4` | `screencast.mjs` → `assemble-cast.mjs` |
+| `media/today-scroll.mp4` | `screencast.mjs` |
+| `media/*.webp` | `shot-matrix.mjs` |
+
+**Regenerate as a set.** `seed-demo.mjs` seeds *today* and `screencast.mjs --at` shifts
+only the page's clock, so a re-recording carries a new date. The site's Today recording
+announces "Thursday, August 6" in its own accessible description — replacing one clip and
+not the other leaves that page contradicting itself. Same for prose: a claim like "the
+day route returns no run" is invalidated by shipping a milestone, not by touching an
+image, and it decays much more quietly. The cadence is a sweep at each milestone close,
+alongside the theme QA that build rule 4 already mandates.
 
 ## Layout
 

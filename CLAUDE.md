@@ -208,6 +208,44 @@ MYMACROS_SYNC_TOKEN=mms_… ./tools/install-sync-agent.sh        # launchd, ever
 - Garmin credentials never reach the repo: `login` exchanges the password for
   OAuth tokens in `~/.garminconnect`, and nothing afterwards needs a password.
 
+## The site (#56) — a separate repo
+
+The walkthrough at **https://mymacros.debrief.run** is built from
+`samsun076/mymacros-site`, which is **private**. This repo is public, so
+**don't hyperlink the site repo from README.md or anywhere else public** — it
+404s for everyone but Dave. Link the site; name the repo in prose.
+
+- **Separate on purpose.** Every article and its images would otherwise ship to
+  everyone who clones the app and stay in git history after being replaced.
+  The argument that "the pages are generated from the app" argues for the
+  *tooling* staying here — it drives a live dev server — not the site.
+- **The tooling stays here; only outputs move.** `screencast.mjs`,
+  `assemble-cast.mjs`, `shot-matrix.mjs`, `seed-demo.mjs` are all still ours.
+  The handoff is a copy of generated files, not shared code.
+- **The site is an assets-only Worker.** No `main`, no script, no D1/R2, no
+  secrets. `npm run deploy` there is `node build.mjs && wrangler deploy`.
+- **Deploys are manual, deliberately.** A `wrangler login` OAuth session already
+  carries `workers_scripts`/`workers_routes`/`ssl_certs` write, which is how the
+  Worker and the `mymacros.debrief.run` custom domain were created with no
+  dashboard visit and no API token. Push-to-deploy would need a token that
+  expires silently on a repo touched twice a year; it's tracked in the site
+  repo, unbuilt on purpose.
+- **The site is Night Athletic only.** It came from a Claude artifact, which
+  *must* honour the viewer's colour scheme, so it shipped a light pack and
+  `:root[data-theme]` overrides. Both were removed: nothing sets `data-theme`
+  off-platform, and the light values were the unported "Instrument" pack (#30)
+  — a light page wrapped around eight dark screenshots, advertising a theme the
+  app can't render. When #30 lands, that's when it comes back.
+- **The site asserts things about the app, and the app falsifies them
+  silently.** M4 alone broke three claims (runs exist now, so "the day route
+  returns no run at all" and the drawn budget-meter diagram are both false).
+  Images decay loudly and prose decays quietly. Known-stale claims are issues
+  in the site repo under the `stale-claim` label; the sweep belongs at
+  milestone close, next to the theme QA of build rule 4.
+- **A hardcoded figure is the trap to avoid.** `Commits: 81` on the page was
+  wrong the next morning. Prefer figures that are finished history ("plan to
+  deployed: 6 days") over any number the next commit moves.
+
 ## Secrets
 
 Canonical home is the **`mymacros` Doppler project** (`dev` and `prd` configs);
