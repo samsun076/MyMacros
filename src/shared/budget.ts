@@ -8,7 +8,7 @@
  *  (`profiles.units`), converted at the edge.
  */
 
-import type { ActivityLevel, Goal, Sex } from "./api";
+import type { ActivityLevel, AthleteProfile, Goal, Sex } from "./api";
 
 /** Activity multipliers applied to BMR (Mifflin-St Jeor's own companion
  *  table).
@@ -189,6 +189,39 @@ export const PROTEIN_G_PER_KG_RANGE = { min: 1.2, max: 2.6, step: 0.1 };
  *  that says so on screen when it bites — a clamp the user can't see is its
  *  own kind of wrong answer. Carbs absorb whatever the floor takes. */
 export const MIN_FAT_G_PER_KG = 0.6;
+
+/** What picking an athlete profile sets (#79) — and, just as importantly,
+ *  the complete list of what it can set.
+ *
+ *  **`activity_level` is not in here and must never be.** ACTIVITY_FACTORS
+ *  above describes daily life *excluding* purposeful exercise, because run
+ *  calories arrive separately as the earned bonus (#21). A profile that
+ *  helpfully raised the activity level would double-count every session while
+ *  looking like a thoughtful feature — measured cost, from
+ *  RECONCILIATIONS.md: 274 kcal/day too generous, every day, nothing visibly
+ *  broken. `deficit_kcal` is out too: how fast you want to get there is a
+ *  preference, not an athletic characteristic. A test asserts the shape of
+ *  these objects for exactly that reason.
+ *
+ *  Carb:fat is where the profiles genuinely differ — glycogen is the limiter
+ *  for endurance work, and a lifting session doesn't deplete it the way ten
+ *  miles does. Eat-back differs because it is a hedge against a device
+ *  over-reporting, and how badly it over-reports depends on the modality.
+ *
+ *  Runner and General only. Lifter (50:50, 25%) and CrossFit (60:40, 40%) are
+ *  decided and held back until there is an exercise input that isn't a run
+ *  (#27 or #70) — otherwise the option is a promise the app can't keep. */
+export const ATHLETE_PROFILES: Record<
+  AthleteProfile,
+  { carb_ratio_pct: number; eat_back_pct: number }
+> = {
+  /** Ten miles empties glycogen; carbohydrate is what refills it. */
+  runner: { carb_ratio_pct: 65, eat_back_pct: 50 },
+  /** The starting point for someone who has chosen nothing — which is why
+   *  migration 0008 rebuilt `carb_ratio_pct`'s column default to match it
+   *  rather than leaving two answers to one question. */
+  general: { carb_ratio_pct: 58, eat_back_pct: 50 },
+};
 
 export type MacroInputs = {
   /** The day's energy. Today passes the ADJUSTED total (base + earned), so

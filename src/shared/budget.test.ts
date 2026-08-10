@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   ACTIVITY_FACTORS,
   ageOn,
+  ATHLETE_PROFILES,
   bmr,
   type BudgetInputs,
   computeBudget,
@@ -302,4 +303,53 @@ describe("macroTargets", () => {
     expect(PROTEIN_G_PER_KG.cut).toBeGreaterThan(PROTEIN_G_PER_KG.maintain);
     expect(PROTEIN_G_PER_KG.gain).toBeGreaterThan(PROTEIN_G_PER_KG.maintain);
   });
+});
+
+/** #79. Two axes, one owner each — and the one that matters here is what an
+ *  athlete profile is NOT allowed to own. */
+describe("ATHLETE_PROFILES", () => {
+  /** THE DOUBLE-COUNT TRAP, pinned. `ACTIVITY_FACTORS` describes daily life
+   *  excluding purposeful exercise, because run calories arrive separately as
+   *  the earned bonus (#21). A profile that helpfully raised the activity
+   *  level would look like a thoughtful feature while making the target 274
+   *  kcal/day too generous, every day, with nothing visibly broken — measured
+   *  in RECONCILIATIONS.md, not hypothetical.
+   *
+   *  Asserting the exact key set rather than "activity_level is absent",
+   *  because the next wrong field to appear here won't be the one already
+   *  named. Onboarding spreads these objects wholesale, so this list is
+   *  literally the set of things picking a profile can move. */
+  it.each(Object.entries(ATHLETE_PROFILES))("%s sets carb:fat and eat-back, nothing else", (_, preset) => {
+    expect(Object.keys(preset).sort()).toEqual(["carb_ratio_pct", "eat_back_pct"]);
+  });
+
+  /** Protein stays on the goal axis alone. Endurance athletes sit slightly
+   *  below lifters at maintenance and the two converge in a deficit, so
+   *  encoding it here would make one number untraceable across two owners for
+   *  a difference inside #77's own noise floor. */
+  it("never touches protein", () => {
+    for (const preset of Object.values(ATHLETE_PROFILES)) {
+      expect(preset).not.toHaveProperty("protein_g_per_kg");
+    }
+  });
+
+  /** Ships with two. Lifter and CrossFit are decided and held back — the app
+   *  has no exercise input that isn't a run, so the option would be a promise
+   *  it can't keep. */
+  it("offers only what the app can serve", () => {
+    expect(Object.keys(ATHLETE_PROFILES).sort()).toEqual(["general", "runner"]);
+  });
+
+  /** A runner's remainder leans harder on carbohydrate: glycogen is the
+   *  limiter for endurance work, and it is what ten miles empties. */
+  it("gives the runner more of the remainder as carbohydrate", () => {
+    expect(ATHLETE_PROFILES.runner.carb_ratio_pct).toBeGreaterThan(
+      ATHLETE_PROFILES.general.carb_ratio_pct,
+    );
+  });
+
+  // General must also equal the column default a profile row is created with
+  // — two answers to "what does someone who chose nothing get" is the fault
+  // #86 hunts. That one is checked against real D1 in me.route.test.ts, where
+  // the schema can actually be asked, rather than by restating 58 here.
 });

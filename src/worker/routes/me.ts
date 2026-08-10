@@ -19,6 +19,10 @@ const EDITABLE = {
   height_cm: positive,
   activity_level: oneOf(["sedentary", "light", "moderate", "active", "very_active"]),
   goal: oneOf(["cut", "maintain", "gain"]),
+  // #79. Runner and General only, matching the column's own CHECK — a value
+  // the app can't serve is refused here rather than stored and rendered as a
+  // profile that does nothing.
+  athlete_profile: oneOf(["runner", "general"]),
   deficit_kcal: (v: unknown) => (isNum(v) && v >= 0 && v <= 1500 ? Math.round(v) : undefined),
   // `target_kcal` is deliberately NOT here any more (#17). It is derived from
   // the profile plus the latest weigh-in and rewritten by refreshTarget, so

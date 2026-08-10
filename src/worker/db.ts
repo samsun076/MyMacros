@@ -23,6 +23,7 @@ export type Accent = "coral" | "gold" | "mint";
 export type Units = "imperial" | "metric";
 export type ActivityLevel = "sedentary" | "light" | "moderate" | "active" | "very_active";
 export type Goal = "cut" | "maintain" | "gain";
+export type AthleteProfile = "runner" | "general";
 
 export type ProfileTable = {
   user_id: string;
@@ -31,6 +32,9 @@ export type ProfileTable = {
   height_cm: number | null;
   activity_level: Generated<ActivityLevel>;
   goal: Generated<Goal>;
+  /** #79 (migration 0008). Sets carb:fat and eat-back — never
+   *  `activity_level`, which would double-count every run. */
+  athlete_profile: Generated<AthleteProfile>;
   deficit_kcal: Generated<number>;
   start_weight_kg: number | null;
   goal_weight_kg: number | null;

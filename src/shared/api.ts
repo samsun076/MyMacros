@@ -31,6 +31,13 @@ export type Sex = "male" | "female";
 export type ActivityLevel = "sedentary" | "light" | "moderate" | "active" | "very_active";
 export type Goal = "cut" | "maintain" | "gain";
 
+/** The second budget axis (#79): what the training actually is, which sets
+ *  the carb:fat ratio of the energy left after protein and the eat-back
+ *  default. Two values only — "lifter" and "crossfit" are decided but wait
+ *  for an exercise input that isn't a run, so the option isn't a promise the
+ *  app can't keep. Never touches `activity_level` (see ATHLETE_PROFILES). */
+export type AthleteProfile = "runner" | "general";
+
 export type Profile = {
   user_id: string;
   sex: Sex | null;
@@ -38,6 +45,7 @@ export type Profile = {
   height_cm: number | null;
   activity_level: ActivityLevel;
   goal: Goal;
+  athlete_profile: AthleteProfile;
   deficit_kcal: number;
   start_weight_kg: number | null;
   goal_weight_kg: number | null;

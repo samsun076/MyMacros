@@ -1,7 +1,8 @@
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router";
-import type { ActivityLevel, Goal, Me, Sex } from "../../shared/api";
+import type { ActivityLevel, AthleteProfile, Goal, Me, Sex } from "../../shared/api";
 import {
+  ATHLETE_PROFILES,
   PROTEIN_G_PER_KG,
   PROTEIN_G_PER_KG_RANGE,
   computeBudget,
@@ -41,6 +42,14 @@ const GOALS: { value: Goal; label: string }[] = [
   { value: "gain", label: "Gain" },
 ];
 
+/** #79. Two options, and Lifter/CrossFit are *absent* rather than greyed out —
+ *  a disabled control still makes the promise, and the app has no exercise
+ *  input that isn't a run to keep it with. */
+const ATHLETES: { value: AthleteProfile; label: string; hint: string }[] = [
+  { value: "runner", label: "Runner", hint: "Running is most of your training" },
+  { value: "general", label: "A bit of everything", hint: "No single sport in particular" },
+];
+
 export function Onboarding() {
   const { data: me } = useApi<Me>("/api/me");
   const navigate = useNavigate();
@@ -71,6 +80,7 @@ export function Onboarding() {
     weight_kg: form.weight_kg ?? me?.trend_weight_kg ?? p?.start_weight_kg ?? null,
     activity_level: form.activity_level ?? p?.activity_level ?? "moderate",
     goal: form.goal ?? p?.goal ?? "cut",
+    athlete_profile: form.athlete_profile ?? p?.athlete_profile ?? "general",
     deficit_kcal: form.deficit_kcal ?? p?.deficit_kcal ?? 500,
     eat_back_pct: form.eat_back_pct ?? p?.eat_back_pct ?? 50,
     protein_g_per_kg: form.protein_g_per_kg ?? p?.protein_g_per_kg ?? PROTEIN_G_PER_KG.cut,
@@ -84,6 +94,18 @@ export function Onboarding() {
    *  hand-moved slider on purpose: the alternative is a screen that shows
    *  "Cut" beside a maintenance protein target and explains neither. */
   const setGoal = (goal: Goal) => set({ goal, protein_g_per_kg: PROTEIN_G_PER_KG[goal] });
+
+  /** The other axis (#79). It moves the two sliders it owns and nothing else —
+   *  spreading `ATHLETE_PROFILES[value]` rather than naming fields here is
+   *  deliberate, so the complete list of what a profile can change lives in
+   *  one place with the warning about `activity_level` beside it.
+   *
+   *  Visibly, before saving: this project's rule is that any number on screen
+   *  can be reconciled by hand from its inputs (build rule 4b), and a preset
+   *  that silently adjusted values nobody can trace works against it. The
+   *  profile picks a starting point and then gets out of the way. */
+  const setAthlete = (athlete_profile: AthleteProfile) =>
+    set({ athlete_profile, ...ATHLETE_PROFILES[athlete_profile] });
 
   const budget = useMemo(() => computeBudget(v), [
     v.sex,
@@ -152,6 +174,7 @@ export function Onboarding() {
         ...(firstRun ? { start_weight_kg: v.weight_kg } : {}),
         activity_level: v.activity_level,
         goal: v.goal,
+        athlete_profile: v.athlete_profile,
         deficit_kcal: v.goal === "maintain" ? 0 : v.deficit_kcal,
         eat_back_pct: v.eat_back_pct,
         protein_g_per_kg: v.protein_g_per_kg,
@@ -365,6 +388,34 @@ export function Onboarding() {
         )}
       </section>
 
+      {/* #79. The second axis, and it sits directly above the two controls it
+          sets so that picking one visibly moves them. Deliberately NOT beside
+          "Daily life": that question is about everything *except* training,
+          and answering it from an athlete profile would double-count every
+          run (#21, and the measured 274 kcal/day in RECONCILIATIONS.md). */}
+      <section>
+        <div className="sec-head">
+          <span className="eyebrow">Your training</span>
+        </div>
+        <p className="sheet-sub">
+          Sets your starting carbs, fat and eat-back — all three stay adjustable below.
+        </p>
+        <div className="opts">
+          {ATHLETES.map((a) => (
+            <button
+              key={a.value}
+              type="button"
+              className={v.athlete_profile === a.value ? "opt on" : "opt"}
+              aria-pressed={v.athlete_profile === a.value}
+              onClick={() => setAthlete(a.value)}
+            >
+              <span className="opt-name">{a.label}</span>
+              <span className="opt-hint">{a.hint}</span>
+            </button>
+          ))}
+        </div>
+      </section>
+
       {/* #21. Lives beside the goal because it is the other half of the same
           question: how big is the deficit, and how much of a run gives back. */}
       <section>
@@ -448,7 +499,13 @@ export function Onboarding() {
               type="range"
               min={30}
               max={80}
-              step={2}
+              /* step 1, not 2: Runner's 65 is not on an even step, so the
+                 browser snapped the thumb to 66 while the state (and every
+                 number on the screen) said 65 — and the next drag would have
+                 started from the wrong place. Found by driving the picker and
+                 reading the input's own value, which is not something a
+                 screenshot can show. */
+              step={1}
               aria-label="Share of the remaining energy from carbohydrate"
               value={v.carb_ratio_pct}
               onChange={(e) => set({ carb_ratio_pct: Number(e.target.value) })}
@@ -529,6 +586,7 @@ type Form = {
   weight_kg: number | null;
   activity_level: ActivityLevel;
   goal: Goal;
+  athlete_profile: AthleteProfile;
   deficit_kcal: number;
   eat_back_pct: number;
   protein_g_per_kg: number;

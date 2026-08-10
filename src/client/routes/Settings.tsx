@@ -32,7 +32,7 @@ export function Settings() {
       <section>
         <div className="sec-head">
           <span className="eyebrow">Budget</span>
-          <span className="mono">M4 · #17, #21</span>
+          <span className="mono">#17 · #77 · #79</span>
         </div>
         <dl className="kv">
           <div>
@@ -42,6 +42,21 @@ export function Settings() {
           <div>
             <dt>Deficit</dt>
             <dd>{me ? `${me.profile.deficit_kcal} kcal` : "—"}</dd>
+          </div>
+          {/* #79's two axes, each shown with what it set: the goal owns
+              protein, the training profile owns carbs:fat. Reading them side
+              by side is what makes the numbers traceable rather than magic. */}
+          <div>
+            <dt>Training</dt>
+            <dd>{me ? label(me.profile.athlete_profile) : "—"}</dd>
+          </div>
+          <div>
+            <dt>Protein</dt>
+            <dd>{me ? `${me.profile.protein_g_per_kg.toFixed(1)} g/kg` : "—"}</dd>
+          </div>
+          <div>
+            <dt>Carbs : fat</dt>
+            <dd>{me ? `${me.profile.carb_ratio_pct} : ${100 - me.profile.carb_ratio_pct}` : "—"}</dd>
           </div>
           <div>
             <dt>Eat-back</dt>

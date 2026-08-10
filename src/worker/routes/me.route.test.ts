@@ -2,6 +2,7 @@ import { env } from "cloudflare:test";
 import { Hono } from "hono";
 import { beforeEach, describe, expect, it } from "vitest";
 import type { Profile } from "../../shared/api";
+import { ATHLETE_PROFILES } from "../../shared/budget";
 import { createDb } from "../db";
 import type { AppEnv } from "../types";
 import me from "./me";
@@ -89,5 +90,45 @@ describe("PATCH /api/me/profile — the macro anchor (#77)", () => {
     const res = await patch({ carb_ratio_pct: value });
     expect(res.status).toBe(200);
     expect((await res.json<Profile>()).carb_ratio_pct).toBe(value);
+  });
+});
+
+describe("PATCH /api/me/profile — the athlete profile (#79)", () => {
+  it("stores runner and general, and refuses what the app can't serve", async () => {
+    expect((await patch({ athlete_profile: "runner" })).status).toBe(200);
+    expect((await patch({ athlete_profile: "general" })).status).toBe(200);
+
+    // decided, defaulted, and deliberately not shippable until there is an
+    // exercise input that isn't a run — so the wire refuses them too
+    for (const value of ["lifter", "crossfit", "", null]) {
+      const res = await patch({ athlete_profile: value });
+      expect(res.status).toBe(400);
+      expect(await res.json()).toEqual({ error: "invalid_fields", fields: ["athlete_profile"] });
+    }
+  });
+
+  /** THE DOUBLE-COUNT TRAP. `activity_level` describes life excluding
+   *  purposeful exercise, because runs arrive as the earned bonus (#21).
+   *  Nothing on the server may adjust it — or `deficit_kcal` — in response to
+   *  a profile choice. The shape of ATHLETE_PROFILES stops the client doing
+   *  it; this stops a helpful hook here doing it later. */
+  it("leaves activity_level and deficit_kcal exactly where they were", async () => {
+    await patch({ activity_level: "light", deficit_kcal: 400 });
+
+    const after = await (await patch({ athlete_profile: "runner" })).json<Profile>();
+    expect(after.activity_level).toBe("light");
+    expect(after.deficit_kcal).toBe(400);
+  });
+
+  /** One answer to "what does someone who has chosen nothing get". The column
+   *  default and the General preset are the same question asked twice, so
+   *  this asks the real schema rather than restating the number. */
+  it("creates a profile on the same carb:fat General would set", async () => {
+    await env.DB.prepare("DELETE FROM profiles WHERE user_id = ?").bind(USER).run();
+    const fresh = await db.insertInto("profiles").values({ user_id: USER }).returningAll().executeTakeFirstOrThrow();
+
+    expect(fresh.athlete_profile).toBe("general");
+    expect(fresh.carb_ratio_pct).toBe(ATHLETE_PROFILES.general.carb_ratio_pct);
+    expect(fresh.eat_back_pct).toBe(ATHLETE_PROFILES.general.eat_back_pct);
   });
 });
