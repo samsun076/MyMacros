@@ -820,31 +820,16 @@ is positioning, not polish.
 
 ### Next up, in this order
 
-1. **#76 — store the AI's original numbers.** Before anything else, because it
-   is the only issue whose cost *grows daily* and cannot be backfilled. One
-   migration, four nullable columns on `food_logs`, the confirm sheet sending
-   what it already holds, no UI. Independent of everything below — different
-   table, different concern — so it cannot collide with the budget work.
-2. **#77 — protein anchored to g/kg.** The user-visible wrong number. **Read
-   the 2026-08-10 comment on it before planning the migration:** the body still
-   suggests keeping `protein_pct` as a stored-but-derived column, and the
-   comment overrides that. Cut 2.0 / maintain 1.6 / gain 2.0 — a U, not a
-   ladder.
-3. **#79 — the athlete profile.** Depends on #77: the carb:fat ratio has
-   nowhere to live until protein is an absolute anchor. Ships **Runner and
-   General only**; Lifter and CrossFit wait for an exercise input that isn't a
-   run (#27 or #70).
-4. **#83 — the reconciliation input dumper.** Wanted before the milestone's
+**#76, #77 and #79 are done — see Session K below.** What remains of M9:
+
+1. **#83 — the reconciliation input dumper.** Wanted before the milestone's
    rule 4b entry, not after.
-5. **#86 — the duplication sweep, plus the rule 4b reconciliation**, both at
+2. **#86 — the duplication sweep, plus the rule 4b reconciliation**, both at
    the close.
 
 **#86 belongs at the close, not before** — it sweeps for duplicated sources of
-truth, and #77/#79 are about to rewrite the code it would sweep. Its figure for
-4b is already chosen by the work: the protein and base targets.
-
-**Clean stopping points** are after #76 or after #77. Mid-#77 is not one — it
-spans a migration, the shared maths and two screens.
+truth, and #77/#79 rewrote the code it would sweep. Its figure for 4b is
+already chosen by the work: the protein and base targets.
 
 ### What Session J settled, worth not re-deriving
 
@@ -907,3 +892,94 @@ finished. Push deploys, so confirm the build off GitHub check-runs and fetch
 the shell WITH its asset to check the content-type — the hash alone marks the
 start of a rollout, not the end.
 ```
+
+## Session K — #76, #77, #79 — ✅ done 2026-08-10
+
+**Closed:** #76, #77, #79, all three deployed and verified against production.
+Three migrations (0006, 0007, 0008). M9 has #83 and #86 left, both of which
+belong at the milestone close.
+
+### What each one actually changed
+
+- **#76** — `food_logs` grew `ai_kcal`/`ai_protein_g`/`ai_carbs_g`/`ai_fat_g`.
+  The confirm sheet already held them: `orig` is what `isEdited` has always
+  compared against, and the save simply stops discarding it. No UI.
+- **#77** — protein is `g/kg × trend weight`; carbs and fat divide the
+  remainder including the earned bonus. On production this moved the protein
+  target from 191 g (213 g on a run day) to 153 g at 2.0 g/kg.
+- **#79** — onboarding asks Runner / A bit of everything instead of three
+  percentages, and the three percentage sliders are gone.
+
+### What Session K settled, worth not re-deriving
+
+- **An unedited save writes the AI's numbers EQUAL to the saved ones, never
+  null.** "The reader agreed" and "we never recorded it" must not look the
+  same. Null is reserved for *no read happened*: a favourite re-log, #16's
+  blank recovery row, and every row older than migration 0006.
+- **#76 records all three reads, not just the AI ones.** A barcode's figures
+  are an exact database match rather than an estimate, but they are still what
+  the reader proposed before the user touched it. `source` is on the row, so
+  #75's estimate-quality question filters to `('photo','text')` while "how
+  often is an exact match corrected" stays answerable.
+- **The route takes all four `ai_*` or none.** A row holding three of four
+  answers the by-how-much question for none of them, and the rejection happens
+  while rows are being built, so a bad item can't half-land a meal. `kcal` and
+  gram bounds are now one pair of validators used by both the saved and the
+  recorded values — a stored pair must not have been quantised differently on
+  the two sides.
+- **The old three-leg macro split is dropped, not left derived-but-stored.**
+  Per the constraint on #77, and it removed an invariant rather than moving it:
+  fat is the remainder of the remainder, so `routes/me.ts` no longer needs the
+  cross-field "must total 100" check and onboarding no longer gates its save
+  button on it. Two columns replaced three.
+- **Today had its own copy of the macro arithmetic** (a private `gramsFor`),
+  which is exactly the shape #86 hunts — and here the two copies would have
+  differed by a *model*, not by a rounding rule. It calls the shared
+  `macroTargets` now, the same function onboarding previews with.
+- **`ATHLETE_PROFILES` is tested by its exact key set**, not by asserting
+  `activity_level` is absent. The next wrong field to appear there won't be the
+  one already named, and onboarding spreads those objects wholesale, so the key
+  list *is* the set of things a profile can move.
+- **A default in two places is still a defect at 4 percentage points.** 0007
+  left `carb_ratio_pct` defaulting to 62 while #79's General preset said 58;
+  both answer "what does someone who has chosen nothing get". SQLite cannot
+  alter a default in place, so 0008 rebuilds the column around its own values
+  (add temp → copy → drop → re-add with the new default → copy back → drop
+  temp). Existing rows keep the preference 0007 preserved. A route test asks
+  the real schema rather than restating the number.
+- **Adding an athlete profile later is a table rebuild**, because the CHECK
+  lists only `runner` and `general`. Deliberate: admitting `lifter` before the
+  app can serve one is the same promise-it-can't-keep the picker refuses to
+  make, one layer down. #27 or #70 is where that gets paid.
+- **A range input silently snapped its own thumb.** Runner's 65 is not on an
+  even step, so `step={2}` left the DOM input at 66 while every number on the
+  screen said 65 — and the next drag would have started from the wrong place.
+  **Found by reading the input's `value` while driving the picker**, which no
+  screenshot can show. Same lesson as the shutter bug in Session E: clicking
+  the real control finds what reading the code does not.
+- **A "wrong" number that was the fat floor working.** Picking Runner appeared
+  not to move carbs or fat at all — because at a desk-bound target the 0.6 g/kg
+  floor was binding at 48 g in both positions. The reading was right and the
+  test setup was wrong. Check `fat_floored` before believing the ratio is
+  broken.
+- **Deploy ordering when a migration drops a column the live code reads.**
+  Both orders break something for the length of a build, so: push, poll the
+  check-run, and apply the migration the second it goes green — the old code
+  and old schema stay consistent for the whole build, and the gap after it is
+  seconds. Verified the rollout with the shell **and** its asset, and saw the
+  documented mixed-version window both times (2 of 6 requests answering
+  `text/html` for a `.js` URL, clean inside ~45s).
+- **Production backfilled exactly as #77 predicted:** cut → 2.0 g/kg, and the
+  35:25 carb:fat preference carried across as 58, untouched by 0008.
+
+### Owed, and deliberately not done here
+
+- **Theme QA (build rule 4)** for the two new onboarding sections and the four
+  new Settings rows — Night Athletic only, like everything else. Light packs
+  are #30 in M11.
+- **Rule 4b's reconciliation for M9.** M9 changes how protein and the macro
+  targets are computed, so it owes a real entry — the trigger is met. #83 is
+  meant to land first so the mechanical half is a script.
+- **The site's claims about macros** (`stale-claim` in the site repo). #77
+  changed what the app shows a user; anything asserting a percentage split is
+  now false.
