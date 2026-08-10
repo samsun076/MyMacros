@@ -718,8 +718,19 @@ chart, weekly intake bars, and the first `--danger` in the pack.
   Deliberately not patched: the obvious floor is a guess about whether someone
   fasted. Full write-up on the issue and in RECONCILIATIONS.md.
 - **#67** stays in M8. The measured exposure is on the issue now.
-- **The M3 device check** is still owed — photograph a real meal, scan a real
-  package. Headless Chrome structurally cannot do it.
+- **The M3 device check, half done on the day** (2026-08-10, on the phone,
+  against production). Four real barcodes scanned and resolved — Barebells,
+  Bubba burger, Dave's Killer Bread, Clif Bar — which closes the gap Session E
+  named: curvature, gloss and focus are exactly what a generated flat EAN-13
+  never tested. A photographed Starbucks Americano came back correct at
+  confidence 0.85 (10 kcal against Starbucks' published 15), and identifying
+  the drink was the real work there — a latte in the same cup differs by ~180
+  kcal.
+  **Portion estimation is still untested.** A black coffee has no portion to
+  judge; the answer is "almost nothing" and the hard part was recognition, not
+  volume. The open case remains a plate of real food weighed on scales, which
+  is what the site's "Unverified" card describes and what #75 exists to make
+  measurable at scale.
 - **The site's "Trends is a placeholder" claim is now false.** Sweep it in the
   site repo under the `stale-claim` label; the budget-meter diagram and the
   "day route returns no run" claim are already there.
