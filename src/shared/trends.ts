@@ -37,6 +37,26 @@ export const KCAL_PER_KG = 7700;
  *  a number with a caveat attached is a number people quote. */
 export const MIN_LOGGED_DAYS = 14;
 
+/** The share of a day's base target that has to be logged before the day is
+ *  treated as a complete record of what was eaten (#74).
+ *
+ *  `logged_days` used to mean "the day has at least one row", so a single black
+ *  coffee made a day worth as much as one logged in full. Measured against
+ *  production: a week containing a 77-kcal day reported a 1,263 kcal/day
+ *  deficit next to a reassuring "6/7 DAYS" — about double the truth, in the
+ *  direction that flatters.
+ *
+ *  0.6 is a judgement, not a discovery, and it is the *lower* end of the range
+ *  considered so that a genuinely light day survives it. It errs safely by
+ *  construction: the days it drops are the low-intake ones, which carry the
+ *  LARGEST deficits, so excluding them can only pull the reported deficit down.
+ *  Understating progress is the acceptable failure here.
+ *
+ *  Judged against the base target, not base + earned: the target is the stable
+ *  per-person figure, and a day's run should not raise the bar for what counts
+ *  as having logged it. */
+export const MIN_LOGGED_SHARE = 0.6;
+
 /** Days the weigh-ins must span before a slope is drawn from them.
  *
  *  The trend *line* draws from the first weigh-in — it is what the budget
@@ -114,6 +134,8 @@ type DailyFrame = {
   intake: number | null;
   /** expenditure − intake. Null when either side is unknown. */
   deficit: number | null;
+  /** Logged thoroughly enough to average (#74) — and not today. */
+  counted: boolean;
 };
 
 /** Everything the trends screen draws, from four flat lists and a profile.
@@ -171,14 +193,35 @@ export function buildTrends(i: TrendsInputs): TrendsResponse {
      * producing: plausible, consistent, and wrong by a fixed fraction. */
     const expenditure = budget === null ? null : budget.tdee + runKcal;
 
+    const base = budget?.target_kcal ?? null;
+
     frames.push({
       day,
       tdee: budget?.tdee ?? null,
-      base: budget?.target_kcal ?? null,
+      base,
       runKcal,
       earned: earnedKcal(runKcal, i.profile.eat_back_pct),
       intake,
       deficit: expenditure === null || intake === null ? null : expenditure - intake,
+      /* Counted means: logged, thoroughly enough, on a day we can judge, and
+       * not today.
+       *
+       * Today is never counted whatever is in it. It is incomplete by
+       * definition — at breakfast it holds one meal, and no threshold can tell
+       * that apart from a day someone barely ate. Before this, today's 270
+       * kcal counted as a full day and reported the current week at
+       * −1,889/day: the same defect the threshold fixes, wearing a hat.
+       *
+       * A day with no base target is NOT counted, and getting that backwards
+       * is worth a note because the first attempt did. Treating "nothing to
+       * judge against" as "pass" sounds generous and is how 2026-08-04 — a
+       * 742-kcal day sitting before the first weigh-in, so no trend weight, so
+       * no target — got averaged into the intake while being excluded from the
+       * deficit. The means then ran over different denominators, which is the
+       * precise error the comment in foldWeeks warns about. Requiring a base
+       * makes `counted` the single denominator for every mean below. */
+      counted:
+        intake !== null && day !== to && base !== null && intake >= base * MIN_LOGGED_SHARE,
     });
   }
 
@@ -189,10 +232,12 @@ export function buildTrends(i: TrendsInputs): TrendsResponse {
   const series = trendSeries(i.weighIns).filter((p) => p.measured_on >= from && p.measured_on <= to);
 
   const logged = frames.filter((f) => f.intake !== null);
-  const withDeficit = logged.filter((f) => f.deficit !== null);
+  const counted = frames.filter((f) => f.counted);
+  // the 14-day floor now counts thoroughly-logged days, not days with a row in
+  // them — a fortnight of coffees was never a fortnight of evidence
   const meanDeficit =
-    withDeficit.length >= MIN_LOGGED_DAYS
-      ? Math.round(mean(withDeficit.map((f) => f.deficit as number)))
+    counted.length >= MIN_LOGGED_DAYS
+      ? Math.round(mean(counted.map((f) => f.deficit as number)))
       : null;
 
   const span = series.length
@@ -217,6 +262,7 @@ export function buildTrends(i: TrendsInputs): TrendsResponse {
       meanDeficit === null ? null : round2(-(meanDeficit * 7) / KCAL_PER_KG),
     deficit_kcal: meanDeficit,
     logged_days: logged.length,
+    counted_days: counted.length,
     weigh_in_span_days: span,
   };
 
@@ -247,27 +293,34 @@ function foldWeeks(frames: DailyFrame[], today: string): TrendWeek[] {
   return [...buckets.entries()]
     .sort(([a], [b]) => (a < b ? -1 : 1))
     .map(([starts_on, days]): TrendWeek => {
-      /* Every mean below is over the LOGGED days, including the target and
-       * earned ones. Averaging intake over the days someone logged while
-       * averaging their target over all seven compares two different weeks —
-       * and the error runs in whichever direction the unlogged days happened
-       * to go, so it isn't even a consistent bias you could correct for. */
+      /* Every mean below is over the COUNTED days — the ones logged thoroughly
+       * enough to be a record of what was eaten (#74) — including the target
+       * and earned ones. Averaging intake over one set of days while averaging
+       * the target over another compares two different weeks, and the error
+       * runs in whichever direction the missing days happened to go, so it
+       * isn't even a consistent bias you could correct for. */
       const logged = days.filter((d) => d.intake !== null);
-      const withBase = logged.filter((d) => d.base !== null);
-      const withDeficit = logged.filter((d) => d.deficit !== null);
+      // `counted` requires a base target, and a base implies a TDEE, so this
+      // is the ONE denominator — intake, target, earned and deficit all divide
+      // by the same days. Subsets diverging is how the first cut of #74 went
+      // wrong.
+      const counted = days.filter((d) => d.counted);
 
       return {
         starts_on,
         days: days.length,
         logged_days: logged.length,
+        counted_days: counted.length,
         partial: starts_on === currentWeek || days.length < 7,
-        intake_kcal: logged.length ? Math.round(mean(logged.map((d) => d.intake as number))) : null,
-        target_kcal: withBase.length
-          ? Math.round(mean(withBase.map((d) => d.base as number)))
+        intake_kcal: counted.length
+          ? Math.round(mean(counted.map((d) => d.intake as number)))
           : null,
-        earned_kcal: logged.length ? Math.round(mean(logged.map((d) => d.earned))) : 0,
-        deficit_kcal: withDeficit.length
-          ? Math.round(mean(withDeficit.map((d) => d.deficit as number)))
+        target_kcal: counted.length
+          ? Math.round(mean(counted.map((d) => d.base as number)))
+          : null,
+        earned_kcal: counted.length ? Math.round(mean(counted.map((d) => d.earned))) : 0,
+        deficit_kcal: counted.length
+          ? Math.round(mean(counted.map((d) => d.deficit as number)))
           : null,
         // a total, not a mean: this is a fact about the week rather than an
         // average over a denominator the reader has to hold in mind

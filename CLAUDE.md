@@ -338,9 +338,13 @@ doppler secrets download -p mymacros -c prd --format json --no-file \
   going *down*, so `predicted_kg_per_week` is negated. They render as bare
   magnitudes side by side, so a sign mismatch reads as agreement — it shipped
   wrong once and was caught by reading the live payload, not by a test.
-- **Averages run over `logged_days`, never over calendar days** — including the
-  target and earned means, or the bar compares two different weeks. Note the
-  live limitation in #74: a day with one coffee in it counts as fully logged.
+- **Averages run over `counted_days`, and everything divides by the same set.**
+  A day counts when it is logged to at least `MIN_LOGGED_SHARE` (60%) of its own
+  base target, has a base target at all, and isn't today (#74). Intake, target,
+  earned and deficit all use that one denominator — the first cut of #74 let a
+  day with no target through, which averaged it into the intake while the
+  deficit excluded it, and one week reported two different means over two
+  different weeks. If you add a figure here, divide it by `counted`.
 - **Historical targets are reconstructed, not recalled.** `profiles.target_kcal`
   is one stored current value, so each past day is recomputed from that day's
   trend weight and the *current* profile. Changing activity level rewrites every

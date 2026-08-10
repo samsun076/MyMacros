@@ -255,9 +255,18 @@ export type TrendWeek = {
    *  window's edges. Distinct from `partial` below: a week can hold all seven
    *  days and still be unfinished, which is every Sunday evening. */
   days: number;
-  /** Days with at least one food log. The denominator for every mean here,
-   *  and shown on screen next to them so the reader can weigh them. */
+  /** Days with at least one food log. **Not** the denominator — see below. */
   logged_days: number;
+  /** Days logged thoroughly enough to be a record of what was eaten, and so
+   *  the denominator for every mean here (#74). A day is counted when its
+   *  intake reaches `MIN_LOGGED_SHARE` of that day's base target, and today
+   *  is never counted because it is incomplete by definition.
+   *
+   *  `logged_days − counted_days` is the number of partial days, which the
+   *  screen shows beside this: the judgement is on display rather than applied
+   *  silently, because a day dropping out of a denominator with nothing said
+   *  is the same silence that made the original defect possible. */
+  counted_days: number;
   /** The week being lived: its bar covers fewer days than the ones above it. */
   partial: boolean;
   /** Mean daily intake over the logged days; null when there were none. */
@@ -298,9 +307,13 @@ export type TrendRate = {
   /** Mean daily realized deficit across the window. Same gate as above — an
    *  average over four days is exactly as misleading as the rate from it. */
   deficit_kcal: number | null;
-  /** Days in the window with food logged. The reason the two fields above are
-   *  present or absent, so the screen can say which. */
+  /** Days in the window with any food logged at all. */
   logged_days: number;
+  /** Days logged thoroughly enough to average (#74), and the figure the
+   *  14-day floor is actually applied to — a fortnight of coffees was never a
+   *  fortnight of evidence. The reason the two fields above are present or
+   *  absent, so the screen can say which. */
+  counted_days: number;
   /** Days the weigh-ins span, which gates `observed_kg_per_week`. */
   weigh_in_span_days: number;
 };

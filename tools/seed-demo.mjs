@@ -200,7 +200,16 @@ function seedWindow(weeks) {
     const sparseWeek = n >= total - 34 && n < total - 27;
     const logged = sparseWeek ? noise(n * 7) > 0.6 : noise(n * 5) > 0.16;
     if (logged) {
-      const dayKcal = Math.round(2320 + (noise(n * 11) - 0.4) * 620);
+      /* Roughly one day in eight is logged and then abandoned — a breakfast
+       * and nothing after it. Deliberate: these are what #74's threshold
+       * exists to set aside, and a fixture where every logged day is complete
+       * never renders the PARTIAL label at all. Well under 60% of a ~2,210
+       * target, so they land on the right side of the rule without sitting on
+       * the boundary. */
+      const abandoned = noise(n * 29) > 0.87;
+      const dayKcal = abandoned
+        ? Math.round(420 + noise(n * 31) * 460)
+        : Math.round(2320 + (noise(n * 11) - 0.4) * 620);
       meals.push({ day, kcal: dayKcal });
     }
 

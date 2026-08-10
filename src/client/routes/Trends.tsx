@@ -118,8 +118,8 @@ export function Trends() {
                     which is exactly the case worth seeing. */}
                 <p className="mono">
                   {rate.predicted_kg_per_week === null
-                    ? `${rate.logged_days} LOGGED ${plural(rate.logged_days, "DAY").toUpperCase()} — TOO FEW TO MODEL`
-                    : `MODEL SAYS ${rate.predicted_kg_per_week < 0 ? "▼" : "▲"} ${rateValue(rate.predicted_kg_per_week, units)} · ${rate.logged_days} LOGGED DAYS`}
+                    ? `${rate.counted_days} FULL ${plural(rate.counted_days, "DAY").toUpperCase()} — TOO FEW TO MODEL`
+                    : `MODEL SAYS ${rate.predicted_kg_per_week < 0 ? "▼" : "▲"} ${rateValue(rate.predicted_kg_per_week, units)} · ${rate.counted_days} FULL DAYS`}
                 </p>
               </>
             )}
@@ -129,8 +129,10 @@ export function Trends() {
             <span className="eyebrow">Realized deficit</span>
             {rate.deficit_kcal === null ? (
               <p className="placeholder-note">
-                An average needs {MIN_LOGGED_DAYS} logged days behind it — {rate.logged_days} so
-                far. Keep logging and this fills in.
+                An average needs {MIN_LOGGED_DAYS} fully logged days behind it — {rate.counted_days}{" "}
+                so far{rate.logged_days > rate.counted_days
+                  ? `, from ${rate.logged_days} days with something on them`
+                  : ""}. A day logged in part can't say what you ate.
               </p>
             ) : (
               <>
@@ -142,7 +144,8 @@ export function Trends() {
                   <span className="unit">
                     kcal / day
                     <small>
-                      What you burned less what you ate, over {rate.logged_days} logged days
+                      What you burned less what you ate, over {rate.counted_days} fully
+                      logged days
                     </small>
                   </span>
                 </div>

@@ -33,18 +33,25 @@ export function IntakeWeeks({ weeks }: { weeks: TrendWeek[] }) {
         const base = w.target_kcal ?? 0;
         return (
           <div className="wk-row" key={w.starts_on}>
+            {/* The counted days, then the ones set aside. Shown rather than
+                applied quietly: a day dropping out of a denominator with
+                nothing on screen about it is the silence that let the original
+                defect through (#74). */}
             <span className="lbl">
               {weekLabel(w.starts_on)}
               <span className="mono">
-                {w.logged_days}/{w.days} {w.partial ? "SO FAR" : "DAYS"}
+                {w.counted_days}/{w.days} {w.partial ? "SO FAR" : "FULL"}
               </span>
+              {w.logged_days > w.counted_days && (
+                <span className="mono part">{w.logged_days - w.counted_days} PARTIAL</span>
+              )}
             </span>
 
-            {/* A week with nothing logged gets a hairline, not an empty
+            {/* A week with nothing to average gets a hairline, not an empty
                 track. A track is a scale, and drawing one says "here is a
                 measurement, and it is zero" — which is the exact thing this
-                screen must never say about an unlogged day. */}
-            <span className={w.logged_days === 0 ? "wkbar none" : "wkbar"}>
+                screen must never say about a day nobody recorded. */}
+            <span className={w.counted_days === 0 ? "wkbar none" : "wkbar"}>
               {/* the earned extension sits beyond the base tick, so the two
                   are never read as one number (build rule 7) */}
               {w.earned_kcal > 0 && base > 0 && (

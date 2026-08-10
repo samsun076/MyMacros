@@ -88,6 +88,44 @@ inputs, again.**
 **Verdict:** the arithmetic is exact and the gates work. One new input defect,
 inherent to this screen rather than inherited — see #74.
 
+### Follow-up, same day: #74 fixed, and the fix was wrong twice first
+
+A day now has to reach **60% of its own base target** to be averaged, and
+**today is never counted** (incomplete by definition — this morning's 270 kcal
+was being read as a full day and reported the current week at −1,889/day).
+
+Same production inputs, re-run:
+
+| | before | after |
+|---|---|---|
+| week of 08-03, counted days | 6 | **2** |
+| week of 08-03, deficit | −1,263/day | **−564/day** |
+| window counted days | 7 | 2 |
+
+Recomputed by hand against the two surviving days — 08-07 (2,154 − 1,780 = 374)
+and 08-09 (2,159 − 1,405 = 754), mean **564** — and matched.
+
+**Two errors caught by re-running production data through the new rule, not by
+the tests that were written for it:**
+
+1. **"No target to judge against" was treated as a pass.** 2026-08-04 is logged
+   (742 kcal) but sits before the first weigh-in, so it has no trend weight and
+   therefore no target. Counting it averaged it into the intake while the
+   deficit — which needs a TDEE — excluded it. **The week's means ran over
+   different denominators**, which is precisely the error the code comment two
+   functions above warns about. A day without a target is now not counted, so
+   `counted` is the single denominator for intake, target, earned and deficit
+   alike.
+2. **The threshold quietly moved the 14-day floor.** It now applies to counted
+   days rather than logged ones, which is stricter and right — a fortnight of
+   coffees was never a fortnight of evidence — but it broke a test fixture whose
+   14-day run ended *on* today. That failure was correct and worth keeping: the
+   fixture, not the rule, was wrong.
+
+The reconciliation exercise found the original defect *and* both defects in its
+fix. Neither was visible in a unit test, and both were obvious the moment real
+inputs went through.
+
 ---
 
 ## M8 — daily target, 2026-08-09

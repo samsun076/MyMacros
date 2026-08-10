@@ -2203,3 +2203,11 @@ section {
   letter-spacing: 0.08em;
   color: var(--ink-muted);
 }
+
+/* Days set aside as too thinly logged to average (#74). A step quieter than
+   the counted-days line above it — it qualifies that number rather than
+   competing with it. */
+.wk-row .lbl .part {
+  color: var(--ink-muted);
+  opacity: 0.8;
+}
