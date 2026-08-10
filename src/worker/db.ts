@@ -35,9 +35,11 @@ export type ProfileTable = {
   start_weight_kg: number | null;
   goal_weight_kg: number | null;
   eat_back_pct: Generated<number>;
-  protein_pct: Generated<number>;
-  carb_pct: Generated<number>;
-  fat_pct: Generated<number>;
+  /** #77 (migration 0007) replaced the three percent-of-kcal legs with these
+   *  two: protein anchored to body weight, and one ratio splitting whatever
+   *  energy is left. */
+  protein_g_per_kg: Generated<number>;
+  carb_ratio_pct: Generated<number>;
   focus_macro: Generated<Macro>;
   /** M2's static base target (migration 0002). M4 (#17) changes how it's
    *  calculated, not where it lives. */

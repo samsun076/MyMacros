@@ -31,13 +31,6 @@ export type Sex = "male" | "female";
 export type ActivityLevel = "sedentary" | "light" | "moderate" | "active" | "very_active";
 export type Goal = "cut" | "maintain" | "gain";
 
-/** The macro split as percent of kcal. The app keeps the three at 100. */
-export type MacroSplit = {
-  protein_pct: number;
-  carb_pct: number;
-  fat_pct: number;
-};
-
 export type Profile = {
   user_id: string;
   sex: Sex | null;
@@ -49,9 +42,12 @@ export type Profile = {
   start_weight_kg: number | null;
   goal_weight_kg: number | null;
   eat_back_pct: number;
-  protein_pct: number;
-  carb_pct: number;
-  fat_pct: number;
+  /** Protein's anchor, g per kg of trend weight (#77). Not a percent of
+   *  energy: a run must not inflate the protein target. */
+  protein_g_per_kg: number;
+  /** Carbohydrate's share of the energy left after protein; fat takes the
+   *  rest. One number, so the legs cannot fail to add up to anything. */
+  carb_ratio_pct: number;
   focus_macro: Macro;
   /** The static base target (M2). M4's TDEE engine recalculates it; the
    *  earned run bonus is never folded in (build rule 7). */

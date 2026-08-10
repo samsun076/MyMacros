@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { Link, useLocation } from "react-router";
 import type { DayResponse, DayRun, FoodLog, MealSlot, Me, Units } from "../../shared/api";
+import { macroTargets } from "../../shared/budget";
 import { useApi } from "../lib/api";
 import { localDay } from "../lib/day";
 import { fmtInt } from "../lib/format";
@@ -13,10 +14,15 @@ import type { BudgetData } from "../motifs/types";
  *  Sketch-anchored specifics: the hero denominator is the ADJUSTED target
  *  (base + earned, arithmetic spelled out in the meter's aria-label); the
  *  earned meter layer renders at zero width in M2 rather than being omitted;
- *  BASE is labelled on the scale; macro targets derive from the adjusted
- *  total via the split percentages; the focus macro carries accent + a
+ *  BASE is labelled on the scale; the focus macro carries accent + a
  *  screen-reader "— focus macro" suffix. The weight strip and run card wait
- *  for their data sources (M4 — #18/#19). */
+ *  for their data sources (M4 — #18/#19).
+ *
+ *  One departure from the sketch, deliberate: its macro targets are all three
+ *  a share of the adjusted total. Protein is now anchored to body weight
+ *  instead (#77), so a run moves carbs and fat and leaves protein still. The
+ *  sketch's own numbers don't change on a rest day, which is why this reads
+ *  as the same screen. */
 
 type LoggedToast = { slot: MealSlot; kcal: number; ms: number; edited: number };
 
@@ -87,12 +93,30 @@ export function Today() {
     });
   }, [day]);
 
-  // macro targets derive from the ADJUSTED total (sketch: 82 / 165 g)
+  /* Macro targets, from the ADJUSTED total (sketch: 82 / 165 g) — but only
+   * carbs and fat move with it now (#77).
+   *
+   * `macroTargets` is the shared function onboarding previews with, and this
+   * screen used to carry its own three-line copy of the arithmetic instead.
+   * That copy is exactly the shape #86 hunts: two implementations of one
+   * quantity, differing by a model rather than by a rounding rule.
+   *
+   * Weight comes from `me.trend_weight_kg` — the same number `refreshTarget`
+   * computes from, never a second source (#78). Null before the first
+   * weigh-in, where there is no anchor and the targets are withheld. */
+  const targets = me
+    ? macroTargets({
+        kcal: adjusted,
+        weight_kg: me.trend_weight_kg,
+        protein_g_per_kg: me.profile.protein_g_per_kg,
+        carb_ratio_pct: me.profile.carb_ratio_pct,
+      })
+    : null;
   const macros = me
     ? ([
-        ["protein", "Protein", day?.totals.protein_g ?? 0, gramsFor(adjusted, me.profile.protein_pct, 4)],
-        ["carbs", "Carbs", day?.totals.carbs_g ?? 0, gramsFor(adjusted, me.profile.carb_pct, 4)],
-        ["fat", "Fat", day?.totals.fat_g ?? 0, gramsFor(adjusted, me.profile.fat_pct, 9)],
+        ["protein", "Protein", day?.totals.protein_g ?? 0, targets?.protein_g ?? null],
+        ["carbs", "Carbs", day?.totals.carbs_g ?? 0, targets?.carbs_g ?? null],
+        ["fat", "Fat", day?.totals.fat_g ?? 0, targets?.fat_g ?? null],
       ] as const)
     : [];
 
@@ -187,10 +211,14 @@ export function Today() {
                   {focus && <span className="vh"> — focus macro</span>}
                 </span>
                 <span className="mbar">
-                  <i style={{ width: `${target > 0 ? Math.min((eaten / target) * 100, 100) : 0}%` }} />
+                  <i style={{ width: `${target ? Math.min((eaten / target) * 100, 100) : 0}%` }} />
                 </span>
+                {/* An em-dash before the first weigh-in, not a fabricated
+                    number: protein is anchored to body weight and there is
+                    no weight yet (#77). The row still reports what was
+                    eaten, which is knowable. */}
                 <span className="val">
-                  {Math.round(eaten)} <span>/ {target} g</span>
+                  {Math.round(eaten)} <span>/ {target ?? "—"} g</span>
                 </span>
               </div>
             );
@@ -252,11 +280,6 @@ export function Today() {
       )}
     </>
   );
-}
-
-/** grams target for a macro: share of the adjusted kcal ÷ kcal-per-gram */
-function gramsFor(adjustedKcal: number, pct: number, kcalPerGram: number) {
-  return Math.round((adjustedKcal * pct) / 100 / kcalPerGram);
 }
 
 /** "7:12 AM" — the timeline rail format. */

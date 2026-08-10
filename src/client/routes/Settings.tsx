@@ -5,7 +5,7 @@ import { Sources } from "../components/Sources";
 import { useApi } from "../lib/api";
 import { authClient } from "../lib/auth";
 
-/** The real settings screen — TDEE inputs, deficit, macro split, eat-back,
+/** The real settings screen — TDEE inputs, deficit, protein anchor, eat-back,
  *  theme switcher — is #23 and #29. What's here already works: the account,
  *  and passkey management, which needs a live session to register against. */
 export function Settings() {

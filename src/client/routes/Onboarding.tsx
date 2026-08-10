@@ -1,14 +1,20 @@
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router";
 import type { ActivityLevel, Goal, Me, Sex } from "../../shared/api";
-import { computeBudget, macroGrams } from "../../shared/budget";
+import {
+  PROTEIN_G_PER_KG,
+  PROTEIN_G_PER_KG_RANGE,
+  computeBudget,
+  macroTargets,
+} from "../../shared/budget";
 import { cmToFtIn, ftInToCm, kgToLb, lbToKg } from "../../shared/units";
 import { ApiError, api, useApi } from "../lib/api";
 import { localDay } from "../lib/day";
 import { fmtInt } from "../lib/format";
 
-/** Onboarding (#17): the inputs Mifflin-St Jeor needs, the deficit, and the
- *  macro split — with the resulting budget shown live underneath.
+/** Onboarding (#17): the inputs Mifflin-St Jeor needs, the deficit, the
+ *  protein anchor and the carb:fat ratio — with the resulting budget shown
+ *  live underneath.
  *
  *  The preview runs the *same* `computeBudget` the Worker runs on save
  *  (src/shared/budget.ts). That is the whole reason the maths is shared: a
@@ -67,11 +73,17 @@ export function Onboarding() {
     goal: form.goal ?? p?.goal ?? "cut",
     deficit_kcal: form.deficit_kcal ?? p?.deficit_kcal ?? 500,
     eat_back_pct: form.eat_back_pct ?? p?.eat_back_pct ?? 50,
-    protein_pct: form.protein_pct ?? p?.protein_pct ?? 35,
-    carb_pct: form.carb_pct ?? p?.carb_pct ?? 40,
-    fat_pct: form.fat_pct ?? p?.fat_pct ?? 25,
+    protein_g_per_kg: form.protein_g_per_kg ?? p?.protein_g_per_kg ?? PROTEIN_G_PER_KG.cut,
+    carb_ratio_pct: form.carb_ratio_pct ?? p?.carb_ratio_pct ?? 62,
   };
   const set = (patch: Partial<Form>) => setForm((f) => ({ ...f, ...patch }));
+
+  /** Picking a goal moves the protein default with it (#77) — that is what
+   *  makes the presets visible rather than a hidden table, and the number
+   *  under the slider updates before anything is saved. It overrides a
+   *  hand-moved slider on purpose: the alternative is a screen that shows
+   *  "Cut" beside a maintenance protein target and explains neither. */
+  const setGoal = (goal: Goal) => set({ goal, protein_g_per_kg: PROTEIN_G_PER_KG[goal] });
 
   const budget = useMemo(() => computeBudget(v), [
     v.sex,
@@ -83,9 +95,23 @@ export function Onboarding() {
     v.deficit_kcal,
   ]);
 
-  const split = v.protein_pct + v.carb_pct + v.fat_pct;
-  const grams = budget ? macroGrams(budget.target_kcal, v) : null;
-  const ready = budget !== null && split === 100;
+  /* The base target, not an adjusted one: this screen is answering "what do I
+   * eat on a day I don't run". A run's calories reach carbs and fat on Today
+   * (#77), and previewing them here would show a number that only applies on
+   * days the user hasn't had yet. */
+  const grams = budget
+    ? macroTargets({
+        kcal: budget.target_kcal,
+        weight_kg: v.weight_kg,
+        protein_g_per_kg: v.protein_g_per_kg,
+        carb_ratio_pct: v.carb_ratio_pct,
+      })
+    : null;
+  /* No macro-split gate any more (#77). The three percentages could be saved
+   * in a state that meant nothing, so the button waited for them to total
+   * 100; protein is anchored to weight and fat is the remainder, so every
+   * position of both sliders describes a real day. */
+  const ready = budget !== null;
 
   async function save() {
     if (!ready || !v.weight_kg) return;
@@ -128,9 +154,8 @@ export function Onboarding() {
         goal: v.goal,
         deficit_kcal: v.goal === "maintain" ? 0 : v.deficit_kcal,
         eat_back_pct: v.eat_back_pct,
-        protein_pct: v.protein_pct,
-        carb_pct: v.carb_pct,
-        fat_pct: v.fat_pct,
+        protein_g_per_kg: v.protein_g_per_kg,
+        carb_ratio_pct: v.carb_ratio_pct,
       });
       void navigate("/");
     } catch (err) {
@@ -313,7 +338,7 @@ export function Onboarding() {
               type="button"
               className={v.goal === g.value ? "seg-btn on" : "seg-btn"}
               aria-pressed={v.goal === g.value}
-              onClick={() => set({ goal: g.value })}
+              onClick={() => setGoal(g.value)}
             >
               {g.label}
             </button>
@@ -373,37 +398,72 @@ export function Onboarding() {
         </div>
       </section>
 
+      {/* #77. Protein is anchored to body weight, so it is the same number on
+          a run day and a rest day; carbs and fat divide whatever energy is
+          left, including a run's earned bonus. The goal buttons above set the
+          protein default — moving the slider is an override, not a
+          requirement. */}
       <section>
         <div className="sec-head">
-          <span className="eyebrow">Macro split</span>
-          <span className={split === 100 ? "mono" : "mono warn"}>{split}%</span>
+          <span className="eyebrow">Protein</span>
+          <span className="mono">{v.protein_g_per_kg.toFixed(1)} G/KG</span>
         </div>
-        {(
-          [
-            ["protein_pct", "Protein"],
-            ["carb_pct", "Carbs"],
-            ["fat_pct", "Fat"],
-          ] as const
-        ).map(([key, label]) => (
-          <Field key={key} label={label}>
-            <div className="field-pair">
-              <input
-                type="range"
-                min={0}
-                max={100}
-                step={5}
-                value={v[key]}
-                onChange={(e) => set({ [key]: Number(e.target.value) } as Partial<Form>)}
-              />
-              <span className="mono">
-                {v[key]}%{grams ? ` · ${gramsFor(key, grams)}g` : ""}
-              </span>
-            </div>
-          </Field>
-        ))}
-        {split !== 100 && (
-          <p className="placeholder-note">The three add up to {split}% — they need to make 100.</p>
-        )}
+        <p className="sheet-sub">
+          Set by your body weight, not by your calories — a run doesn't change it.
+        </p>
+        <div className="field">
+          <div className="field-pair">
+            <input
+              type="range"
+              min={PROTEIN_G_PER_KG_RANGE.min}
+              max={PROTEIN_G_PER_KG_RANGE.max}
+              step={PROTEIN_G_PER_KG_RANGE.step}
+              aria-label="Protein, grams per kilogram of body weight"
+              value={v.protein_g_per_kg}
+              onChange={(e) => set({ protein_g_per_kg: Number(e.target.value) })}
+            />
+            <span className="mono">{grams ? `${grams.protein_g}g` : "—"}</span>
+          </div>
+          <span className="opt-hint">
+            {v.goal === "cut"
+              ? "Cutting: more protein holds on to the muscle you already have."
+              : v.goal === "gain"
+                ? "Gaining: protein is the material, but past about 2.0 it starts crowding out the carbs that fuel training."
+                : "Maintaining: nothing under threat and nothing being added, so this sits lower."}
+          </span>
+        </div>
+      </section>
+
+      <section>
+        <div className="sec-head">
+          <span className="eyebrow">Carbs & fat</span>
+          <span className="mono">
+            {v.carb_ratio_pct} : {100 - v.carb_ratio_pct}
+          </span>
+        </div>
+        <p className="sheet-sub">How the energy left after protein is divided.</p>
+        <div className="field">
+          <div className="field-pair">
+            <input
+              type="range"
+              min={30}
+              max={80}
+              step={2}
+              aria-label="Share of the remaining energy from carbohydrate"
+              value={v.carb_ratio_pct}
+              onChange={(e) => set({ carb_ratio_pct: Number(e.target.value) })}
+            />
+            <span className="mono">{grams ? `${grams.carbs_g}C · ${grams.fat_g}F` : "—"}</span>
+          </div>
+          {/* A clamp the user can't see is its own kind of wrong answer —
+              the same reason `budget.floored` says so below. */}
+          {grams?.fat_floored && (
+            <span className="opt-hint">
+              Fat is being held at a sensible floor for your weight, so carbs take the rest. Ease
+              the deficit or the protein to move it.
+            </span>
+          )}
+        </div>
       </section>
 
       {/* The live preview. Same function the Worker will run on save. */}
@@ -471,9 +531,8 @@ type Form = {
   goal: Goal;
   deficit_kcal: number;
   eat_back_pct: number;
-  protein_pct: number;
-  carb_pct: number;
-  fat_pct: number;
+  protein_g_per_kg: number;
+  carb_ratio_pct: number;
 };
 
 function Field({
@@ -492,10 +551,6 @@ function Field({
       {hint && <span className="opt-hint">{hint}</span>}
     </div>
   );
-}
-
-function gramsFor(key: "protein_pct" | "carb_pct" | "fat_pct", g: ReturnType<typeof macroGrams>) {
-  return key === "protein_pct" ? g.protein_g : key === "carb_pct" ? g.carbs_g : g.fat_g;
 }
 
 /** 7,700 kcal ≈ 1 kg of fat, the conventional figure. Phrased as "about"

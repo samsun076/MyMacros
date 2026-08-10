@@ -6,8 +6,11 @@ import {
   type BudgetInputs,
   computeBudget,
   earnedKcal,
-  macroGrams,
+  KCAL_PER_G,
+  MIN_FAT_G_PER_KG,
+  macroTargets,
   missingBudgetInputs,
+  PROTEIN_G_PER_KG,
 } from "./budget";
 
 /** Mifflin-St Jeor, worked by hand so the expected values come from the
@@ -216,28 +219,87 @@ describe("earnedKcal", () => {
   });
 });
 
-describe("macroGrams", () => {
-  it("splits kcal by the protein-forward default", () => {
-    // 2000 × .35 / 4 · 2000 × .40 / 4 · 2000 × .25 / 9
-    expect(macroGrams(2000, { protein_pct: 35, carb_pct: 40, fat_pct: 25 })).toEqual({
-      protein_g: 175,
-      carbs_g: 200,
-      fat_g: 56,
-    });
+/** #77. The production case that raised it: 76.3 kg, cutting, 58:42 carb:fat
+ *  preserved from the old 35:25 split. A 5.0 mi run earned 219 kcal, and
+ *  under the percentage model that moved the protein target 191 g → 213 g. */
+describe("macroTargets", () => {
+  const DAVE = { weight_kg: 76.3, protein_g_per_kg: 2.0, carb_ratio_pct: 58 };
+
+  it("anchors protein to body weight, not to the day's energy", () => {
+    // 2.0 × 76.3 = 152.6 → 153
+    expect(macroTargets({ ...DAVE, kcal: 1909 })?.protein_g).toBe(153);
   });
 
-  it("charges fat 9 kcal a gram and the rest 4", () => {
-    const even = macroGrams(3600, { protein_pct: 33, carb_pct: 33, fat_pct: 34 });
-    expect(even.protein_g).toBe(297); // 3600 × .33 / 4
-    expect(even.carbs_g).toBe(297);
-    expect(even.fat_g).toBe(136); // 3600 × .34 / 9
+  /** THE REGRESSION THIS ISSUE EXISTS TO PREVENT. A run must move carbs and
+   *  fat and leave protein exactly where it was — the old model gave 40% of
+   *  the earned bonus to protein, which is what made the target jump 22 g on
+   *  the days appetite and time are worst. */
+  it("is invariant to the earned bonus, which moves carbs and fat only", () => {
+    const rest = macroTargets({ ...DAVE, kcal: 1909 });
+    const ran = macroTargets({ ...DAVE, kcal: 1909 + 219 });
+
+    expect(ran?.protein_g).toBe(rest?.protein_g);
+    expect(ran!.carbs_g).toBeGreaterThan(rest!.carbs_g);
+    expect(ran!.fat_g).toBeGreaterThan(rest!.fat_g);
+
+    // and all 219 of it landed somewhere — nothing was quietly dropped
+    const spent = (t: NonNullable<ReturnType<typeof macroTargets>>) =>
+      t.carbs_g * KCAL_PER_G.carbs + t.fat_g * KCAL_PER_G.fat;
+    expect(spent(ran!) - spent(rest!)).toBeGreaterThan(210);
+    expect(spent(ran!) - spent(rest!)).toBeLessThan(228);
   });
 
-  it("handles a zeroed leg", () => {
-    expect(macroGrams(2000, { protein_pct: 50, carb_pct: 0, fat_pct: 50 })).toEqual({
-      protein_g: 250,
-      carbs_g: 0,
-      fat_g: 111,
-    });
+  it("divides the energy left after protein by the carb:fat ratio", () => {
+    const t = macroTargets({ ...DAVE, kcal: 2128 })!;
+    // 2128 − 153 × 4 = 1516 left; 42% of that is 636.7 kcal of fat → 70.7 g,
+    // and carbs get what is actually left after the unrounded fat, 879.3 → 220
+    expect(t.fat_g).toBe(71);
+    expect(t.carbs_g).toBe(220);
+    expect(t.fat_floored).toBe(false);
+  });
+
+  it("spends the whole target, give or take rounding", () => {
+    const t = macroTargets({ ...DAVE, kcal: 2128 })!;
+    const total =
+      t.protein_g * KCAL_PER_G.protein + t.carbs_g * KCAL_PER_G.carbs + t.fat_g * KCAL_PER_G.fat;
+    expect(Math.abs(total - 2128)).toBeLessThanOrEqual(6);
+  });
+
+  /** The floor exists because high protein against an aggressive deficit
+   *  squeezes fat, and it has to be reported when it bites — the same
+   *  contract MIN_TARGET_KCAL has with `floored`. */
+  it("holds fat at the floor and lets carbs absorb the difference", () => {
+    // a hard cut at a high protein anchor, with almost all the remainder
+    // asked to be carbohydrate
+    const t = macroTargets({ weight_kg: 90, protein_g_per_kg: 2.4, carb_ratio_pct: 95, kcal: 1600 })!;
+    expect(t.fat_floored).toBe(true);
+    expect(t.fat_g).toBe(Math.round(MIN_FAT_G_PER_KG * 90)); // 54
+    // 1600 − 216 × 4 = 736 left, less 54 × 9 = 486 → 250 / 4
+    expect(t.carbs_g).toBe(63);
+  });
+
+  it("does not report a floor that never bound", () => {
+    expect(macroTargets({ ...DAVE, kcal: 2128 })?.fat_floored).toBe(false);
+  });
+
+  /** No weight, no anchor. Withhold rather than fabricate — the same posture
+   *  `computeBudget` takes when onboarding hasn't finished. */
+  it("returns null before the first weigh-in", () => {
+    expect(macroTargets({ ...DAVE, weight_kg: null, kcal: 2000 })).toBeNull();
+    expect(macroTargets({ ...DAVE, weight_kg: 0, kcal: 2000 })).toBeNull();
+    expect(macroTargets({ ...DAVE, kcal: 0 })).toBeNull();
+  });
+
+  /** A floored budget against a heavy body: protein alone can outspend the
+   *  target. Carbs and fat go to zero rather than negative. */
+  it("never hands out a negative remainder", () => {
+    const t = macroTargets({ weight_kg: 120, protein_g_per_kg: 2.6, carb_ratio_pct: 58, kcal: 1200 })!;
+    expect(t.carbs_g).toBe(0);
+    expect(t.fat_g).toBe(0);
+  });
+
+  it("keeps the goal presets a U rather than a ladder", () => {
+    expect(PROTEIN_G_PER_KG.cut).toBeGreaterThan(PROTEIN_G_PER_KG.maintain);
+    expect(PROTEIN_G_PER_KG.gain).toBeGreaterThan(PROTEIN_G_PER_KG.maintain);
   });
 });

@@ -8,7 +8,7 @@
  *  (`profiles.units`), converted at the edge.
  */
 
-import type { ActivityLevel, Goal, MacroSplit, Sex } from "./api";
+import type { ActivityLevel, Goal, Sex } from "./api";
 
 /** Activity multipliers applied to BMR (Mifflin-St Jeor's own companion
  *  table).
@@ -162,16 +162,96 @@ export function earnedKcal(runKcal: number, eatBackPct: number): number {
   return Math.round((runKcal * pct) / 100);
 }
 
-/** Grams of each macro for a target, from the percent-of-kcal split.
+/** Protein defaults, g per kg of body weight, by goal (#77).
  *
- *  Rounded to whole grams for display; the percentages remain the stored
- *  truth, so rounding here never accumulates anywhere. */
-export function macroGrams(targetKcal: number, split: MacroSplit) {
+ *  **A U, not a ladder**, and the two raised ends are raised for different
+ *  reasons: in a deficit more amino acid is oxidised for fuel, so a cut needs
+ *  more protein to *keep* existing tissue; a gain is adding tissue and the
+ *  material has to come from somewhere; maintain is doing neither.
+ *
+ *  Two mistakes this table exists to prevent. Do not make protein ascend with
+ *  calories — that is the percentage model this replaced. Do not make it
+ *  descend from cut either: the literature puts a cut marginally above a
+ *  gain, but by ~0.1–0.2 g/kg, which is inside the noise of everything else
+ *  in the budget and not worth a distinct default. And the gain preset stops
+ *  at 2.0 because beyond that protein displaces the carbohydrate that fuels
+ *  the training driving the growth — displacement, not diminished value. */
+export const PROTEIN_G_PER_KG: Record<Goal, number> = { cut: 2.0, maintain: 1.6, gain: 2.0 };
+
+/** The slider's range. A preset is a default, not a lock — every other budget
+ *  input on that screen is adjustable and this one matches. */
+export const PROTEIN_G_PER_KG_RANGE = { min: 1.2, max: 2.6, step: 0.1 };
+
+/** The fat floor, g per kg. High protein against an aggressive deficit
+ *  squeezes fat, and below roughly this it starts to matter hormonally.
+ *
+ *  Same posture as MIN_TARGET_KCAL: a guardrail, not medical advice, and one
+ *  that says so on screen when it bites — a clamp the user can't see is its
+ *  own kind of wrong answer. Carbs absorb whatever the floor takes. */
+export const MIN_FAT_G_PER_KG = 0.6;
+
+export type MacroInputs = {
+  /** The day's energy. Today passes the ADJUSTED total (base + earned), so
+   *  the run's calories land on carbs and fat; onboarding passes the base. */
+  kcal: number;
+  /** The smoothed trend weight — the same number `refreshTarget` computes
+   *  from. Never a second weight source (#78). Null before the first weigh-in,
+   *  which is the one case with no anchor and therefore no answer. */
+  weight_kg: number | null;
+  protein_g_per_kg: number;
+  /** Carbohydrate's share of the energy left after protein; fat takes the
+   *  rest. One number, so the legs cannot fail to add up. */
+  carb_ratio_pct: number;
+};
+
+export type MacroTargets = {
+  protein_g: number;
+  carbs_g: number;
+  fat_g: number;
+  /** MIN_FAT_G_PER_KG raised fat above what the ratio alone would give. */
+  fat_floored: boolean;
+};
+
+/** Grams of each macro for a day (#77).
+ *
+ *  **Protein is invariant to the day's energy.** That is the property this
+ *  function exists to have, and the one a test pins: the same person at the
+ *  same weight gets the same protein target on a 10-mile day as on a rest
+ *  day, and the earned bonus moves carbs and fat only.
+ *
+ *  Null rather than a fabricated number when there is no weight to anchor to
+ *  — the same posture as `computeBudget`, for the same reason: a guessed
+ *  target is indistinguishable from a real one once it's on screen. */
+export function macroTargets(i: MacroInputs): MacroTargets | null {
+  if (!positive(i.weight_kg) || !positive(i.kcal)) return null;
+
+  // clamped because this also runs on client-side slider input, where the
+  // column's own bounds haven't applied yet
+  const perKg = clamp(i.protein_g_per_kg, PROTEIN_G_PER_KG_RANGE.min, PROTEIN_G_PER_KG_RANGE.max);
+  const protein_g = Math.round(perKg * i.weight_kg);
+
+  // Protein alone can exceed a very small target (a floored budget against a
+  // heavy body). The remainder is clamped at zero rather than going negative
+  // and handing carbs a target below nothing.
+  const remaining = Math.max(i.kcal - protein_g * KCAL_PER_G.protein, 0);
+  const carbShare = clamp(i.carb_ratio_pct, 0, 100) / 100;
+
+  const fromRatio = (remaining * (1 - carbShare)) / KCAL_PER_G.fat;
+  const floor = MIN_FAT_G_PER_KG * i.weight_kg;
+  // the floor can't spend energy that isn't there either — when the remainder
+  // is smaller than the floor, fat simply takes all of it and carbs get none
+  const fat = Math.min(Math.max(fromRatio, floor), remaining / KCAL_PER_G.fat);
+
   return {
-    protein_g: Math.round((targetKcal * split.protein_pct) / 100 / KCAL_PER_G.protein),
-    carbs_g: Math.round((targetKcal * split.carb_pct) / 100 / KCAL_PER_G.carbs),
-    fat_g: Math.round((targetKcal * split.fat_pct) / 100 / KCAL_PER_G.fat),
+    protein_g,
+    carbs_g: Math.round((remaining - fat * KCAL_PER_G.fat) / KCAL_PER_G.carbs),
+    fat_g: Math.round(fat),
+    fat_floored: fromRatio < floor,
   };
+}
+
+function clamp(n: number, min: number, max: number) {
+  return Math.min(Math.max(Number.isFinite(n) ? n : min, min), max);
 }
 
 function positive(n: number | null): n is number {

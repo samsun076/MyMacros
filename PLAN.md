@@ -13,7 +13,7 @@ Built for weight loss, built for one user first (Dave), but shaped so other peop
 | API key | v1: `ANTHROPIC_API_KEY` as a Workers secret. OSS path: agent-install directives (Claude Code sets up D1/R2/secrets for the self-hoster) **and** optional per-user key in app settings for hosted multi-user |
 | Run data | Sync from **debrief's `runs.db`** — a small addition to the existing launchd pipeline POSTs recent runs (date, distance, kcal, TSS) to MyMacros' API. No new Suunto OAuth in v1 |
 | Weight data | **Garmin Connect sync** via unofficial `python-garminconnect` (garth auth) in the same local pipeline — the Garmin Index scale weigh-ins flow in automatically. Manual entry as fallback |
-| Budget model | **TDEE (Mifflin-St Jeor) + chosen deficit**, protein-forward macro split. Targets recompute as logged weight drops |
+| Budget model | **TDEE (Mifflin-St Jeor) + chosen deficit.** Protein is anchored to body weight in g/kg, not taken as a percent of energy — a run must not inflate it (#77); carbs and fat divide what's left. Targets recompute as logged weight drops |
 | Eat-back | **Configurable partial** (default 50%) of run calories added to the day's budget, shown transparently ("+320 kcal from your 6mi run") |
 | Logging inputs | Photo (meal or label) · **barcode → OpenFoodFacts** (free, exact) · **AI text quick-add** ("chipotle bowl, no rice") · favorites/recents. Every AI entry is editable before saving |
 | Platform | **Capture is mobile, review is both.** Photographing, scanning and quick-adding a meal happen on the phone — nobody photographs a restaurant plate from a desk. Desktop is a review surface (today, trends, history, fixing a past entry) and never grows a log flow. Mobile stays the reference experience and 375px stays the design gate |
@@ -64,7 +64,7 @@ data model. Only the build-rules list moved.
 2. **Log flow** — big "+" → camera / barcode / text. AI returns items with confidence → confirm/tweak → saved. Happy path under ~10 seconds.
 3. **Weight** — auto-synced from the Garmin scale; quick manual entry fallback; 7-day smoothed trend feeds target recalc.
 4. **Trends** — weekly weight vs intake vs deficit. The "is this working?" view.
-5. **Settings** — profile/TDEE inputs, deficit, macro split, eat-back %.
+5. **Settings** — profile/TDEE inputs, deficit, protein anchor and carb:fat ratio, eat-back %.
 
 **Out of v1:** adaptive MacroFactor-style TDEE (v2, needs weeks of data), direct Suunto OAuth (needed only for other users), billing, micro-nutrients, anything social.
 

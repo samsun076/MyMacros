@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import type { Me, ProfileUpdate } from "../../shared/api";
+import { PROTEIN_G_PER_KG_RANGE } from "../../shared/budget";
 import { dayInTimezone } from "../../shared/day";
 import { currentTrendWeightKg } from "../../shared/weight";
 import { recentWeighIns, refreshTarget } from "../budget";
@@ -28,9 +29,13 @@ const EDITABLE = {
   start_weight_kg: positive,
   goal_weight_kg: positive,
   eat_back_pct: (v: unknown) => (isNum(v) && v >= 0 && v <= 100 ? Math.round(v) : undefined),
-  protein_pct: pct,
-  carb_pct: pct,
-  fat_pct: pct,
+  // #77. Bounds are the slider's, so a value the UI can't produce is refused
+  // rather than clamped silently; the tenth is the stored resolution.
+  protein_g_per_kg: (v: unknown) =>
+    isNum(v) && v >= PROTEIN_G_PER_KG_RANGE.min && v <= PROTEIN_G_PER_KG_RANGE.max
+      ? Math.round(v * 10) / 10
+      : undefined,
+  carb_ratio_pct: pct,
   focus_macro: oneOf(["protein", "carbs", "fat"]),
   units: oneOf(["imperial", "metric"]),
   theme: oneOf(["night-athletic", "field-notes", "instrument"]),
@@ -81,18 +86,14 @@ me.patch("/profile", async (c) => {
   if (rejected.length) return c.json({ error: "invalid_fields", fields: rejected }, 400);
   if (!Object.keys(patch).length) return c.json({ error: "nothing_to_update" }, 400);
 
-  // The macro split has to keep meaning "percent of kcal", so when any leg
-  // moves, check all three against whatever is currently stored.
-  const touchesSplit = ["protein_pct", "carb_pct", "fat_pct"].some((k) => k in patch);
-  if (touchesSplit) {
-    const current = await loadProfile(c.var.db, c.var.user.id);
-    const leg = (key: "protein_pct" | "carb_pct" | "fat_pct") =>
-      (patch[key] as number | undefined) ?? current[key];
-    const split = leg("protein_pct") + leg("carb_pct") + leg("fat_pct");
-    if (split !== 100) {
-      return c.json({ error: "macro_split_must_total_100", got: split }, 400);
-    }
-  }
+  /* No cross-field macro check any more (#77).
+   *
+   * The old three percent legs had to be validated against each other on
+   * every write, because two of them could be saved in a state that meant
+   * nothing. Protein is now anchored to body weight and fat is the remainder
+   * of the remainder, so there is no sum to police: any pair of values the
+   * validators above accept describes a real day. The invariant did not move
+   * somewhere else — it stopped existing. */
 
   await c.var.db
     .updateTable("profiles")
