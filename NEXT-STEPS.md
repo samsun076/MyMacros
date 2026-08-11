@@ -983,3 +983,69 @@ belong at the milestone close.
 - **The site's claims about macros** (`stale-claim` in the site repo). #77
   changed what the app shows a user; anything asserting a percentage split is
   now false.
+
+## Session L — #83's tool and #86's sweep — ✅ done 2026-08-11
+
+Same day as Session K, after a break. **Closed: #86.** #83's tool is built and
+deployed; the issue stays open on its own third criterion (see below).
+
+- **#83 — `npm run reconcile -- --date <YYYY-MM-DD> --weeks 1`.** Five tables
+  out of production D1 as a paste-ready markdown block. **It prints no derived
+  figure**, and that is the whole design: print the answer beside the inputs and
+  the reconciler reads it first and confirms it, which turns RECONCILIATIONS.md
+  into a log of the app agreeing with itself while every entry still says
+  "✓ matches". `profiles.target_kcal` is never SELECTed rather than merely
+  unprinted, and a test fails on any of five forbidden words reaching the
+  output. Proven by adding the exact line the issue predicts — *"for reference,
+  the app computes a base target of 2246"* — and watching four tests go red.
+- **#86 found four real divergences**, all fixed: the meal fold written twice
+  (Today's timeline and `/api/food-logs/recent`), `7700` kcal/kg stated twice,
+  onboarding's `carb_ratio_pct ?? 62` still carrying the pre-0008 default a day
+  after it was rebuilt to 58, and `protein_g_per_kg`'s column default agreeing
+  with `PROTEIN_G_PER_KG[goal]` by hand with nothing pinning it. The full
+  three-search result is the comment on #86; the durable half is the **"One
+  quantity, one source" register in CLAUDE.md**, which lists what is
+  deliberately duplicated so it isn't re-litigated.
+- **`vitest`'s unit project now includes `tools/`**, which had no tests at all.
+
+### Next up: #83's other half — the M9 reconciliation
+
+This is the last thing in M9, and it wants a **fresh session**: the figure to
+reconcile is the protein target, which Session K wrote, and rule 4b's whole
+value is that the recomputation is independent.
+
+**Where to look hardest.** #77 made protein `g/kg × trend weight`, so **body
+weight now enters the protein target directly** — anything wrong in the weigh-in
+feed moves a number it never used to move. Check the `source` column on every
+row in the window; that is exactly what caught M8's finding.
+
+**Budget 25–45 minutes**, not the rule's usual 45–90 — the tool removed the SQL
+half. Nearly all of what remains is step 4, reading the inputs. **If it comes
+out much faster than that, suspect step 4 was skipped**; it is the part with no
+output until it finds something.
+
+### Starter prompt (paste verbatim)
+
+```
+Working on MyMacros (~/Projects/MyMacros). Read CLAUDE.md, then issue #83
+and its two comments — the second one is the handoff and says exactly
+what's left.
+
+The tool is already built. Your job is the thing it exists for: M9's
+build-rule-4b reconciliation. Run `npm run reconcile`, take the protein
+target and the base target the app is actually showing, recompute both
+BY HAND from the block, and then spend most of the time on the part that
+matters — reading the inputs and asking which one is wrong.
+
+Do not import computeBudget or macroTargets to check computeBudget or
+macroTargets. Write the entry in RECONCILIATIONS.md, add one line on
+whether the tool saved time, then close #83.
+
+Model: Opus 5 @ xhigh.
+```
+
+### Still owed after that, before M9 closes
+
+- **Theme QA (build rule 4)** for Session K's two onboarding sections and four
+  Settings rows — carried forward, still not done.
+- **The site's stale macro claims** (`stale-claim` in the site repo).
