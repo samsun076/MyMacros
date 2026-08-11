@@ -12,6 +12,13 @@ found only by running against real data.
 One entry per milestone. Recompute independently; importing `computeBudget` to
 check `computeBudget` proves nothing.
 
+`npm run reconcile -- --date <YYYY-MM-DD> --weeks <n>` prints the input block
+below the fold of each entry — profile, weigh-ins with their `source`, per-day
+intake with its row count, runs, and sync health, straight out of production.
+It prints **inputs only** (#83), and that is load-bearing rather than a
+limitation: the recomputation stops being independent the moment the answer is
+sitting above it.
+
 ---
 
 ## M5 (#22) — the trends screen's realized deficit, 2026-08-10

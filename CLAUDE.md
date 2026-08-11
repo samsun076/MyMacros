@@ -41,6 +41,7 @@ npm run db:migrate     # apply migrations to LOCAL D1 (miniflare)
 npm run db:migrate:remote   # apply to REAL D1 — needs wrangler login
 npm run db:studio      # sqlite3 shell on the local D1 file
 npm run icons          # regenerate PWA icons + manifest from design/tokens.css
+npm run reconcile -- --date 2026-08-10 --weeks 1   # rule 4b's input block (#83)
 npm run verify:auth    # drive the real passkey ceremony (needs `npm run dev`)
 npm run verify:routing -- https://fuel.debrief.run   # /api survives navigation; SPA still falls back
 npm run verify:viewport -- --cookie <name>=<token>   # no screen overflows horizontally (#51)
@@ -323,7 +324,15 @@ reorder.
    M5 took a production D1 pull across six input categories, five days of
    hand-computed BMR → TDEE → deficit, and two cross-checks. A rule that advertises
    ten minutes and costs sixty gets skipped the first time a milestone closes late.
-   #83 exists to remove the mechanical half, and must never print a derived figure.
+
+   **`npm run reconcile` clears the mechanical half** (#83) — five tables out of
+   production D1 as a paste-ready markdown block. **It prints no derived figure and
+   never will:** printing the answer beside the inputs means the reconciler reads it
+   first and confirms it, which turns the file into a log of the app agreeing with
+   itself while every entry still says "✓ matches". `profiles.target_kcal` isn't
+   merely unprinted, it is never SELECTed, and a test fails on any of five
+   forbidden words reaching the output. Adding "here's what the app thinks" is the
+   change that kills the rule.
 
    **Why it earns the time.** Tests prove the arithmetic and screenshots prove the
    layout; neither can tell you an **input** is wrong, and that is the failure this

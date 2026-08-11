@@ -34,7 +34,11 @@ export default defineConfig({
       {
         test: {
           name: "unit",
-          include: ["src/**/*.test.ts"],
+          // tools/ is in here for #83: `reconcile-inputs.mjs` has one property
+          // worth testing and it is a negative one — that it prints no derived
+          // figure — which is exactly the kind of rule that rots without a
+          // test. Plain .mjs, so it runs as-is.
+          include: ["src/**/*.test.ts", "tools/**/*.test.mjs"],
           exclude: ["src/**/*.route.test.ts"],
           environment: "node",
         },
