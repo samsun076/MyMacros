@@ -8,6 +8,7 @@ import {
   computeBudget,
   macroTargets,
 } from "../../shared/budget";
+import { KCAL_PER_KG } from "../../shared/trends";
 import { cmToFtIn, ftInToCm, kgToLb, lbToKg } from "../../shared/units";
 import { ApiError, api, useApi } from "../lib/api";
 import { localDay } from "../lib/day";
@@ -84,7 +85,12 @@ export function Onboarding() {
     deficit_kcal: form.deficit_kcal ?? p?.deficit_kcal ?? 500,
     eat_back_pct: form.eat_back_pct ?? p?.eat_back_pct ?? 50,
     protein_g_per_kg: form.protein_g_per_kg ?? p?.protein_g_per_kg ?? PROTEIN_G_PER_KG.cut,
-    carb_ratio_pct: form.carb_ratio_pct ?? p?.carb_ratio_pct ?? 62,
+    /* From the preset, not a literal (#86). This read `?? 62` — the schema
+     * default before migration 0008 rebuilt it to 58 — so within a day of the
+     * default moving, the third copy of it was already stale. Only visible in
+     * the window before /api/me answers, which is precisely why nobody would
+     * have caught it. */
+    carb_ratio_pct: form.carb_ratio_pct ?? p?.carb_ratio_pct ?? ATHLETE_PROFILES.general.carb_ratio_pct,
   };
   const set = (patch: Partial<Form>) => setForm((f) => ({ ...f, ...patch }));
 
@@ -612,11 +618,15 @@ function Field({
 }
 
 /** 7,700 kcal ≈ 1 kg of fat, the conventional figure. Phrased as "about"
- *  because it is a rule of thumb and the app shouldn't pretend otherwise. */
+ *  because it is a rule of thumb and the app shouldn't pretend otherwise.
+ *
+ *  `KCAL_PER_KG` and `kgToLb` rather than the two literals that were here
+ *  (#86): Trends turns a deficit into a predicted rate with the same two
+ *  constants, so a second copy means this screen's "about 1.0 lb a week" and
+ *  the Trends screen's modelled rate can disagree about the same arithmetic. */
 function rate(deficit: number) {
-  const kgPerWeek = (deficit * 7) / 7700;
-  const lbPerWeek = kgPerWeek * 2.20462;
-  return `${lbPerWeek.toFixed(1)} lb`;
+  const kgPerWeek = (deficit * 7) / KCAL_PER_KG;
+  return `${kgToLb(kgPerWeek).toFixed(1)} lb`;
 }
 
 function num(s: string): number | null {

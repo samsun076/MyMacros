@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import type { FoodLogCreate, FoodLogsCreated, RecentsResponse } from "../../shared/api";
+import { foldMeals } from "../../shared/meals";
 import { ownedPhotoKey } from "../photos";
 import type { AppEnv } from "../types";
 import { isDay, isNum, oneOf } from "../validate";
@@ -19,27 +20,21 @@ foodLogs.get("/recent", async (c) => {
     .limit(60)
     .execute();
 
-  const groups = new Map<string, typeof rows>();
-  for (const row of rows) {
-    const key = `${row.logged_at}|${row.meal_slot}`;
-    const group = groups.get(key);
-    if (group) group.push(row);
-    else groups.set(key, [row]);
-  }
-
+  // Folded by the same function the Today timeline folds with (#86) — the two
+  // used to carry separate copies of this, which could disagree about what
+  // counts as one meal without anything failing.
   const seen = new Set<string>();
   const meals = [];
-  for (const group of groups.values()) {
-    const name = group.map((r, i) => (i === 0 ? r.name : r.name.toLowerCase())).join(", ");
-    const dedupe = name.toLowerCase();
+  for (const meal of foldMeals(rows)) {
+    const dedupe = meal.name.toLowerCase();
     if (seen.has(dedupe)) continue;
     seen.add(dedupe);
     meals.push({
-      name,
-      kcal: group.reduce((s, r) => s + r.kcal, 0),
-      protein_g: round1(group.reduce((s, r) => s + r.protein_g, 0)),
-      carbs_g: round1(group.reduce((s, r) => s + r.carbs_g, 0)),
-      fat_g: round1(group.reduce((s, r) => s + r.fat_g, 0)),
+      name: meal.name,
+      kcal: meal.kcal,
+      protein_g: round1(meal.protein_g),
+      carbs_g: round1(meal.carbs_g),
+      fat_g: round1(meal.fat_g),
     });
     if (meals.length >= 8) break;
   }

@@ -1,7 +1,8 @@
 import { useMemo } from "react";
 import { Link, useLocation } from "react-router";
-import type { DayResponse, DayRun, FoodLog, MealSlot, Me, Units } from "../../shared/api";
+import type { DayResponse, DayRun, MealSlot, Me, Units } from "../../shared/api";
 import { macroTargets } from "../../shared/budget";
+import { foldMeals } from "../../shared/meals";
 import { useApi } from "../lib/api";
 import { localDay } from "../lib/day";
 import { fmtInt } from "../lib/format";
@@ -69,29 +70,27 @@ export function Today() {
   const adjusted = budget.base + budget.earned;
   const remaining = adjusted - budget.eaten;
 
-  // one save = one meal: rows sharing a logged_at instant fold into one entry
-  const entries = useMemo(() => {
-    const groups = new Map<string, FoodLog[]>();
-    for (const log of day?.logs ?? []) {
-      const key = `${log.logged_at}|${log.meal_slot}`;
-      const group = groups.get(key);
-      if (group) group.push(log);
-      else groups.set(key, [log]);
-    }
-    return [...groups.values()].map((rows): Entry => {
-      const first = rows[0]!;
-      return {
-        when: clock12(first.logged_at),
-        slot: first.meal_slot,
-        desc: rows.map((r, i) => (i === 0 ? r.name : r.name.toLowerCase())).join(", "),
-        kcal: rows.reduce((s, r) => s + r.kcal, 0),
-        p: Math.round(rows.reduce((s, r) => s + r.protein_g, 0)),
-        c: Math.round(rows.reduce((s, r) => s + r.carbs_g, 0)),
-        f: Math.round(rows.reduce((s, r) => s + r.fat_g, 0)),
-        photoKey: rows.find((r) => r.photo_key)?.photo_key ?? null,
-      };
-    });
-  }, [day]);
+  // One save = one meal (#10). `foldMeals` is shared with
+  // GET /api/food-logs/recent, which used to carry its own copy of the same
+  // grouping — two answers to "what counts as one meal", differing silently
+  // the moment either changed (#86). Rounding stays here: the timeline shows
+  // whole grams and the recents list shows tenths, which is a surface choice.
+  const entries = useMemo(
+    () =>
+      foldMeals(day?.logs ?? []).map(
+        (meal): Entry => ({
+          when: clock12(meal.logged_at),
+          slot: meal.meal_slot,
+          desc: meal.name,
+          kcal: meal.kcal,
+          p: Math.round(meal.protein_g),
+          c: Math.round(meal.carbs_g),
+          f: Math.round(meal.fat_g),
+          photoKey: meal.rows.find((r) => r.photo_key)?.photo_key ?? null,
+        }),
+      ),
+    [day],
+  );
 
   /* Macro targets, from the ADJUSTED total (sketch: 82 / 165 g) — but only
    * carbs and fat move with it now (#77).

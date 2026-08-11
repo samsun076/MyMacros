@@ -2,7 +2,7 @@ import { env } from "cloudflare:test";
 import { Hono } from "hono";
 import { beforeEach, describe, expect, it } from "vitest";
 import type { Profile } from "../../shared/api";
-import { ATHLETE_PROFILES } from "../../shared/budget";
+import { ATHLETE_PROFILES, PROTEIN_G_PER_KG } from "../../shared/budget";
 import { createDb } from "../db";
 import type { AppEnv } from "../types";
 import me from "./me";
@@ -124,11 +124,32 @@ describe("PATCH /api/me/profile — the athlete profile (#79)", () => {
    *  default and the General preset are the same question asked twice, so
    *  this asks the real schema rather than restating the number. */
   it("creates a profile on the same carb:fat General would set", async () => {
-    await env.DB.prepare("DELETE FROM profiles WHERE user_id = ?").bind(USER).run();
-    const fresh = await db.insertInto("profiles").values({ user_id: USER }).returningAll().executeTakeFirstOrThrow();
+    const fresh = await freshProfile();
 
     expect(fresh.athlete_profile).toBe("general");
     expect(fresh.carb_ratio_pct).toBe(ATHLETE_PROFILES.general.carb_ratio_pct);
     expect(fresh.eat_back_pct).toBe(ATHLETE_PROFILES.general.eat_back_pct);
   });
 });
+
+/** #86. Every column default is a second statement of a number the code also
+ *  states, and the pair is only correct while someone keeps them in step by
+ *  hand. The sweep found one that had already rotted — onboarding's carb:fat
+ *  fallback still read 62 a day after migration 0008 rebuilt the default to 58
+ *  — so the remaining pairs get pinned rather than trusted. */
+describe("column defaults agree with the code that also states them", () => {
+  it("starts a new profile on the protein anchor its own default goal implies", async () => {
+    const fresh = await freshProfile();
+    expect(fresh.protein_g_per_kg).toBe(PROTEIN_G_PER_KG[fresh.goal]);
+  });
+
+  /** The deficit slider's own default, restated in Onboarding's fallback. */
+  it("starts a new profile on the deficit onboarding falls back to", async () => {
+    expect((await freshProfile()).deficit_kcal).toBe(500);
+  });
+});
+
+async function freshProfile() {
+  await env.DB.prepare("DELETE FROM profiles WHERE user_id = ?").bind(USER).run();
+  return db.insertInto("profiles").values({ user_id: USER }).returningAll().executeTakeFirstOrThrow();
+}

@@ -363,6 +363,56 @@ reorder.
    records its measured CVD limit — under deuteranopia no colour separates
    from all three accents, so every use must be sign-carrying and labelled.
 
+### One quantity, one source — the register (#86)
+
+#78, #84 and #85 were one defect at three depths: **two things that should be one
+thing**. Each was invisible until the one above it was fixed, which is why the type
+feels like whack-a-mole. The sweep of 2026-08-11 enumerated them; this is the result,
+kept here so the deliberate cases aren't re-litigated and the rest aren't rediscovered.
+
+**Single sources, and nothing may compute these a second time.** `computeBudget` (base
+target) · `macroTargets` (protein/carbs/fat grams) · `currentTrendWeightKg` /
+`trendWeightKg` (what someone weighs now) · `earnedKcal` · `foldMeals` (what counts as
+one meal) · `ACTIVITY_FACTORS` · `PROTEIN_G_PER_KG` · `ATHLETE_PROFILES` ·
+`KCAL_PER_KG` · `TREND_WINDOW_DAYS` · `MIN_LOGGED_SHARE` · `STALE_AFTER_HOURS`. All in
+`src/shared/`, all reached by both the client preview and the Worker, which is the whole
+reason that directory exists.
+
+**Deliberately two, and each is correct:**
+
+- **`localDay()` vs `dayInTimezone()`** — the device owns the local day when a person is
+  present (#44); the server needs an answer when nobody is (#19's launchd job,
+  `refreshTarget`). Both files explain it. **A client-supplied day compared against a
+  server-derived one is still the trap** that froze the M4 target.
+- **The weekly bar's run figure vs the weekly deficit's** — budget view vs physiology
+  view, eaten-back share vs full run calories, on purpose. A test fails if they're
+  "fixed" into agreement.
+- **Two profile-creation paths** — better-auth's `after` hook and `loadProfile`'s
+  self-heal — same values, `onConflict doNothing`, so they cannot disagree.
+- **Enums stated four ways** (TS type, migration `CHECK`, route `oneOf`, client array).
+  The house pattern. `athlete_profile` is the one where adding a value costs a table
+  rebuild, and #79 records why that price is worth paying.
+- **`round1` defined six times.** A language idiom, not a domain rule — there is no
+  truth for three tokens to diverge from. Left alone on purpose.
+
+**`profiles.target_kcal` is a write-only cache.** `refreshTarget` is its only writer and
+nothing user-facing reads it (#85) — `/api/day` computes the target, `/api/trends`
+recomputes history. The single exception is `day.ts`'s un-onboarded fallback, which is
+deliberately showing the deployment default rather than a number computed for nobody.
+Verified by enumeration, 2026-08-11.
+
+**The trap that keeps producing these: a literal that restates a column default.** Every
+`?? <literal>` in Onboarding's form seeding is a second statement of a `DEFAULT` in
+`migrations/`, correct only while someone keeps them in step by hand. One had already
+rotted within a day (`carb_ratio_pct ?? 62` against a default rebuilt to 58). Seed from
+the shared constant, and pin the pairs that remain with a route test against a freshly
+inserted profile row.
+
+**This sweep cannot find input bugs**, and a clean result is not a clean bill of health.
+#74, `energy_kj` holding kcal, Garmin reporting grams, the scale reverting a typed
+weigh-in — in every one the code was right and the data was not what it assumed. Rule 4b
+is the check for those, and it still owes M9 an entry.
+
 ### Trends (#22) — four things not to re-derive
 
 - **The realized deficit uses the FULL run calories, never the eaten-back
