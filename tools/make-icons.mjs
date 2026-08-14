@@ -63,11 +63,25 @@ const ICONS = [
 /** Pull the values we draw with straight out of the token pack. */
 async function readTokens() {
   const css = await readFile("design/tokens.css", "utf8");
-  const pack = css.slice(css.indexOf('[data-theme="night-athletic"]'));
-  const get = (name) => {
+  // Night Athletic is the base pack on bare `:root` (#29), not a block scoped
+  // to its own attribute. Icons are drawn from it and only it — the launch
+  // images and the maskable icon are baked at build time, so they cannot
+  // follow a per-user theme however many packs exist.
+  const start = css.indexOf(":root {");
+  if (start === -1) throw new Error("design/tokens.css has no base `:root {` pack");
+  const pack = css.slice(start);
+  // `--accent: var(--accent-coral)` since #29 gave the three accents names of
+  // their own, so a token can now point at another one. Followed rather than
+  // returned raw: sharp draws colours, not CSS. One hop is all the pack has,
+  // and a chain would be a token pack worth simplifying instead.
+  const get = (name, depth = 0) => {
     const m = pack.match(new RegExp(`--${name}:\\s*([^;]+);`));
     if (!m) throw new Error(`token --${name} not found in design/tokens.css`);
-    return m[1].trim();
+    const value = m[1].trim();
+    const ref = value.match(/^var\(--([\w-]+)\)$/);
+    if (!ref) return value;
+    if (depth > 3) throw new Error(`--${name} resolves through too many var() hops`);
+    return get(ref[1], depth + 1);
   };
   return {
     canvas: get("canvas"),

@@ -1895,6 +1895,51 @@ section {
   color: var(--ink);
 }
 
+/* A choice the app is not offering yet reads as one it is — the theme picker
+   ships two packs disabled until #30, and without this they look exactly like
+   the unselected-but-available state. Same 0.55 as `.btn:disabled`, so "you
+   can't press this" is one treatment across the app rather than a new one per
+   control. */
+.opt:disabled,
+.seg-btn:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+/* The accent picker (#29), ported from the sketch's floating themer pill
+   (c2-night-athletic.html: `.sw`, three 16px circles with an aria-label each).
+   The mark is the sketch's; the home is not — a settings row gets the colour
+   *and* its name, where a dev toggle over the tab bar could rely on hover.
+
+   These are the one place three accents are drawn at once, which is why
+   design/tokens.css names them individually. `--accent` here would paint all
+   three the same colour: the one you already have. */
+.sw {
+  width: 14px;
+  height: 14px;
+  border-radius: var(--radius-pill);
+  box-shadow: inset 0 0 0 1px var(--scrim);
+  flex: none;
+}
+
+.sw-coral {
+  background: var(--accent-coral);
+}
+.sw-gold {
+  background: var(--accent-gold);
+}
+.sw-mint {
+  background: var(--accent-mint);
+}
+
+/* The swatch sits inside a .seg-btn, which centres its own text. */
+.seg-btn:has(.sw) {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
 /* a stacked list of choices, each with a line of explanation */
 .opts {
   display: grid;

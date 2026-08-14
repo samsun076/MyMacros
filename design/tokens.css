@@ -10,7 +10,28 @@
  * Light packs (field-notes, instrument) land with the M5 port (#30).
  */
 
-:root[data-theme="night-athletic"] {
+/* **Night Athletic is the BASE pack, not one of three siblings** (#29).
+ *
+ * These sit on bare `:root`, so they apply whatever `data-theme` says — and
+ * the light packs below override them. Two reasons, both structural:
+ *
+ *   - Build rule 1 already says Night Athletic is the primary theme. A
+ *     selector that requires `[data-theme="night-athletic"]` says the opposite:
+ *     that it is one option among equals and the app has no values without one.
+ *   - **An unknown or not-yet-ported theme has to degrade, not disintegrate.**
+ *     Scoped to its own attribute, `data-theme="field-notes"` before #30 left
+ *     every token in this file undefined — not an ugly app, an unstyled one,
+ *     and one bad value in localStorage or a profile row synced from a newer
+ *     build would do it. As a base, the worst case is the dark pack.
+ *
+ * The consequence for #30, stated because it cuts both ways: a light pack that
+ * forgets a token inherits a DARK value rather than nothing. That is the
+ * failure mode you want — a blue-black surface on ivory paper is visible on
+ * sight, where an undefined custom property is invisible until something
+ * reads it. `tools/theme-packs.test.mjs` fails on any token a ready pack
+ * doesn't restate, so it shouldn't get that far.
+ */
+:root {
   color-scheme: dark;
 
   /* ── surfaces ─ blue hour, 5:45 AM, not midnight ── */
@@ -61,8 +82,19 @@
   --on-danger: #16202e;         /* ink on a danger surface (#52's trash panel);
                                    same dark blue-black as --on-accent */
 
-  /* ── accent ─ dawn coral (default); data-accent switches ── */
-  --accent: #f88b68;
+  /* ── accent ─ dawn coral (default); data-accent switches ──
+     The three are named individually as well as through `--accent` because
+     the picker in Settings draws all of them at once (#29), and `--accent` is
+     by definition the one a picker cannot use — it is already the answer.
+     Build rule 2 has no exception for "it's only a swatch": three literals in
+     app.css would be invisible to every future pack. Only the base hue needs
+     a name; the soft/wash/glow variants below are per-accent alphas that
+     nothing draws side by side. */
+  --accent-coral: #f88b68;
+  --accent-gold: #dfa848;
+  --accent-mint: #52c4a2;
+
+  --accent: var(--accent-coral);
   --accent-soft: rgba(248,139,104,.36);   /* earned-zone hatch, dim marks */
   --accent-wash: rgba(248,139,104,.09);   /* tinted fills/backgrounds */
   --accent-glow: rgba(248,139,104,.08);   /* page-top radial */
@@ -105,14 +137,14 @@
 }
 
 :root[data-theme="night-athletic"][data-accent="gold"] {
-  --accent: #dfa848;
+  --accent: var(--accent-gold);
   --accent-soft: rgba(223,168,72,.36);
   --accent-wash: rgba(223,168,72,.09);
   --accent-glow: rgba(223,168,72,.08);
 }
 
 :root[data-theme="night-athletic"][data-accent="mint"] {
-  --accent: #52c4a2;
+  --accent: var(--accent-mint);
   --accent-soft: rgba(82,196,162,.36);
   --accent-wash: rgba(82,196,162,.09);
   --accent-glow: rgba(82,196,162,.07);

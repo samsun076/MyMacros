@@ -1,12 +1,13 @@
 import { useState } from "react";
 import { Link } from "react-router";
-import type { Macro, Me, Profile, Units } from "../../shared/api";
+import type { Accent, Macro, Me, Profile, Theme, Units } from "../../shared/api";
 import { kgToLb, lbToKg } from "../../shared/units";
 import { PasskeyManager } from "../components/PasskeyManager";
 import { Sources } from "../components/Sources";
 import { ApiError, api, useApi } from "../lib/api";
 import { authClient } from "../lib/auth";
 import { useUpdate } from "../lib/sw";
+import { ACCENTS, THEME_PACKS, applyTheme, hasAccentChoice } from "../lib/theme";
 
 /** Settings (#23).
  *
@@ -163,6 +164,61 @@ export function Settings() {
           <span className="opt-hint">Every weight and height in the app, including the one above.</span>
         </div>
 
+        {/* Build rule 1: Night Athletic is the primary theme and the only one
+            ported. The other two are shown disabled rather than hidden — the
+            app promises three packs in its own token file, and a control that
+            says "not yet" is honest where a missing one looks like the feature
+            was dropped. #30 is what flips `ready`. */}
+        <div className="field">
+          <span className="eyebrow">Theme</span>
+          <div className="opts">
+            {(Object.keys(THEME_PACKS) as Theme[]).map((t) => {
+              const pack = THEME_PACKS[t];
+              return (
+                <button
+                  key={t}
+                  type="button"
+                  className={p?.theme === t ? "opt on" : "opt"}
+                  aria-pressed={p?.theme === t}
+                  disabled={!p || !pack.ready}
+                  onClick={() => void edit.saveTheme({ theme: t })}
+                >
+                  <span className="opt-name">{pack.label}</span>
+                  <span className="opt-hint">{pack.ready ? pack.hint : `${pack.hint} — ports in #30`}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Build rule 5. Night Athletic's only — the light packs each have one
+            accent, which is their material rather than a choice, so this
+            disappears rather than greying out when they land. */}
+        {p && hasAccentChoice(p.theme) && (
+          <div className="field">
+            <span className="eyebrow">Accent</span>
+            <div className="seg">
+              {(Object.keys(ACCENTS) as Accent[]).map((a) => (
+                <button
+                  key={a}
+                  type="button"
+                  className={p.accent === a ? "seg-btn on" : "seg-btn"}
+                  aria-pressed={p.accent === a}
+                  aria-label={ACCENTS[a].name}
+                  onClick={() => void edit.saveTheme({ accent: a })}
+                >
+                  <span className={`sw sw-${a}`} aria-hidden="true" />
+                  {ACCENTS[a].label}
+                </button>
+              ))}
+            </div>
+            <span className="opt-hint">
+              Changes as you tap. It colours your focus macro, the log button and the
+              budget meter.
+            </span>
+          </div>
+        )}
+
         {/* Read-only on purpose — see this component's own note. Shown rather
             than hidden because it is an input to every "today" the server
             resolves without you present (#19's launchd sync, refreshTarget). */}
@@ -213,13 +269,17 @@ function useProfileEdit(me: Me | null, reload: () => void) {
 
   const profile: Profile | null = me ? { ...me.profile, ...draft } : null;
 
-  async function save(patch: Partial<Profile>) {
+  /** Resolves true when the write landed. Callers that changed something
+   *  outside React's tree — `saveTheme` restyles the document — need to know,
+   *  and a rejected promise would make every ordinary toggle a try/catch. */
+  async function save(patch: Partial<Profile>): Promise<boolean> {
     setDraft((d) => ({ ...d, ...patch }));
     setError(null);
     try {
       await api.patch("/api/me/profile", patch);
       setDraft({});
       reload();
+      return true;
     } catch (err) {
       setDraft((d) => {
         const next = { ...d };
@@ -231,10 +291,29 @@ function useProfileEdit(me: Me | null, reload: () => void) {
           ? "Couldn't reach the server — that change didn't save."
           : "That didn't save. Try again in a moment.",
       );
+      return false;
     }
   }
 
-  return { profile, save, error };
+  /** Theme and accent, which have to repaint before the request leaves.
+   *
+   *  Build rule 5 calls the accent "live-switchable", and that is a claim
+   *  about the tap, not about the round trip: a swatch that waits ~80ms for
+   *  D1 reads as a broken button. So the document is restyled first and the
+   *  save follows — and if the save fails, `save` puts the draft back and this
+   *  puts the paint back with it, because a screen showing gold while the
+   *  database holds coral is the disagreement the optimistic overlay exists to
+   *  avoid, not to create.
+   */
+  async function saveTheme(patch: { theme?: Theme; accent?: Accent }) {
+    if (!profile) return;
+    const before = { theme: profile.theme, accent: profile.accent };
+    const next = { ...before, ...patch };
+    applyTheme(next.theme, next.accent);
+    if (!(await save(patch))) applyTheme(before.theme, before.accent);
+  }
+
+  return { profile, save, saveTheme, error };
 }
 
 /** Goal weight, in whichever units are set.

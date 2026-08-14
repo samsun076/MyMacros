@@ -91,16 +91,43 @@ async function fullPageShot(cdp, sessionId, width) {
   await setMetrics(width, DEVICES[width] ?? 844);
   await settle(cdp, sessionId);
   if (settleMs) await new Promise((r) => setTimeout(r, settleMs));
-  const { result } = await cdp.send(
-    "Runtime.evaluate",
-    { expression: "document.documentElement.scrollHeight", returnByValue: true },
-    sessionId,
-  );
-  const pageH = Math.min(result.value, 6000);
-  // grow the viewport to full content height so fixed chrome lands at the
-  // true bottom — like the page seen end-to-end
-  await setMetrics(width, pageH);
-  await settle(cdp, sessionId);
+
+  const measure = async () => {
+    const { result } = await cdp.send(
+      "Runtime.evaluate",
+      { expression: "document.documentElement.scrollHeight", returnByValue: true },
+      sessionId,
+    );
+    return Math.min(result.value, 6000);
+  };
+
+  /* Measure, resize, measure AGAIN — and keep going while it grows (#29).
+   *
+   * This used to measure once and shoot. `settle()` waits for fonts and two
+   * frames, both of which happen long before a screen's own `/api/*` fetch
+   * lands, so a section that only exists once the data arrives was measured
+   * as absent and then **silently cropped out of the bottom of the PNG**.
+   * Caught on Settings, where the accent picker renders only for a loaded
+   * profile: 375 came out 1932px and stopped mid-page while 390, shot second
+   * against a warm cache, was 2248px and complete. Nothing failed. The design
+   * loop would simply have been reviewing a page with its end cut off, and
+   * only the one width that lost the race.
+   *
+   * Growing the viewport can also legitimately change the height — a
+   * `min-height: 100vh` or a sticky footer resolves against the new box — so
+   * one extra pass would not be enough either. Loop until it stops moving. */
+  let pageH = await measure();
+  for (let i = 0; i < 5; i++) {
+    // grow the viewport to full content height so fixed chrome lands at the
+    // true bottom — like the page seen end-to-end
+    await setMetrics(width, pageH);
+    await settle(cdp, sessionId);
+    const again = await measure();
+    if (again <= pageH) break;
+    pageH = again;
+    if (i === 4) console.warn(`  ! ${width}px height still growing at ${pageH}px — shot may be clipped`);
+  }
+
   const { data } = await cdp.send("Page.captureScreenshot", { format: "png" }, sessionId);
   return { png: Buffer.from(data, "base64"), height: pageH };
 }

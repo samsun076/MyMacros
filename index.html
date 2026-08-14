@@ -19,12 +19,41 @@
          with no bright frame anywhere. Same class as #38/#39: a standalone
          iOS behaviour the harness structurally cannot see.
 
-         Hardcoded `dark` is consistent with data-theme below, which is also
-         hardcoded while the app is Night Athletic only (build rule 1). When
-         the light packs land (#30) this needs to follow the user's theme the
-         way main.tsx already syncs theme-color — otherwise a light-theme user
-         gets this flash in reverse. -->
+         `dark` is the value for Night Athletic, which is the base pack — the
+         boot script below rewrites it when a light theme is stored, and
+         lib/theme.ts keeps it in step on every switch (#29). Otherwise a
+         light-theme user gets this flash in reverse. -->
     <meta name="color-scheme" content="dark" />
+
+    <!-- The theme, before anything paints (#29).
+         =========================================
+         `data-theme` on <html> above is the default. A user who picked another
+         pack has it in their profile, which needs a session and a round trip —
+         and #53's boot skeleton paints from the inlined stylesheet long before
+         either. Without this, that user's app starts in the wrong theme and
+         flips once /api/me answers, which is the same white-flash class of bug
+         #53 was about, in colour.
+
+         The value is a MIRROR of `profiles.theme`, never a source: the profile
+         overwrites it on every load (App.tsx). It is parsed here rather than
+         imported because this must run before the first module does.
+
+         Inline and unconditional on purpose — a `src` would be a round trip in
+         the window this exists to close. Kept to what it is: two attributes and
+         a meta, no fallbacks beyond the try, because anything that throws here
+         delays the app's own first paint. -->
+    <script>
+      try {
+        var t = (localStorage.getItem("mymacros.theme") || "").split(" ");
+        if (t[0] === "field-notes" || t[0] === "instrument") {
+          document.documentElement.dataset.theme = t[0];
+          document.querySelector('meta[name="color-scheme"]').content = "light";
+        }
+        if (t[1] === "gold" || t[1] === "mint") document.documentElement.dataset.accent = t[1];
+      } catch (e) {
+        /* private mode throws on read; the default in the tag above stands */
+      }
+    </script>
 
     <title>MyMacros</title>
     <meta
