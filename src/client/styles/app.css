@@ -15,14 +15,24 @@
 
 html {
   -webkit-text-size-adjust: 100%;
-  /* The canvas colour normally propagates up from <body>, which means it is
-     only settled once body's style is resolved. Stating it here paints the
-     document's own background at the earliest moment CSS can — the belt to
-     <meta name="color-scheme">'s braces in index.html, which is what covers
-     the frame before any CSS at all. --canvas rather than --bg-top because
-     this is the desktop letterbox surface; on phone widths body covers it
-     completely and only overscroll ever reveals it. */
-  background: var(--canvas);
+  /* **No background here, and that is load-bearing (#38).**
+   *
+   * A `background` on <html> becomes the canvas and *stops <body>'s from
+   * propagating*. #53 put `var(--canvas)` here as a belt to
+   * <meta name="color-scheme">'s braces, and measured on device it cost two
+   * things at once, because iOS reads the canvas at both ends of the screen:
+   *
+   *   - iOS Safari tinted its top chrome `--canvas` instead of `--bg-top`.
+   *     Sampled from a device screenshot: #0e1118, which is 1 off --canvas
+   *     and 24 off --bg-top. The field-tested blend was simply gone.
+   *   - The launch-time gap under the tab bar filled with --canvas too,
+   *     which happened to be dark enough to hide #38's band — so the band
+   *     looked fixed for the wrong reason.
+   *
+   * The canvas has to be ONE surface that is --bg-top at the top and --chrome
+   * at the bottom, which is exactly what body's gradient below is. Letting it
+   * propagate is what makes both ends right at once. The early-paint job it
+   * was added for belongs to the color-scheme meta, which does it properly. */
 }
 
 body {
@@ -49,8 +59,11 @@ body {
   justify-content: center;
 }
 
-/* iOS Safari paints its top chrome from the document background and ignores
-   theme-color in-browser (field-tested) — match the page top on phones.
+/* iOS Safari paints its top chrome from the CANVAS and ignores theme-color
+   in-browser (field-tested; the "canvas" half measured on device 2026-08-14,
+   see the html rule above). Because <html> declares no background, this one
+   propagates and *is* the canvas — so this single declaration decides both the
+   colour Safari tints its top bar and the colour behind the tab bar.
 
    The gradient's TOP STOP IS THE FIELD-TESTED VALUE and must stay --bg-top:
    Safari samples the top of this surface, so that half of the contract is
