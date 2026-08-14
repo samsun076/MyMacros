@@ -81,7 +81,32 @@ if (files.length === 0) {
   process.exit(1);
 }
 
-async function fullPageShot(cdp, sessionId, width) {
+/** In-flight request count for a session, as a live number.
+ *
+ *  The honest "is this screen finished" signal, and the third one this file has
+ *  needed: `settle()` sees fonts and two frames, `aria-busy` sees React mount,
+ *  and neither sees the screen's own `/api/*` fetch — Today renders its header
+ *  with `day === null` the instant it mounts, so a height measured then is a
+ *  page with no budget, no macros and no timeline on it. Which is exactly what
+ *  got shot: 812px, the viewport, header only.
+ *
+ *  A counter rather than CDP's `networkIdle` lifecycle event, because that
+ *  event may have already fired by the time anything subscribes and then never
+ *  comes again — a wait that hangs forever on the fast path. */
+function trackInflight(cdp, sessionId) {
+  const open = new Set();
+  cdp.on("Network.requestWillBeSent", (p) => open.add(p.requestId), sessionId);
+  for (const done of ["Network.loadingFinished", "Network.loadingFailed"]) {
+    cdp.on(done, (p) => open.delete(p.requestId), sessionId);
+  }
+  return {
+    count: () => open.size,
+    // A navigation starts a new page; ids from the old one never resolve.
+    reset: () => open.clear(),
+  };
+}
+
+async function fullPageShot(cdp, sessionId, width, inflight) {
   const setMetrics = (w, h) =>
     cdp.send(
       "Emulation.setDeviceMetricsOverride",
@@ -134,14 +159,28 @@ async function fullPageShot(cdp, sessionId, width) {
   })();
   if (!mounted) console.warn(`  ! ${width}px still aria-busy after 6s — shooting a loading state`);
 
+  /* Then wait for the screen's own fetches. Idle means zero in flight and
+     still zero a beat later, since one response commonly starts the next. */
+  let quiet = 0;
+  for (let i = 0; i < 80 && quiet < 3; i++) {
+    quiet = inflight?.count() === 0 ? quiet + 1 : 0;
+    await pause(60);
+  }
+  if (inflight && inflight.count() > 0) {
+    console.warn(`  ! ${width}px still has ${inflight.count()} request(s) in flight`);
+  }
+
   if (settleMs) await pause(settleMs);
 
-  /* Height stable across a real delay, not across two frames. */
+  /* Belt to the above: height stable across a real delay, not across two
+     frames. Three consecutive equal readings, because one equal pair is
+     satisfied by any pause between two renders. */
   let pageH = await measure();
-  for (let i = 0; i < 20; i++) {
+  let stable = 0;
+  for (let i = 0; i < 30 && stable < 3; i++) {
     await pause(120);
     const again = await measure();
-    if (again === pageH) break;
+    stable = again === pageH ? stable + 1 : 0;
     pageH = again;
   }
 
@@ -225,8 +264,12 @@ const cdp = await connect(wsUrl);
 try {
   const page = await openPage(cdp);
 
+  // Always on, not only when cookies are set: `fullPageShot` waits on the
+  // in-flight count to know a screen has finished fetching (#52).
+  await cdp.send("Network.enable", {}, page.sessionId);
+  const inflight = trackInflight(cdp, page.sessionId);
+
   if (cookies.length) {
-    await cdp.send("Network.enable", {}, page.sessionId);
     for (const c of cookies) {
       // scoped to the first input's origin — these are all one dev server
       await cdp.send(
@@ -256,9 +299,10 @@ try {
     for (const width of widths) {
       // a page that crashes on render never fires load or resolves fonts.ready
       // — fail with the URL rather than hanging the design loop
+      inflight.reset();
       await deadline(page.navigate(url), `navigate ${url}`);
       const { png, height } = await deadline(
-        fullPageShot(cdp, page.sessionId, width),
+        fullPageShot(cdp, page.sessionId, width, inflight),
         `render ${name}@${width}`,
       );
       const out = join(OUT_DIR, `${name}@${width}.png`);

@@ -58,7 +58,10 @@ export const api = {
   post: <T>(path: string, body: unknown) => request<T>("POST", path, body),
   postForm: <T>(path: string, form: FormData) => request<T>("POST", path, form),
   patch: <T>(path: string, body: unknown) => request<T>("PATCH", path, body),
-  del: <T>(path: string) => request<T>("DELETE", path),
+  /* A body on DELETE, because #52 deletes a *meal* and a meal is a set of row
+     ids — a path can carry one id, and the entry is never one row (#10). Legal
+     over fetch and read by Hono the same way POST's is. */
+  del: <T>(path: string, body?: unknown) => request<T>("DELETE", path, body),
 };
 
 /** Fetch-on-mount for read routes — the pattern every screen copies. Refetches

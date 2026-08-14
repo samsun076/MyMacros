@@ -1983,6 +1983,99 @@ section {
   gap: 8px;
 }
 
+/* ── swipe a timeline entry to reveal delete (#52) ──
+   The gesture is in the shared layer; only the panel's surface is theme
+   material, and it is drawn from `--danger`/`--on-danger` (build rule 9 —
+   never `--accent`, which rule 8 spends on the focus macro and which Night
+   Athletic switches live, so a delete affordance built on it would change
+   colour when you pick gold). */
+.swipe {
+  position: relative;
+  overflow: hidden;
+  border-radius: var(--radius-thumb);
+}
+
+/* One track carrying the row and, parked just past the right edge, the panel.
+   `.swipe`'s overflow clips it until the track moves — so nothing sits behind
+   the row, the row needs no background of its own, and a closed row looks
+   exactly as it did before this feature existed. Two earlier shapes were both
+   wrong and both looked plausible: a panel behind the row needed an opaque row
+   (a card appeared behind every entry), and removing that background showed the
+   trash can on all three rows at once. */
+.swipe-track {
+  display: flex;
+  transition: transform 0.18s cubic-bezier(0.2, 0.7, 0.2, 1);
+  /* Vertical panning stays the browser's; horizontal is ours. Without this,
+     iOS starts a scroll on the first horizontal pixel and the row never moves. */
+  touch-action: pan-y;
+}
+
+.swipe-body {
+  flex: 0 0 100%;
+}
+
+.swipe-panel {
+  flex: 0 0 88px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--danger);
+  color: var(--on-danger);
+  border-radius: var(--radius-thumb);
+}
+
+.swipe-panel svg {
+  stroke: currentColor;
+}
+
+/* The revealed strip is the hit area, not the small glyph inside it. */
+.swipe-hit {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+}
+
+/* Reachable by tab, invisible until then — a gesture is not an interface on
+   its own, and nothing behind a row can be dragged to by a keyboard. Shows
+   itself on focus rather than staying hidden, because a focused control you
+   cannot see is its own failure. */
+.vh-button {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+.vh-button:focus-visible {
+  position: static;
+  width: auto;
+  height: auto;
+  clip-path: none;
+  padding: 6px 10px;
+  margin-top: 6px;
+  background: var(--danger);
+  color: var(--on-danger);
+  border-radius: var(--radius-mark);
+  font-family: var(--body-font);
+  font-size: 12px;
+}
+
+/* The undo toast. Same surface as the save toast — this is the same kind of
+   thing said about the opposite event — with the action inline. */
+.toast-undo {
+  justify-content: space-between;
+  gap: 14px;
+}
+
 /* a stacked list of choices, each with a line of explanation */
 .opts {
   display: grid;

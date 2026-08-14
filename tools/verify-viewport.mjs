@@ -100,12 +100,34 @@ const PROBE = `(() => {
     }
     return bits.join(" > ");
   };
+  /* An element parked past the edge INSIDE a clipping ancestor is not an
+     overflow — it cannot be seen, scrolled to, or tapped. #52's swipe panel
+     lives exactly there: the row and the panel ride one track, and the panel
+     sits just beyond the right edge until the track slides it in, held back by
+     an overflow-hidden .swipe. Six screens failed this check the day that
+     landed, all of them correct.
+     (No backticks in this comment — it lives inside a template literal.)
+
+     The clip has to actually contain the element, so the ancestor's own right
+     edge must be inside the viewport — otherwise a scroller that is ITSELF
+     overflowing would hide everything inside it, which is the bug this file
+     exists to find. The tab bar case still fails as before: it is fixed and has
+     no clipping ancestor. */
+  const clipped = (el, vw) => {
+    for (let n = el.parentElement; n; n = n.parentElement) {
+      const o = getComputedStyle(n).overflowX;
+      if (o !== "visible" && Math.round(n.getBoundingClientRect().right) <= vw + 1) return true;
+    }
+    return false;
+  };
   const offenders = [];
   for (const el of document.querySelectorAll("*")) {
     const r = el.getBoundingClientRect();
     if (r.width === 0) continue;
     const past = Math.round(Math.max(r.right - vw, -r.left));
-    if (past > 1) offenders.push({ past, width: Math.round(r.width), path: path(el) });
+    if (past > 1 && !clipped(el, vw)) {
+      offenders.push({ past, width: Math.round(r.width), path: path(el) });
+    }
   }
   offenders.sort((a, b) => b.past - a.past || a.path.length - b.path.length);
   return { vw, scrollWidth: de.scrollWidth, offenders: offenders.slice(0, 8) };

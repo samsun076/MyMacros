@@ -188,6 +188,110 @@ describe("POST /api/food-logs — the reader's original numbers (#76)", () => {
   });
 });
 
+/** #52. Delete is the one route where getting the scope wrong destroys data
+ *  rather than leaking it, and undo is the one place a *correct* delete can
+ *  still end up telling a lie — see the `logged_at` tests. */
+describe("DELETE /api/food-logs — the swipe (#52)", () => {
+  const del = (body: unknown) =>
+    app.fetch(
+      new Request("https://fuel.debrief.run/api/food-logs", {
+        method: "DELETE",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      }),
+      env,
+    );
+
+  it("deletes every row of the meal, because an entry is a save and not a row", async () => {
+    const saved = await (await save({ ...meal(), items: [item(), item({ name: "Rice" })] })).json<FoodLogsCreated>();
+    expect(saved.logs).toHaveLength(2);
+
+    const res = await del({ ids: saved.logs.map((l) => l.id) });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ deleted: 2 });
+    expect(await rowCount()).toBe(0);
+  });
+
+  /** The scope lives on the DELETE itself. Another user's id matches nothing
+   *  rather than being caught by a check that could drift from the statement
+   *  it guards. */
+  it("cannot reach a row belonging to someone else", async () => {
+    const saved = await (await save(meal())).json<FoodLogsCreated>();
+    // A real second user: `food_logs.user_id` is a foreign key, so the row
+    // cannot be re-homed to an id nobody owns — which is itself the schema
+    // saying every row belongs to somebody.
+    const OTHER = "food-logs-other-user";
+    await env.DB.prepare("DELETE FROM users WHERE id = ?").bind(OTHER).run();
+    await env.DB.prepare(
+      "INSERT INTO users (id, name, email, emailVerified, createdAt, updatedAt) VALUES (?, ?, ?, 0, ?, ?)",
+    )
+      .bind(OTHER, "Other", `${OTHER}@example.com`, "2026-08-10T00:00:00.000Z", "2026-08-10T00:00:00.000Z")
+      .run();
+    await env.DB.prepare("UPDATE food_logs SET user_id = ? WHERE id = ?")
+      .bind(OTHER, saved.logs[0]!.id)
+      .run();
+
+    const res = await del({ ids: [saved.logs[0]!.id] });
+    expect(res.status).toBe(404);
+
+    const survivor = await env.DB.prepare("SELECT user_id FROM food_logs WHERE id = ?")
+      .bind(saved.logs[0]!.id)
+      .first<{ user_id: string }>();
+    expect(survivor?.user_id).toBe("food-logs-other-user");
+  });
+
+  /** The undo toast is shown on the strength of this response, so "deleted
+   *  nothing" must not read as "deleted it" — the ordinary way here is a
+   *  double-tap through a slow network. */
+  it("answers 404 rather than 200 when nothing matched", async () => {
+    expect((await del({ ids: ["no-such-id"] })).status).toBe(404);
+  });
+
+  it("refuses a malformed or unbounded id list", async () => {
+    for (const bad of [{}, { ids: [] }, { ids: "abc" }, { ids: [1, 2] }, { ids: Array(51).fill("x") }]) {
+      expect((await del(bad)).status, JSON.stringify(bad)).toBe(400);
+    }
+  });
+});
+
+/** #52's undo, and the reason it needs a route change at all. */
+describe("POST /api/food-logs — restoring an entry's own instant (#52)", () => {
+  it("stamps the supplied instant on every row instead of now", async () => {
+    const at = "2026-08-10T11:10:00.000Z";
+    const saved = await (
+      await save({ ...meal(), logged_at: at, items: [item(), item({ name: "Rice" })] })
+    ).json<FoodLogsCreated>();
+
+    expect(saved.logs.map((l) => l.logged_at)).toEqual([at, at]);
+  });
+
+  /** `foldMeals` groups by string equality on this column, so an instant that
+   *  is valid but differently spelled would split one restored meal into two
+   *  timeline entries. */
+  it("normalises the instant it stores", async () => {
+    const saved = await (
+      await save({ ...meal(), logged_at: "2026-08-10T11:10:00+00:00" })
+    ).json<FoodLogsCreated>();
+    expect(saved.logs[0]!.logged_at).toBe("2026-08-10T11:10:00.000Z");
+  });
+
+  it("stamps now when undo isn't the caller", async () => {
+    const before = Date.now();
+    const saved = await (await save(meal())).json<FoodLogsCreated>();
+    expect(Date.parse(saved.logs[0]!.logged_at)).toBeGreaterThanOrEqual(before);
+  });
+
+  /** A bad instant must fail loudly, not write "Invalid Date" into the column
+   *  the timeline sorts on. */
+  it("refuses an instant it cannot parse", async () => {
+    for (const bad of ["2026", "yesterday", "2026-08-10", 1_760_000_000, "2026-13-45T00:00:00Z"]) {
+      const res = await save({ ...meal(), logged_at: bad });
+      expect(res.status, JSON.stringify(bad)).toBe(400);
+    }
+    expect(await rowCount()).toBe(0);
+  });
+});
+
 async function rowCount() {
   const row = await env.DB.prepare("SELECT COUNT(*) AS n FROM food_logs WHERE user_id = ?")
     .bind(USER)

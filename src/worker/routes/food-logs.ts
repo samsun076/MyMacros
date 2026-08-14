@@ -3,7 +3,7 @@ import type { FoodLogCreate, FoodLogsCreated, RecentsResponse } from "../../shar
 import { foldMeals } from "../../shared/meals";
 import { ownedPhotoKey } from "../photos";
 import type { AppEnv } from "../types";
-import { isDay, isNum, oneOf } from "../validate";
+import { isDay, isInstant, isNum, oneOf } from "../validate";
 
 const foodLogs = new Hono<AppEnv>();
 
@@ -98,7 +98,27 @@ foodLogs.post("/", async (c) => {
     return c.json({ error: "items_required" }, 400);
   }
 
+  /* Normally the instant of the save. Undo supplies the original instead (#52).
+   *
+   * `logged_at` is what `foldMeals` groups a meal by, and since #80 the
+   * timeline renders newest first — so an undo that re-stamped to now would
+   * put a restored breakfast at the top of the day, above dinner, claiming you
+   * ate it just now. The undo would visibly lie about the thing it was undoing.
+   *
+   * Client-supplied, which is consistent rather than new: `logged_on` has come
+   * from the client since #44 because the device owns the local day. Nothing
+   * here is a privilege — a user can already log any food to any day of their
+   * own; this only decides where within one day it sits. Refused unless it
+   * parses as a real instant, so a malformed undo fails loudly instead of
+   * writing "Invalid Date" into a column the timeline sorts on. */
+  const restored = body.logged_at === undefined ? null : isInstant(body.logged_at);
+  if (body.logged_at !== undefined && !restored) {
+    return c.json({ error: "invalid_fields", fields: ["logged_at"] }, 400);
+  }
   const now = new Date().toISOString();
+  // The rows' instant. `now` stays the real one — it also stamps
+  // profiles.updated_at below, which must not be back-dated by an undo.
+  const loggedAt = restored ?? now;
   const rows = [];
   for (const item of body.items) {
     const name = typeof item?.name === "string" ? item.name.trim().slice(0, 120) : "";
@@ -144,7 +164,7 @@ foodLogs.post("/", async (c) => {
       id: crypto.randomUUID(),
       user_id: c.var.user.id,
       logged_on: loggedOn,
-      logged_at: now,
+      logged_at: loggedAt,
       meal_slot: mealSlot,
       name,
       kcal,
@@ -201,6 +221,50 @@ foodLogs.post("/", async (c) => {
     .execute();
 
   return c.json<FoodLogsCreated>({ logs }, 201);
+});
+
+/** DELETE /api/food-logs (#52): remove one timeline entry.
+ *
+ *  **An entry is a save, not a row.** One meal is every row sharing a
+ *  `logged_at` instant (#10's grouping convention), so the client sends the id
+ *  list it already holds from `/api/day` and the whole group goes at once.
+ *  Per-item deletion belongs to a future edit sheet, not to a gesture with one
+ *  possible outcome.
+ *
+ *  **`user_id` is on the DELETE itself, not checked before it.** The ids come
+ *  from the request, so the scope has to be part of the statement that does the
+ *  work — a "does this belong to them" read followed by an unscoped delete is
+ *  two statements that can disagree, and this is the one route where the
+ *  disagreement destroys data. Someone else's id simply matches nothing.
+ *
+ *  Deletion recomputes nothing: the day's totals are summed from the rows on
+ *  read, and #44's set-once rules are about `logged_on`, which no longer
+ *  exists for a deleted row. There is no interaction with the budget engine.
+ */
+foodLogs.delete("/", async (c) => {
+  const body = await c.req.json<{ ids?: unknown }>().catch(() => null);
+  const ids = Array.isArray(body?.ids) ? body.ids.filter((v) => typeof v === "string") : [];
+  if (!ids.length || ids.length !== (body?.ids as unknown[]).length) {
+    return c.json({ error: "invalid_fields", fields: ["ids"] }, 400);
+  }
+  // A gesture deletes one meal. A list this long is a client bug or a probe,
+  // and either way is not something to run unbounded against the table.
+  if (ids.length > 50) return c.json({ error: "too_many_ids" }, 400);
+
+  const result = await c.var.db
+    .deleteFrom("food_logs")
+    .where("user_id", "=", c.var.user.id)
+    .where("id", "in", ids)
+    .executeTakeFirst();
+
+  const deleted = Number(result?.numDeletedRows ?? 0);
+  /* 404 on nothing deleted, and it is not pedantry: the undo toast is shown on
+     the strength of this response, so "deleted nothing" must not read as
+     "deleted it". A double-tap through a slow network is the ordinary way
+     here. */
+  if (!deleted) return c.json({ error: "not_found" }, 404);
+
+  return c.json({ deleted });
 });
 
 export default foodLogs;

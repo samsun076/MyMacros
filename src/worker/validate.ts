@@ -24,6 +24,25 @@ export function isDay(v: unknown) {
   return typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : undefined;
 }
 
+/** An ISO-8601 instant, normalised to the form the app stores (#52).
+ *
+ *  Returns the *round-tripped* string rather than the input, so a valid but
+ *  differently-spelled instant ("2026-08-14T11:10:00+00:00", or one with
+ *  milliseconds omitted) lands in the column looking like every other row —
+ *  `foldMeals` groups meals by string equality on this value, so two spellings
+ *  of one instant would silently split a restored meal into two entries.
+ *
+ *  `Date.parse` alone is too permissive: it accepts "2026" and, in V8, plenty
+ *  of loose formats. Requiring the shape first is what makes this a validator
+ *  rather than a coercion. */
+export function isInstant(v: unknown) {
+  if (typeof v !== "string" || !/^\d{4}-\d{2}-\d{2}T[\d:.]+(Z|[+-]\d{2}:?\d{2})$/.test(v)) {
+    return undefined;
+  }
+  const ms = Date.parse(v);
+  return Number.isNaN(ms) ? undefined : new Date(ms).toISOString();
+}
+
 export function oneOf<T extends string>(allowed: readonly T[]) {
   return (v: unknown) => (typeof v === "string" && allowed.includes(v as T) ? (v as T) : undefined);
 }

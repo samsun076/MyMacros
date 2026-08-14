@@ -1,12 +1,13 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { Link, useLocation } from "react-router";
-import type { DayResponse, DayRun, MealSlot, Me, Units } from "../../shared/api";
+import type { DayResponse, DayRun, FoodLog, MealSlot, Me, Units } from "../../shared/api";
 import { macroTargets } from "../../shared/budget";
 import { foldMeals } from "../../shared/meals";
-import { useApi } from "../lib/api";
+import { ApiError, api, useApi } from "../lib/api";
 import { localDay } from "../lib/day";
 import { fmtInt } from "../lib/format";
 import { timelineView } from "../lib/timeline";
+import { SwipeToDelete } from "../components/SwipeToDelete";
 import { useActiveMotifs } from "../motifs";
 import type { BudgetData } from "../motifs/types";
 
@@ -42,11 +43,14 @@ type Entry = {
   /** R2 key when the meal was photographed (#13) — the thumb shows the food
    *  itself instead of the slot glyph. */
   photoKey: string | null;
+  /** The rows this entry folded from — what a delete removes and an undo
+   *  restores (#52). */
+  rows: FoodLog[];
 };
 
 export function Today() {
   const today = localDay();
-  const { data: day } = useApi<DayResponse>(`/api/day/${today}`);
+  const { data: day, reload: reloadDay } = useApi<DayResponse>(`/api/day/${today}`);
   const { data: me } = useApi<Me>("/api/me");
   const location = useLocation();
   const logged =
@@ -112,16 +116,28 @@ export function Today() {
           c: Math.round(meal.carbs_g),
           f: Math.round(meal.fat_g),
           photoKey: meal.rows.find((r) => r.photo_key)?.photo_key ?? null,
+          // Everything undo needs to put this exact meal back (#52). Held
+          // rather than refetched because by the time undo is tapped the row
+          // is gone from the server — the client is the only place it still
+          // exists.
+          rows: meal.rows,
         }),
       ),
     [day],
   );
 
+  const del = useDeleteEntry(reloadDay);
+
   /* Render order and header span, computed together (#80). `entries` stays
-     chronological — that is what the span reads. */
+     chronological — that is what the span reads.
+
+     The just-deleted entry is filtered out *before* this, so the header span
+     and the fresh index are both computed over what is actually on screen —
+     a deleted 7:10 AM breakfast must stop being the left end of "7:10A —
+     7:10P" the moment it leaves the list, not when the refetch lands. */
   const timeline = useMemo(
-    () => timelineView(entries, logged !== null),
-    [entries, logged],
+    () => timelineView(entries.filter((e) => e.id !== del.undoable?.id), logged !== null),
+    [entries, logged, del.undoable],
   );
 
   /* Macro targets, from the ADJUSTED total (sketch: 82 / 165 g) — but only
@@ -193,7 +209,25 @@ export function Today() {
         </div>
       )}
 
-      {logged && (
+      {/* #52's undo, and it replaces the confirm dialog rather than joining it:
+          a one-gesture destructive action that then asks "are you sure?" has
+          given back the speed that justified the gesture. The row is already
+          gone from the server here — undo re-posts it. */}
+      {del.undoable && (
+        <div className="toast toast-undo" role="status">
+          {slotLabel(del.undoable.slot)} deleted
+          <button type="button" className="btn-text" onClick={() => void del.undo()}>
+            Undo
+          </button>
+        </div>
+      )}
+      {del.error && (
+        <p className="signin-error" role="alert">
+          {del.error}
+        </p>
+      )}
+
+      {logged && !del.undoable && (
         <div className="toast" role="status">
           <svg width="18" height="18" viewBox="0 0 18 18" fill="none" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M3 9.5l4 4 8-9" />
@@ -277,6 +311,18 @@ export function Today() {
                 const fresh = entry.fresh;
                 return (
                   <TimelineRow key={entry.id} when={entry.when} fresh={fresh}>
+                    <SwipeToDelete
+                      label={`${slotLabel(entry.slot)}, ${entry.desc}`}
+                      onDelete={() => void del.remove(entry)}
+                      /* DEV-only stage for the state shot-matrix cannot reach
+                         with a gesture (#52). First row only — a whole list
+                         hanging open is not a state the app ever has. */
+                      initiallyOpen={
+                        import.meta.env.DEV &&
+                        window.location.hash === "#swiped" &&
+                        entry.id === timeline.rows[0]?.id
+                      }
+                    >
                     <div className="meal">
                       {entry.photoKey ? (
                         <span className="thumb">
@@ -306,6 +352,7 @@ export function Today() {
                         <small>kcal</small>
                       </div>
                     </div>
+                    </SwipeToDelete>
                   </TimelineRow>
                 );
               })}
@@ -336,6 +383,88 @@ function clock12(iso: string) {
 
 function slotLabel(slot: MealSlot) {
   return slot.charAt(0).toUpperCase() + slot.slice(1);
+}
+
+/** Delete an entry, with undo instead of a confirm (#52).
+ *
+ *  **Undo replaces the dialog, it doesn't accompany it.** A one-gesture
+ *  destructive action that then asks "are you sure?" has spent the speed that
+ *  justified the gesture; the native idiom is to do it and offer the way back.
+ *
+ *  The entry is removed from the screen the moment the server confirms, and
+ *  held in `undoable` — which is both the toast's subject and the filter that
+ *  keeps the row out of the list. One piece of state, so the row cannot linger
+ *  after the toast or vanish before it.
+ *
+ *  **Undo re-posts with the entry's own `logged_at`.** Since #80 the timeline
+ *  renders newest first, so a restore stamped `now` would drop a breakfast in
+ *  above dinner — an undo that visibly lies about what it undid. The ids are
+ *  not reused: the rows are gone, and a fresh id for a fresh row is the honest
+ *  description of what happened.
+ *
+ *  The toast has no timer. A disappearing undo is a race against reading, and
+ *  the next thing that clears it is the next thing you do — which is the same
+ *  moment you have stopped caring about the meal you just deleted.
+ */
+function useDeleteEntry(reload: () => void) {
+  const [undoable, setUndoable] = useState<Entry | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  async function remove(entry: Entry) {
+    setError(null);
+    try {
+      await api.del(`/api/food-logs`, { ids: entry.rows.map((r) => r.id) });
+      setUndoable(entry);
+      reload();
+    } catch (err) {
+      setError(
+        err instanceof ApiError && err.code === "network"
+          ? "Couldn't reach the server — nothing was deleted."
+          : "That didn't delete. Try again in a moment.",
+      );
+    }
+  }
+
+  async function undo() {
+    const entry = undoable;
+    if (!entry) return;
+    setUndoable(null);
+    setError(null);
+    try {
+      const first = entry.rows[0]!;
+      await api.post("/api/food-logs", {
+        logged_on: first.logged_on,
+        logged_at: first.logged_at,
+        meal_slot: first.meal_slot,
+        source: first.source,
+        ...(first.photo_key ? { photo_key: first.photo_key } : {}),
+        ...(first.barcode ? { barcode: first.barcode } : {}),
+        items: entry.rows.map((r) => ({
+          name: r.name,
+          kcal: r.kcal,
+          protein_g: r.protein_g,
+          carbs_g: r.carbs_g,
+          fat_g: r.fat_g,
+          confidence: r.confidence,
+          // #76's columns are the reader's ORIGINAL numbers, so they travel
+          // with the row rather than being re-derived — a restored meal that
+          // forgot them would look like one nobody ever corrected.
+          edited: r.edited > 0,
+          ai_kcal: r.ai_kcal,
+          ai_protein_g: r.ai_protein_g,
+          ai_carbs_g: r.ai_carbs_g,
+          ai_fat_g: r.ai_fat_g,
+        })),
+      });
+      reload();
+    } catch {
+      // The row is gone and the undo failed, which is the one state here with
+      // no way back — say so plainly rather than leaving a silent gap.
+      setError("Couldn't put that back. It's still deleted.");
+    }
+  }
+
+  return { undoable, remove, undo, error };
 }
 
 /** The sketch's three food glyphs, keyed by slot (breakfast bowl, plate,

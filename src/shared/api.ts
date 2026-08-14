@@ -185,6 +185,13 @@ export type FoodLogItemInput = {
 export type FoodLogCreate = {
   /** Device-local date (#44) — the client owns the day boundary. */
   logged_on: string;
+  /** The instant to stamp on every row, for **undo only** (#52).
+   *
+   *  Omitted on a normal save, which stamps now. An undo restores the entry's
+   *  original instant instead: `logged_at` is what folds rows into one meal,
+   *  and since #80 the timeline renders newest first — so re-stamping would
+   *  put a restored breakfast above dinner, claiming you ate it just now. */
+  logged_at?: string;
   /** Device IANA timezone, mirrored into profiles.timezone (#44). */
   timezone?: string;
   meal_slot: MealSlot;
