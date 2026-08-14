@@ -660,33 +660,44 @@ section {
   padding: 9px 0;
 }
 
+/* Centred against its row, not top-anchored (#80).
+   The rail is **not time-proportional** — two entries both at 6:55 AM sit as
+   far apart as 8:27 and 11:56, because this is a decorated list and not a
+   time axis. Top-aligning a label buys nothing on a non-axis and costs the
+   pairing between a time and the row it names. With the node dot gone there
+   is also nothing left at `top: 18px` for it to align to. */
 .entry .when {
   font-family: var(--data-font);
   font-size: 10px;
   color: var(--ink-muted);
   letter-spacing: 0.02em;
   text-align: right;
-  padding-top: 4px;
+  align-self: center;
   white-space: nowrap;
 }
 
-.entry::after {
-  content: "";
-  position: absolute;
-  left: 59.5px;
-  top: 18px;
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--bg);
-  border: 1.5px solid var(--ink-muted);
-}
+/* **The node dots are gone (#80), and their absence is the point.**
 
-.entry.run::after,
-.entry.fresh::after {
-  background: var(--accent);
-  border-color: var(--accent);
-}
+   `.entry::after` drew a 6px dot at left: 59.5px, so it occupied 59.5→65.5.
+   The fresh wash's inset accent bar starts at 66px (content column at 50px +
+   26px gap, less the card's 10px negative margin). **A 0.5px gap** — and on a
+   fresh entry both were `--accent`, because `.entry.fresh::after` filled the
+   dot too. The just-saved state therefore drew two accent marks half a pixel
+   apart, both meaning the same thing, which reads as a rendering fault rather
+   than as emphasis.
+
+   The rail is what gives the timeline its structure; the dots were the
+   collision. Removing them leaves the fresh state with exactly one accent
+   mark — the card's inset bar, which is the stronger of the two because it is
+   attached to the thing it describes.
+
+   **What this forecloses**, recorded because it is a real cost: `.entry.run`
+   had no treatment other than an accent dot, and the frozen sketch designs a
+   run row (c2-night-athletic.html opens the day with `<div class="entry run">`
+   at 6:04 AM). The app has never rendered one, so this costs nothing today —
+   but a run row now needs a different mark, and change 1 above would put a
+   morning run at the bottom of the list regardless. This narrows motif slot 4
+   to the rail alone; design/TOKENS.md records that. */
 
 /* the just-saved wash (sketch: e-log-flow .entry.fresh) */
 .entry.fresh .meal {
@@ -710,10 +721,6 @@ section {
 
   .tl::before {
     left: 47px;
-  }
-
-  .entry::after {
-    left: 44.5px;
   }
 }
 

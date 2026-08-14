@@ -60,9 +60,21 @@ variants** (placeholder variants OK until the M5 port, per build rule 3):
    extension, never one merged number.
 3. **Log button** — Night Athletic: 58px rounded-square accent button lifted
    above the tab bar. Light themes restyle shape/shadow per their material.
-4. **Timeline row chrome** — rail, node dots, and the run card's elevation
-   treatment. Night Athletic: hairline rail at a fixed inset, accent dot for
-   the run, gradient card. Rail narrows below 390px (see sketch).
+4. **Timeline row chrome** — the rail and the run card's elevation treatment.
+   Night Athletic: hairline rail at a fixed inset, gradient card. Rail narrows
+   below 390px (see sketch).
+   **Narrowed by #80: no node dots.** The slot read "rail, node dots, accent
+   run dot" until the dot was measured against the just-saved wash — the dot
+   occupied 59.5→65.5px and the wash's inset accent bar starts at 66px, a
+   0.5px gap, with *both* drawn in `--accent` on a fresh entry. Two accent
+   marks half a pixel apart, meaning the same thing, read as a rendering
+   fault. The rail carries the structure; the dot was the collision.
+   This is a change to frozen ground truth and every theme pack inherits it:
+   the sketches still draw dots and a run row marked by an accent dot
+   (c2-night-athletic.html), and a pack must **not** port either. A run row,
+   if one is ever built, needs a mark that isn't a dot — and the newest-first
+   order #80 also introduced would place a morning run at the bottom of the
+   day regardless, so that design is open rather than merely unported.
 
 ## Cross-theme conventions
 

@@ -92,34 +92,64 @@ async function fullPageShot(cdp, sessionId, width) {
   await settle(cdp, sessionId);
   if (settleMs) await new Promise((r) => setTimeout(r, settleMs));
 
-  const measure = async () => {
+  const evalIn = async (expression) => {
     const { result } = await cdp.send(
       "Runtime.evaluate",
-      { expression: "document.documentElement.scrollHeight", returnByValue: true },
+      { expression, returnByValue: true },
       sessionId,
     );
-    return Math.min(result.value, 6000);
+    return result.value;
   };
+  const measure = async () => Math.min(await evalIn("document.documentElement.scrollHeight"), 6000);
+  const pause = (ms) => new Promise((r) => setTimeout(r, ms));
 
-  /* Measure, resize, measure AGAIN — and keep going while it grows (#29).
+  /* **Wait for the app, then for its data, then shoot** (#29, #80).
    *
-   * This used to measure once and shoot. `settle()` waits for fonts and two
-   * frames, both of which happen long before a screen's own `/api/*` fetch
-   * lands, so a section that only exists once the data arrives was measured
-   * as absent and then **silently cropped out of the bottom of the PNG**.
-   * Caught on Settings, where the accent picker renders only for a loaded
-   * profile: 375 came out 1932px and stopped mid-page while 390, shot second
-   * against a warm cache, was 2248px and complete. Nothing failed. The design
-   * loop would simply have been reviewing a page with its end cut off, and
-   * only the one width that lost the race.
+   * This used to measure `scrollHeight` once and shoot at that height.
+   * `settle()` waits for `document.fonts.ready` and two frames — both of which
+   * happen long before React mounts, let alone before a screen's own `/api/*`
+   * fetch lands — so whatever had not rendered yet was **silently cropped off
+   * the bottom of the PNG**. Nothing failed; the design loop simply reviewed a
+   * page with its end cut off, on whichever width lost the race.
    *
-   * Growing the viewport can also legitimately change the height — a
-   * `min-height: 100vh` or a sticky footer resolves against the new box — so
-   * one extra pass would not be enough either. Loop until it stops moving. */
+   * Two separate misses, and the first fix only caught the second:
+   *
+   *   - Settings at 375 came out 1932px and stopped mid-page while 390, shot
+   *     second against a warm cache, was complete at 2248px. Late data.
+   *   - Today came out 812px — exactly the viewport — because the *app* had
+   *     not mounted at all. A grow-loop cannot see that: the height is stable,
+   *     it is stable at the boot skeleton's.
+   *
+   * So the signal is the skeleton's own `aria-busy`, which index.html and
+   * App.tsx both already set while the session is pending, followed by a
+   * height that stops moving across a real delay rather than across two
+   * frames. Neither is app code added for the tool's benefit — both already
+   * existed and say exactly what is needed. */
+  const mounted = await (async () => {
+    for (let i = 0; i < 60; i++) {
+      if (!(await evalIn(`!!document.querySelector('[aria-busy="true"]')`))) return true;
+      await pause(100);
+    }
+    return false;
+  })();
+  if (!mounted) console.warn(`  ! ${width}px still aria-busy after 6s — shooting a loading state`);
+
+  if (settleMs) await pause(settleMs);
+
+  /* Height stable across a real delay, not across two frames. */
   let pageH = await measure();
+  for (let i = 0; i < 20; i++) {
+    await pause(120);
+    const again = await measure();
+    if (again === pageH) break;
+    pageH = again;
+  }
+
+  /* Grow the viewport to full content height so fixed chrome lands at the true
+   * bottom — like the page seen end to end. That itself can change the height
+   * (a `min-height: 100vh`, a sticky footer resolving against the new box), so
+   * re-measure and repeat while it moves. */
   for (let i = 0; i < 5; i++) {
-    // grow the viewport to full content height so fixed chrome lands at the
-    // true bottom — like the page seen end-to-end
     await setMetrics(width, pageH);
     await settle(cdp, sessionId);
     const again = await measure();

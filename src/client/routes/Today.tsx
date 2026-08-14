@@ -6,6 +6,7 @@ import { foldMeals } from "../../shared/meals";
 import { useApi } from "../lib/api";
 import { localDay } from "../lib/day";
 import { fmtInt } from "../lib/format";
+import { timelineView } from "../lib/timeline";
 import { activeMotifs } from "../motifs";
 import type { BudgetData } from "../motifs/types";
 
@@ -28,6 +29,9 @@ import type { BudgetData } from "../motifs/types";
 type LoggedToast = { slot: MealSlot; kcal: number; ms: number; edited: number };
 
 type Entry = {
+  /** `logged_at|meal_slot` — `foldMeals`' own grouping key, so it names the
+   *  same thing the fold does. */
+  id: string;
   when: string;
   slot: MealSlot;
   desc: string;
@@ -47,10 +51,24 @@ export function Today() {
   const location = useLocation();
   const logged =
     (location.state as { logged?: LoggedToast } | null)?.logged ??
-    // DEV-only: /#saved shows the toast for shot-matrix, mirroring the
-    // sketch's hash stages. Compiled out of production builds.
-    (import.meta.env.DEV && window.location.hash === "#saved"
-      ? { slot: "lunch" as MealSlot, kcal: 545, ms: 8400, edited: 1 }
+    /* DEV-only: /#saved shows the toast for shot-matrix, mirroring the
+       sketch's hash stages. Compiled out of production builds.
+
+       The slot and kcal come from the newest log rather than being fabricated
+       (#80). They used to read `lunch, 545` while the `.fresh` wash landed on
+       whatever was actually newest, so the stage showed a toast naming one
+       meal beside a highlight on another — and this is now the *only* way to
+       review the fresh state, which is the state #80 reordered the list for.
+       A QA fixture that contradicts itself teaches you to distrust the
+       screenshot. The timings stay invented; nothing here has ever measured
+       one. */
+    (import.meta.env.DEV && window.location.hash === "#saved" && day?.logs.length
+      ? {
+          slot: day.logs[day.logs.length - 1]!.meal_slot,
+          kcal: Math.round(day.logs[day.logs.length - 1]!.kcal),
+          ms: 8400,
+          edited: 1,
+        }
       : null);
   const { BudgetMeter, EarnedNote, TimelineRow } = activeMotifs();
 
@@ -79,6 +97,13 @@ export function Today() {
     () =>
       foldMeals(day?.logs ?? []).map(
         (meal): Entry => ({
+          /* `foldMeals` groups on exactly this pair, so it identifies a meal
+             for as long as the fold does. A React key had been the array
+             index, which stops being stable the moment the list renders
+             newest-first (#80): every save prepends, so every row's key
+             shifts by one and React remounts the whole timeline — including
+             the photo it just finished loading. */
+          id: `${meal.logged_at}|${meal.meal_slot}`,
           when: clock12(meal.logged_at),
           slot: meal.meal_slot,
           desc: meal.name,
@@ -90,6 +115,13 @@ export function Today() {
         }),
       ),
     [day],
+  );
+
+  /* Render order and header span, computed together (#80). `entries` stays
+     chronological — that is what the span reads. */
+  const timeline = useMemo(
+    () => timelineView(entries, logged !== null),
+    [entries, logged],
   );
 
   /* Macro targets, from the ADJUSTED total (sketch: 82 / 165 g) — but only
@@ -229,7 +261,7 @@ export function Today() {
         <section>
           <div className="sec-head">
             <span className="eyebrow">Timeline</span>
-            <span className="mono">{timeSpan(entries)}</span>
+            <span className="mono">{timeline.span}</span>
           </div>
           {entries.length === 0 ? (
             <p className="placeholder-note">
@@ -237,10 +269,14 @@ export function Today() {
             </p>
           ) : (
             <div className="tl">
-              {entries.map((entry, i) => {
-                const fresh = logged !== null && i === entries.length - 1;
+              {/* Newest first, and the header still reads earliest → latest.
+                  Both come out of `timelineView` together (#80) so the screen
+                  never holds a reversed list it could read positionally by
+                  mistake — see lib/timeline.ts for the two traps. */}
+              {timeline.rows.map((entry) => {
+                const fresh = entry.fresh;
                 return (
-                  <TimelineRow key={i} when={entry.when} fresh={fresh}>
+                  <TimelineRow key={entry.id} when={entry.when} fresh={fresh}>
                     <div className="meal">
                       {entry.photoKey ? (
                         <span className="thumb">
@@ -296,15 +332,6 @@ function runLabel(run: DayRun, units: Units) {
 
 function clock12(iso: string) {
   return new Date(iso).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
-}
-
-/** "6:04A — 3:05P" — the sec-head span (sketch's compressed meridian). */
-function timeSpan(entries: Entry[]) {
-  if (entries.length === 0) return "—";
-  const compress = (when: string) => when.replace(" AM", "A").replace(" PM", "P");
-  const first = compress(entries[0]!.when);
-  const last = compress(entries[entries.length - 1]!.when);
-  return entries.length === 1 ? first : `${first} — ${last}`;
 }
 
 function slotLabel(slot: MealSlot) {
