@@ -1,9 +1,10 @@
-/** TODO(#30): real Instrument variants land with the M5 theme port — the
- *  Braun-style SVG tape meter, machined-groove earned mark, push-button log
- *  button. Until then these placeholders re-export Night Athletic so the
- *  MotifSet type is satisfied; they do NOT make the theme work — its token
- *  pack in design/tokens.css is also #30's job. */
-export { BudgetMeter } from "../night-athletic/BudgetMeter";
-export { EarnedNote } from "../night-athletic/EarnedNote";
-export { LogButton } from "../night-athletic/LogButton";
-export { TimelineRow } from "../night-athletic/TimelineRow";
+/** Instrument's four motif variants (#30, build rule 3).
+ *
+ *  These were placeholders re-exporting Night Athletic until the pack landed;
+ *  the token pack in design/tokens.css is the other half, and the CSS the
+ *  variants reach for lives in styles/themes.css.
+ */
+export { BudgetMeter } from "./BudgetMeter";
+export { EarnedNote } from "./EarnedNote";
+export { LogButton } from "./LogButton";
+export { TimelineRow } from "./TimelineRow";

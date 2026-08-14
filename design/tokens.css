@@ -277,5 +277,89 @@
 }
 
 /* ── Instrument (#30) ─ ground truth sketches/b2-instrument.html ──
- * Bone paper, machined Braun-style dial. Ported in the next commit.
+ *
+ * Bone paper and a machined Braun dial: warm near-black ink, engineered
+ * orange, one dark material for the chrome, and everything measured. Where
+ * Field Notes is a hand on paper, this is a milled panel.
+ *
+ * **The meter is ported as a treatment, not as markup.** The sketch draws its
+ * dial as an SVG on a fixed 350-unit grid — numerals at x=70.3, 140.6, 210.8,
+ * ticks every 500 kcal, a needle at x=172. None of that survives 375 → 428, or
+ * a budget that isn't 2,490. The recessed channel, the hatched earned zone
+ * inside it, the machined ink fill and the needle are all reproduced in CSS
+ * against percentages instead. Same object, actual widths.
+ *
+ * `--danger` carries the same tension Field Notes has, for the same reason:
+ * the accent is already an orange-red, so an alert colour has to be a deeper
+ * crimson that will not separate from it under deuteranopia. TOKENS.md's
+ * standing requirement — every `--danger` use sign-carrying and labelled — is
+ * what carries it. `--positive` is again an extrapolation; the sketch has none.
  */
+:root[data-theme="instrument"] {
+  color-scheme: light;
+
+  /* ── surfaces ─ bone paper on a deeper bone desk ── */
+  --canvas: #e6e0d0;            /* the desk the panel sits on */
+  --bg-top: #f3eee2;            /* warm bone — precision, not coldness */
+  --bg: #f3eee2;
+  --bg-bottom: #f3eee2;
+  --page-surface: var(--bg);
+
+  --surface: #ece6d6;           /* the sketch's thumbnail plates */
+  --surface-raised: #fbf8f0;    /* the only true light on the panel */
+  --viewfinder-surface: linear-gradient(180deg, #1b1712 0%, #14110c 100%);
+  --chrome: #1b1712;            /* "the one dark material" */
+  --on-chrome: rgba(243, 238, 226, 0.55);
+  --on-chrome-active: #f3eee2;
+  --track: #e7e1cf;
+  --line: rgba(28, 24, 18, 0.13);
+  --line-soft: rgba(28, 24, 18, 0.06);
+
+  /* ── ink ─ warm near-black ── */
+  --ink: #1c1812;
+  --ink-secondary: #5e574a;
+  --ink-muted: #97907f;
+
+  /* ── data marks ── */
+  --mark-neutral: #9a9382;
+  --positive: #3a6b4f;
+  --danger: #8e1512;
+  --on-danger: #f3eee2;
+
+  /* ── accent ─ engineered orange, and it does not switch ── */
+  --accent: #bc4a0a;
+  --accent-soft: rgba(188, 74, 10, 0.45);
+  --accent-wash: rgba(188, 74, 10, 0.12);
+  --accent-glow: rgba(188, 74, 10, 0.04);
+  --on-accent: #f3eee2;
+
+  /* ── type ── */
+  --display-font: "Instrument Sans", -apple-system, system-ui, sans-serif;
+  --body-font: "Instrument Sans", -apple-system, system-ui, sans-serif;
+  --numeral-font: "Fragment Mono", ui-monospace, monospace;
+  --data-font: "Fragment Mono", ui-monospace, monospace;
+
+  /* ── shape ─ machined: small radii, nothing soft ── */
+  --radius-card: 3px;
+  --radius-thumb: 2px;
+  --radius-button: 4px;
+  --radius-mark: 2px;
+
+  /* The log button's ring stack is the sketch's, verbatim: a lit top edge, a
+     paper gap, a machined outer ring, then a short drop. */
+  --shadow-lift:
+    inset 0 1px 0 rgba(255, 255, 255, 0.28),
+    0 0 0 2px var(--bg-top),
+    0 0 0 3px #d2cbb6,
+    0 4px 10px -3px rgba(40, 32, 18, 0.4);
+  --shadow-card: 0 1px 2px rgba(40, 32, 18, 0.1);
+  --shadow-sheet: 0 -10px 34px rgba(40, 32, 18, 0.22);
+  --scrim: rgba(28, 24, 18, 0.5);
+
+  /* Fragment Mono is monospace and sets wide. */
+  --hero-num-size: 56px;
+
+  --meter-height: 20px;         /* the channel groove */
+  --macro-bar-height: 6px;
+  --week-bar-height: 9px;
+}

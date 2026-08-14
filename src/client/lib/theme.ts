@@ -30,7 +30,7 @@ export type ThemePack = {
 export const THEME_PACKS: Record<Theme, ThemePack> = {
   "night-athletic": { label: "Night Athletic", hint: "Blue hour, 5:45 AM", ready: true },
   "field-notes": { label: "Field Notes", hint: "Warm ivory ledger, vermilion stamp", ready: true },
-  instrument: { label: "Instrument", hint: "Bone paper, machined dial", ready: false },
+  instrument: { label: "Instrument", hint: "Bone paper, machined dial", ready: true },
 };
 
 /** Night Athletic's switchable accent (build rule 5). A Night Athletic

@@ -42,7 +42,9 @@ Mapping from the sketch's local names (`sketches/c2-night-athletic.html`):
 ## Motif slots — the only per-theme components
 
 Everything else re-skins through tokens; these four render **named per-theme
-variants** (placeholder variants OK until the M5 port, per build rule 3):
+variants**. All three packs are ported as of #30 — there are no placeholder
+variants left, and `MOTIFS` is a `Record<Theme, MotifSet>`, so a new theme
+without all four is a compile error rather than a review note.
 
 1. **Earned-kcal annotation** — how "+340 kcal earned" is celebrated.
    Night Athletic: hatched fuel-zone extension (45° `--accent-soft` hatch,
@@ -61,7 +63,10 @@ variants** (placeholder variants OK until the M5 port, per build rule 3):
    always draw separately** — base length plus a visually distinct earned
    extension, never one merged number.
 3. **Log button** — Night Athletic: 58px rounded-square accent button lifted
-   above the tab bar. Light themes restyle shape/shadow per their material.
+   above the tab bar. Field Notes: a vermilion disc *ringed in paper* rather
+   than lifted, so it sits on the sheet. Instrument: a machined knob — radial
+   highlight, deep accent rim, and a ring stack (lit edge, paper gap, milled
+   ring, short drop) that seats it in the panel.
 4. **Timeline row chrome** — the rail and the run card's elevation treatment.
    Night Athletic: hairline rail at a fixed inset, gradient card. Rail narrows
    below 390px (see sketch).

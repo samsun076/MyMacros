@@ -127,3 +127,139 @@
   background: var(--accent-wash);
   box-shadow: inset 2px 0 0 var(--accent);
 }
+
+/* ══ Instrument ════════════════════════════════════════════════════════════ */
+
+/* Slot 2 — the machined groove. A channel CUT INTO the panel, which is what
+   the two inset shadows are for: a dark lip at the top edge and a light one at
+   the bottom is what the eye reads as recessed rather than raised. */
+.in-groove {
+  position: relative;
+  height: var(--meter-height);
+  margin-top: 16px;
+  background: var(--track);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-mark);
+  box-shadow:
+    inset 0 2px 3px rgba(40, 32, 18, 0.14),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.5);
+  /* No `overflow: hidden` — the needle is *meant* to overhang the channel at
+     both ends, the way a dial's does, and clipping it made it invisible. The
+     fill and the earned zone are inset 2px and cannot escape on their own. */
+}
+
+/* The milled ink bar, with the lit top edge the sketch draws as a separate
+   1.2px rect. A gradient does it here so it survives any height. */
+.in-fill {
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  left: 2px;
+  background: linear-gradient(180deg, #3a332a 0%, var(--ink) 42%, #14110c 100%);
+  border-top: 1px solid rgba(255, 244, 220, 0.16);
+  border-radius: 1px;
+}
+
+/* The earned zone is ruled off INSIDE the same channel — not appended past its
+   end — because the groove is the whole budget and the extension is a region
+   of it (build rule 7 draws them separately, not as one bar). */
+.in-earned {
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  background: repeating-linear-gradient(
+    135deg,
+    var(--accent-soft) 0 1.5px,
+    transparent 1.5px 5px
+  );
+  border: 0.8px solid var(--accent);
+}
+
+/* The needle crosses the whole face, the way a dial's does. */
+.in-needle {
+  position: absolute;
+  top: -3px;
+  bottom: -3px;
+  width: 2px;
+  margin-left: -1px;
+  background: var(--accent);
+}
+
+/* Slot 1 — the legend under the dial. Reports rather than celebrates; the
+   drama is in the groove. */
+.in-legend {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-family: var(--data-font);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+.in-legend .in-key {
+  width: 14px;
+  height: 10px;
+  flex: none;
+  background: repeating-linear-gradient(
+    135deg,
+    var(--accent-soft) 0 1.5px,
+    transparent 1.5px 5px
+  );
+  box-shadow: inset 0 0 0 0.8px var(--accent);
+}
+
+/* The panel could not take the reading — same key, accent drained out (#69). */
+.in-legend.stale {
+  color: var(--ink-muted);
+}
+
+.in-legend.stale .in-key {
+  background: repeating-linear-gradient(
+    135deg,
+    var(--ink-muted) 0 1.5px,
+    transparent 1.5px 5px
+  );
+  box-shadow: inset 0 0 0 0.8px var(--ink-muted);
+}
+
+/* Slot 3 — a knob seated in the panel. The ring stack is `--shadow-lift`; the
+   face is here. Both classes — themes.css loses equal-specificity ties. */
+.log-btn.in-log-btn {
+  border-radius: var(--radius-pill);
+  background: radial-gradient(circle at 34% 28%, #d8621c 0%, var(--accent) 55%, #a03e05 100%);
+  border: 1px solid #963a06;
+}
+
+/* Slot 4 — a scale down the left edge: milled rail, one gradation per row.
+   The tick is `--line` and never accent, including on a fresh row, so the
+   one-accent-mark-per-row rule (#80) holds. */
+:root[data-theme="instrument"] .tl::before {
+  background: var(--line);
+}
+
+.entry.in-entry::after {
+  content: "";
+  position: absolute;
+  left: 55px;
+  top: 50%;
+  width: 7px;
+  height: 1px;
+  background: var(--line);
+}
+
+.in-entry + .in-entry {
+  border-top: 1px solid var(--line-soft);
+}
+
+.entry.in-entry.fresh .meal {
+  background: var(--accent-wash);
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
+@media (max-width: 389px) {
+  .entry.in-entry::after {
+    left: 40px;
+  }
+}
