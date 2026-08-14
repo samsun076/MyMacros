@@ -47,6 +47,7 @@ npm run reconcile -- --date 2026-08-10 --weeks 1   # rule 4b's input block (#83)
 npm run verify:auth    # drive the real passkey ceremony (needs `npm run dev`)
 npm run verify:routing -- https://fuel.debrief.run   # /api survives navigation; SPA still falls back
 npm run verify:viewport -- --cookie <name>=<token>   # no screen overflows horizontally (#51)
+npm run verify:firstpaint   # needs `npm run build` first — the document paints the app alone (#53)
 node tools/shot-matrix.mjs <file.html|url>   # 375/390/428 render matrix
 ```
 
@@ -577,6 +578,19 @@ result about the *inputs* and says nothing about this register.
   should too. This is #49's finding in code: an attempt cap was never the
   lever, because the slowest call ever measured was a *single un-retried*
   attempt.
+- **The launch path has three moving parts and one check** (#53). The
+  stylesheet is inlined into `index.html` by a plugin in `vite.config.ts`
+  (build only — dev injects CSS through JS), `#root` ships a boot skeleton that
+  is deliberately the *same* `<main class="splash">` App.tsx renders while the
+  session is pending, and `index.html` carries 12 `apple-touch-startup-image`
+  links generated between markers by `npm run icons`. **Never hand-edit the
+  block between `launch-images:start` and `:end`** — a size that disagrees with
+  its media query is ignored by iOS silently, and the symptom is the white
+  frame this issue was about, on one device model, months later.
+  `npm run verify:firstpaint` is the guard for all three, and it deliberately
+  blocks the app bundle so it can see the state `shot-matrix` and
+  `verify:viewport` structurally cannot. It is **not** in `npm run build`:
+  build runs in Workers Builds CI, which has no Chrome.
 - **The fonts are ours now, latin subset only** (#35). `tools/fetch-fonts.mjs`
   is the only thing that should write `src/client/styles/fonts/` or
   `fonts.css`; the spec lives in `GOOGLE_FONTS_CSS` in that file, and

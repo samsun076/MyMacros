@@ -19,6 +19,36 @@ import { openPage, settle, withChrome } from "./cdp.mjs";
 
 const OUT_DIR = "public/icons";
 
+/** iOS launch images (#53), portrait only — the manifest locks orientation.
+ *
+ *  This is the ONLY lever that reaches the window before the HTML exists.
+ *  Everything else #53 does — inlined CSS, the boot skeleton, self-hosted
+ *  fonts — needs the document to have arrived; iOS paints this frame while it
+ *  is still being fetched, and with no `apple-touch-startup-image` that frame
+ *  is white. The manifest's `background_color` is the standards answer and
+ *  iOS's support for it is the open half of #39, so this is belt and braces
+ *  rather than a duplicate: they are read by different code paths.
+ *
+ *  CSS points × dpr = the exact pixel size iOS demands; a mismatch is silently
+ *  ignored, which is why the media query and the render size come from one row
+ *  here rather than being written out twice. Every current iPhone plus the two
+ *  older sizes that still run iOS.
+ */
+const LAUNCH = [
+  { pt: [320, 568], dpr: 2 }, // SE (1st gen)
+  { pt: [375, 667], dpr: 2 }, // SE 2/3, 6–8
+  { pt: [414, 736], dpr: 3 }, // 8 Plus
+  { pt: [375, 812], dpr: 3 }, // X, XS, 11 Pro, 12/13 mini
+  { pt: [414, 896], dpr: 2 }, // XR, 11
+  { pt: [414, 896], dpr: 3 }, // XS Max, 11 Pro Max
+  { pt: [390, 844], dpr: 3 }, // 12, 13, 14
+  { pt: [428, 926], dpr: 3 }, // 12/13 Pro Max, 14 Plus
+  { pt: [393, 852], dpr: 3 }, // 14 Pro, 15, 16
+  { pt: [430, 932], dpr: 3 }, // 14 Pro Max, 15 Plus/Pro Max, 16 Plus
+  { pt: [402, 874], dpr: 3 }, // 16 Pro
+  { pt: [440, 956], dpr: 3 }, // 16 Pro Max
+];
+
 // full-bleed: iOS masks apple-touch-icon itself, Android "any" icons too.
 // maskable: Android can crop to a circle, so keep the art inside the safe
 // zone (content within the centre 80%).
@@ -135,6 +165,45 @@ function tileHtml(size, scale, t) {
   </div></div>`;
 }
 
+/** The launch image is the app's own first frame and nothing else — no mark,
+ *  no wordmark. It is stitched to the boot skeleton: iOS shows this, then the
+ *  document paints `.splash`, and if the two match the seam is invisible. So
+ *  it renders `--page-surface` verbatim (the accent glow included, because the
+ *  app draws it) over `--bg-top`, which is what the body carries at phone
+ *  widths. Putting a logo here would guarantee a visible swap at handoff. */
+function launchHtml(wPx, hPx, t) {
+  return `<!doctype html><meta charset="utf-8"><style>
+    html, body { margin: 0; padding: 0; }
+    body {
+      width: ${wPx}px; height: ${hPx}px; overflow: hidden;
+      background: ${t.bgTop};
+    }
+    .page {
+      width: ${wPx}px; height: ${hPx}px;
+      background:
+        radial-gradient(130% 34% at 50% 0%, ${t.accentGlow} 0%, rgba(0,0,0,0) 62%),
+        linear-gradient(180deg, ${t.bgTop} 0%, ${t.bg} 36%, ${t.bgBottom} 100%);
+    }
+  </style><div class="page"></div>`;
+}
+
+const launchFile = (wPx, hPx) => `launch-${wPx}x${hPx}.png`;
+
+/** The `<link>` tags, regenerated into index.html between markers.
+ *
+ *  Generated rather than hand-written for the reason the manifest is: twelve
+ *  rows of pixel dimensions repeated in two places (the file name and the
+ *  media query) is a table that rots the first time a device is added, and the
+ *  failure mode is silent — iOS ignores a mismatched entry and shows white. */
+function launchLinks() {
+  return LAUNCH.map(({ pt: [w, h], dpr }) => {
+    const media =
+      `(device-width: ${w}px) and (device-height: ${h}px) ` +
+      `and (-webkit-device-pixel-ratio: ${dpr}) and (orientation: portrait)`;
+    return `    <link rel="apple-touch-startup-image" media="${media}" href="/icons/${launchFile(w * dpr, h * dpr)}" />`;
+  }).join("\n");
+}
+
 const tokens = await readTokens();
 await mkdir(OUT_DIR, { recursive: true });
 
@@ -157,6 +226,30 @@ await withChrome(async (cdp) => {
     await writeFile(join(OUT_DIR, file), Buffer.from(data, "base64"));
     console.log(`  ${join(OUT_DIR, file)}  (${size}×${size}${scale < 1 ? ", maskable safe zone" : ""})`);
   }
+
+  let launchBytes = 0;
+  for (const { pt: [w, h], dpr } of LAUNCH) {
+    const [wPx, hPx] = [w * dpr, h * dpr];
+    await cdp.send(
+      "Emulation.setDeviceMetricsOverride",
+      { width: wPx, height: hPx, deviceScaleFactor: 1, mobile: false },
+      page.sessionId,
+    );
+    const html = launchHtml(wPx, hPx, tokens);
+    await page.navigate(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
+    await settle(cdp, page.sessionId);
+    const { data } = await cdp.send(
+      "Page.captureScreenshot",
+      { format: "png", captureBeyondViewport: false },
+      page.sessionId,
+    );
+    const buf = Buffer.from(data, "base64");
+    launchBytes += buf.length;
+    await writeFile(join(OUT_DIR, launchFile(wPx, hPx)), buf);
+  }
+  console.log(
+    `  ${OUT_DIR}/launch-*.png  (${LAUNCH.length} sizes, ${(launchBytes / 1024).toFixed(0)} KB total)`,
+  );
 });
 
 await writeFile(
@@ -165,4 +258,20 @@ await writeFile(
 );
 console.log("  public/manifest.webmanifest");
 
-console.log("✓ icons and manifest regenerated from design/tokens.css");
+// index.html is hand-maintained apart from this block; the markers are what
+// keep the twelve <link>s from being a hand-copied table (#53).
+const START = "    <!-- launch-images:start — generated by tools/make-icons.mjs, do not edit -->";
+const END = "    <!-- launch-images:end -->";
+const indexHtml = await readFile("index.html", "utf8");
+const before = indexHtml.indexOf(START);
+const after = indexHtml.indexOf(END);
+if (before === -1 || after === -1) {
+  throw new Error("launch-images markers missing from index.html — add them back, don't inline the links");
+}
+await writeFile(
+  "index.html",
+  indexHtml.slice(0, before) + START + "\n" + launchLinks() + "\n" + indexHtml.slice(after),
+);
+console.log(`  index.html  (${LAUNCH.length} apple-touch-startup-image links)`);
+
+console.log("✓ icons, launch images and manifest regenerated from design/tokens.css");
