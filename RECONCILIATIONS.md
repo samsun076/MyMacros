@@ -101,7 +101,13 @@ either weight, so the base target is the only place it shows.
   deliberate one, so if Garmin holds a different reading for 08-05 it can never
   land. Not filed: the fix is a provenance question ("typed when?"), and M8's
   entry already established that the honest move for a soft weigh-in is to
-  delete it once identified. Flagged for Dave rather than patched.
+  delete it once identified.
+
+  **Resolved 2026-08-14: leave it.** Dave's call, having been shown the
+  exposure — four days of Trends smoothing and a row sync can never correct.
+  76.0 sits plausibly between nothing and the 76.6 four days later, and unlike
+  M8's 74.8 there is no evidence it is wrong, only no evidence it is right.
+  Recorded so the next pass does not re-raise it as an open question.
 
 - **`athlete_profile` is `general` on someone who ran six times in fourteen
   days** — 47 km, kcal/km 54–60, a tempo run on 08-13 at 8:36/mile. #79 exists
@@ -111,6 +117,16 @@ either weight, so the base target is the only place it shows.
   `carb_ratio_pct` 65, which on today's numbers is **211 g carbs / 51 g fat
   instead of 188 / 61**. Protein and the base target are unaffected. Dave's
   call, not a defect.
+
+  **Resolved 2026-08-14: switched to `runner`.** Verified in production —
+  `athlete_profile` = `runner`, `carb_ratio_pct` = 65, written 18:04:35Z. Today's
+  carb and fat targets are 211 / 51 from that moment; the figures reconciled
+  above are the pre-switch ones and the recomputation stands, the inputs moved
+  after it. **This is the entry's one finding**, and it is worth naming as one
+  even though nothing was broken: the app was faithfully computing the right
+  answer to a question the user had answered wrong. No test can reach that. It
+  is the same failure class as `energy_kj` and the Garmin grams, in its mildest
+  form — a correct program over an input nobody had re-read since it was set.
 
 - **`start_weight_kg` = 74.84274104995843 — that is exactly 165.0 lb**, typed at
   onboarding, and it is *below* the current 76.3 trend. Read as progress it says
@@ -134,9 +150,12 @@ either weight, so the base target is the only place it shows.
   back-solves against Garmin's BMI (164.9), and 1980-04-03 gives 46 on
   2026-08-14. Both re-checked because height enters BMR at 6.25× and age at 5×.
 
-**Verdict: arithmetic exact on all four figures; no input defect.** Two
-provenance questions for Dave (the 08-05 manual row, the `general` profile),
-neither of which moves today's numbers.
+**Verdict: arithmetic exact on all four figures; no input *defect*.** But the
+pass was not empty — it raised two provenance questions and both were answered
+the same day: the 08-05 manual row stays, and `athlete_profile` moved to
+`runner`, which changed the carb and fat targets by 23 g and 10 g. So the
+honest summary is **"the code is right and one input was stale"**, which is
+this rule's usual result arriving in its mildest form rather than its absence.
 
 ### Did the tool save time? — yes, roughly half the exercise
 

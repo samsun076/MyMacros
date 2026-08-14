@@ -1157,10 +1157,16 @@ in the window is a real `garmin` scale reading.
   deliberately. Four days of the Trends chart rest on it. Not filed; it is a
   question to answer, and M8 already established that the honest move for a
   soft weigh-in is deletion once identified.
-- **`athlete_profile` is `general` on someone who ran 6× in 14 days.** Not a
-  defect — it is a preference, and #79 asked the question properly. But
-  `runner` carries `carb_ratio_pct` 65, which on these numbers is 211 g carbs /
-  51 g fat instead of 188 / 61. Dave's call. Base target and protein unaffected.
+- **`athlete_profile` was `general` on someone who ran 6× in 14 days** —
+  **switched to `runner` the same day**, verified in production (`carb_ratio_pct`
+  65, written 18:04:35Z). Carb and fat targets moved 188/61 → 211/51; base target
+  and protein unaffected. Not a defect and no test could reach it: the app was
+  computing the right answer to a question the user had answered wrong. That is
+  the entry's one finding, and it is the failure class rule 4b exists for in its
+  mildest form.
+- **The 08-05 `manual` weigh-in stays** — Dave's call, made after seeing the
+  exposure. Unlike M8's 74.8 there is no evidence it is wrong, only no evidence
+  it is right. Recorded in RECONCILIATIONS.md so it isn't re-raised as open.
 - **`start_weight_kg` is 74.84 kg = exactly 165.0 lb, typed at onboarding, and
   now below the current trend.** Enumerated its readers: nothing user-facing
   consumes it (Onboarding's form seeding only, as the last fallback behind
