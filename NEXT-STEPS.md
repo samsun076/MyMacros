@@ -1392,35 +1392,18 @@ Two test-design faults found in passing, both now fixed:
   a failed navigation — the single most important thing the file can report —
   surfaced as a harness crash. #87 first appeared as a stack trace.
 
-### Next up: #38, and the M11 device session
+*(This section ended with a plan for #38 — a body gradient instead of a flat
+`--bg-top`. It was carried out immediately, in Session P below, and the reasoning
+that survived contact with a device is recorded there and on #38. The plan is
+not repeated here, because a "next up" left behind in a finished session is the
+thing this file's header warns about.)*
 
-**M10 is closed. #38 is the next thing**, and the approach is already decided
-(comment on #38, 2026-08-14) so the session starts from a decision:
+## Session P — #38 and #39, and two self-inflicted regressions — ✅ done 2026-08-14
 
-**Give `<body>` at phone widths a gradient — `--bg-top` at the top, `--chrome`
-at the bottom — instead of today's flat `--bg-top`.** Measured twice on device:
-the tab bar stops ~51pt short of the physical bottom during launch and `<body>`
-fills the gap, pairing the *lightest* surface in the pack against the
-*darkest*. The gradient makes the gap match the bar instead of contrasting with
-it, and fixes the boot-skeleton band (same cause) in the same line.
-
-**Not the viewport fix**, because the defect is a *transient*: it corrects when
-iOS recomputes the viewport, so permanently extending the bar would overshoot
-in the corrected state and trade a launch-time band for a permanent one.
-
-**Three device checks before it counts as done** — it touches a field-tested
-value: the Safari top-chrome tint (in-browser, not standalone), the band during
-and after launch in standalone, and that desktop widths are untouched (`body`
-is `--canvas` there; the change lives inside the existing
-`@media (max-width: 499px)` block).
-
-**Do #39 in the same session.** Both are device-only and both are about what
-iOS paints outside the app's own frame.
-
-### Session P — #38, and two self-inflicted regressions — 2026-08-14
-
-**Closed: #56, #88.** **#38 is at config 4, awaiting one device check.** The
-full dataset is the long comment on #38; this is the pointer.
+**Closed: #56, #88, #38, #39.** Six configurations of the same twenty lines of
+CSS, four of them measured on a real phone. The full dataset is the long
+comment on #38; this is the pointer, and the Outcome section below is the
+final state.
 
 **The rule, sharpened by breaking it twice:** iOS Safari tints its top chrome
 from **the canvas**, the canvas comes from `<html>` if html declares a
@@ -1437,11 +1420,13 @@ The third is the shorthand resetting `background-color` to transparent. Top
 chrome and the standalone bottom gap went black **together**, which is what
 proved they are one surface.
 
-**Config 4, deployed:** `background-color` and `background-image` as separate
-declarations, never the shorthand. **If it doesn't land it, revert to config 1
-(flat `--bg-top`) and accept the band** — a correct top blend on every Safari
-session beats a launch-time strip that disappears by itself, and config 1 is
-field-tested rather than reasoned about. That decision is made; don't re-open it.
+**Config 4 is what shipped:** `background-color` and `background-image` as
+separate declarations, **never the shorthand**. It restored the top blend to
+delta 2 — see the Outcome below. The fallback drawn up at the time, and not
+needed, was to revert to config 1 (flat `--bg-top`) and accept the band, on the
+grounds that a correct top blend on every Safari session beats a launch-time
+strip that disappears by itself. Worth keeping only as the tie-breaker if this
+ever regresses again.
 
 **The tooling lesson, which is the durable half.** Both regressions passed every
 automated check — `verify:firstpaint`, `verify:viewport`, 323 unit tests, and a
@@ -1461,7 +1446,7 @@ that commit also touched CSS. Fixed by hashing the emitted shell into the cache
 name — in `writeBundle`, not `generateBundle`, because the stylesheet is not
 inlined yet at the earlier hook.
 
-### Session P outcome — #38 and #39 both closed
+### Outcome — #38 and #39 both closed
 
 **Closed this session: #56, #87, #88, #38, #39.** M9 and M10 closed as
 milestones. M11 has 6 issues left (#23, #24, #29, #30, #52, #80) — all screen
@@ -1498,11 +1483,70 @@ distinguish those, because the claim is about what iOS *does*. Every regression
 was caught by a photograph of a phone, and the fix rate was roughly one useful
 configuration per screenshot.
 
-### The device check M10 cannot do without Dave
+### Testing on the device — the two things that are easy to get wrong
 
-Headless Chrome has no iOS launch screen, so #53's acceptance test is a cold
-launch from the home screen on the phone. **Delete the home-screen icon and
-re-add it first** — `apple-touch-startup-image` is read at install time, so an
-existing install will keep showing the old (white) launch frame no matter what
-is deployed. That is the one case where re-adding the icon genuinely matters,
-and it is not the same question as the service worker's update flow.
+Both were learned the hard way today and neither is obvious:
+
+- **`apple-touch-startup-image` is read at INSTALL time.** Changing a launch
+  image and redeploying does nothing to an existing install — it keeps showing
+  the old frame however green the build is. **Delete and re-add the home-screen
+  icon.** That is the *only* case where re-adding matters.
+- **Everything else needs no reinstall, but does need the service worker to
+  update**, which is one launch to download and a second to apply. Two deploys
+  in a row therefore look like "nothing happened" after two relaunches. The
+  shortcut is **Settings → App → Check for updates → Update and reload now**
+  (#54), which skips the wait — inside the app, not iOS Settings.
+
+### Next up — M11, and nothing is blocked
+
+**M11 has 6 issues, all ordinary screen work**: #23 editable Settings, #24
+polish pass, #29 theme + accent picker, #30 light packs, #52 swipe-to-delete,
+#80 timeline order. **None are device-gated** — #38 and #39 were the last two
+and both closed today.
+
+Suggested order, and the only real dependency in the set:
+
+1. **#29 then #30.** The picker is what makes a second theme testable at all;
+   shipping light packs with no way to switch to them is a render check nobody
+   can repeat. #30 also inherits two things from today: the canvas colour is
+   `background-color` on `body` and must stay a *colour*, and `theme_color` is
+   irrelevant in standalone.
+2. **#23 and #80** are independent and small.
+3. **#24 last**, since a polish pass over screens that are about to change is
+   work done twice.
+
+**Rule 4b:** M11 changes how the app looks, not how a number is computed, so it
+owes a one-line "no computed figure — not applicable" in RECONCILIATIONS.md at
+the close, not an entry.
+
+**Build rule 4 (theme QA)** is unusually load-bearing for this milestone,
+because #30 *is* the light packs — the render check is the deliverable rather
+than a debt against it.
+
+### Starter prompt (paste verbatim)
+
+```
+Working on MyMacros (~/Projects/MyMacros). Read CLAUDE.md, then the last
+section of NEXT-STEPS.md (Session P) — yesterday closed M9, M10, #38 and
+#39, and the Safari chrome notes in CLAUDE.md were rewritten after two
+regressions walked straight through the old wording. Trust that section
+over anything earlier in the file.
+
+M11 is next: #29 (theme switcher + accent picker) then #30 (port Field
+Notes + Instrument). Do them in that order — the picker is what makes a
+second theme testable, and shipping packs with no way to switch to them
+is a render check nobody can repeat.
+
+Two things #30 inherits, both measured on device and both easy to undo by
+accident: the canvas colour is `background-color` on body at phone widths
+and must stay a COLOUR, never the `background` shorthand and never a
+gradient alone; and `theme_color` does nothing in standalone, so don't
+spend effort on it.
+
+Verify at 375 with tools/shot-matrix.mjs and look at the PNGs. Run
+`npm run verify:firstpaint` too — it needs a build first and it is the
+only check that sees the pre-JS state. Commit per issue with "closes #N"
+only where genuinely finished.
+
+Model: Opus 5 @ xhigh.
+```
