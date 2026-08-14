@@ -7,6 +7,17 @@
    fonts.googleapis.com (#35). Generated — see tools/fetch-fonts.mjs. */
 @import "./fonts.css";
 
+/* The residue of the theme packs (#30): the few motif treatments that are a
+   different SHAPE per theme rather than a different token value.
+
+   **`@import` must precede every rule, so this loads FIRST and its rules lose
+   every equal-specificity tie to the shared layer below.** Written the other
+   way round first, and the symptom was Field Notes' round log button rendering
+   as Night Athletic's rounded square — `.fn-log-btn` and `.log-btn` are both
+   one class, and app.css came second. So a theme rule that overrides a shared
+   one must out-specify it (`.log-btn.fn-log-btn`) rather than rely on order. */
+@import "./themes.css";
+
 * {
   margin: 0;
   padding: 0;
@@ -459,7 +470,11 @@ section {
   font-stretch: 118%;
   letter-spacing: 0.14em;
   text-transform: uppercase;
-  color: var(--ink-muted);
+  /* NOT `--ink-muted` (#30). The tab bar is `--chrome`, and a pack is free to
+     make that a surface the page's ink cannot be read on — Field Notes' is the
+     notebook's pine cover under ivory paper, where page ink is invisible. The
+     bar carries its own two ink tokens for that reason. */
+  color: var(--on-chrome);
   text-decoration: none;
   padding-top: 4px;
 }
@@ -469,7 +484,7 @@ section {
 }
 
 .tab.on {
-  color: var(--accent);
+  color: var(--on-chrome-active);
 }
 
 /* #46 — TRENDS and SETTINGS sat tighter together than reads comfortably at
@@ -759,9 +774,12 @@ section {
   margin-top: 6px;
 }
 
+/* 86px is a Barlow Condensed measurement (#30). Courier Prime sets the same
+   four digits about 40% wider and the hero broke onto three lines, so the size
+   is a token each pack states in its own face's terms. */
 .hero-num {
   font-family: var(--numeral-font);
-  font-size: 86px;
+  font-size: var(--hero-num-size);
   font-weight: 600;
   line-height: 0.92;
   letter-spacing: -0.005em;
@@ -794,10 +812,17 @@ section {
   margin-top: 4px;
 }
 
+/* Wraps rather than squeezes (#30). Night Athletic's earned annotation is a
+   swatch and a line of text and has always fitted beside the remaining-kcal
+   note; Field Notes' is a rubber stamp with a 2.5px rule and 14px of padding,
+   which at 375 forced "2 kcal over" to break in the middle. Whichever slot the
+   theme puts here, the note beside it should give way whole. */
 .fuel-notes {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
   align-items: baseline;
+  gap: 4px 14px;
   margin-top: 14px;
 }
 
@@ -816,12 +841,23 @@ section {
 }
 
 /* macros — lead (focus) + quiet rows */
+/* The value column sizes itself (#30). It was a flat 84px, which is exactly
+   wide enough for "192 / 160 g" in Barlow Condensed and not for the same
+   string in Courier Prime — Field Notes wrapped the unit onto its own line on
+   every macro row. A theme may swap a condensed face for a monospace one; that
+   is what the font tokens are FOR, so a width measured in one theme's glyphs
+   cannot be in the shared layer. `auto` + `nowrap` lets the bar give up the
+   space instead, in whichever theme needs it. */
 .macro-row {
   display: grid;
-  grid-template-columns: 70px 1fr 84px;
+  grid-template-columns: 70px 1fr auto;
   align-items: center;
   gap: 14px;
   padding: 9px 0;
+}
+
+.macro-row .val {
+  white-space: nowrap;
 }
 
 .macro-row + .macro-row {

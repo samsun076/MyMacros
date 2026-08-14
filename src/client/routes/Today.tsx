@@ -7,7 +7,7 @@ import { useApi } from "../lib/api";
 import { localDay } from "../lib/day";
 import { fmtInt } from "../lib/format";
 import { timelineView } from "../lib/timeline";
-import { activeMotifs } from "../motifs";
+import { useActiveMotifs } from "../motifs";
 import type { BudgetData } from "../motifs/types";
 
 /** The Today screen (#11), ported literally from the frozen sketches
@@ -70,7 +70,7 @@ export function Today() {
           edited: 1,
         }
       : null);
-  const { BudgetMeter, EarnedNote, TimelineRow } = activeMotifs();
+  const { BudgetMeter, EarnedNote, TimelineRow } = useActiveMotifs();
 
   const budget: BudgetData = {
     eaten: day?.totals.kcal ?? 0,

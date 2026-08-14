@@ -1,4 +1,5 @@
 import type { Theme } from "../../shared/api";
+import { useTheme } from "../lib/theme";
 import * as fieldNotes from "./field-notes";
 import * as instrument from "./instrument";
 import { BudgetMeter } from "./night-athletic/BudgetMeter";
@@ -19,10 +20,16 @@ export const MOTIFS: Record<Theme, MotifSet> = {
   instrument,
 };
 
-/** The active theme's motif set. The theme is a per-user setting carried as
- *  data-theme on <html> (index.html today; #29 makes it switchable) — not
- *  reactive, because nothing switches themes mid-session until M5. */
-export function activeMotifs(): MotifSet {
-  const theme = document.documentElement.dataset.theme as Theme | undefined;
-  return MOTIFS[theme ?? "night-athletic"] ?? MOTIFS["night-athletic"];
+/** The active theme's motif set, re-rendering the caller when the theme moves.
+ *
+ *  It used to read `data-theme` once per render and say so — "not reactive,
+ *  because nothing switches themes mid-session until M5". M5 is #30, and the
+ *  bug it left was subtler than a switch mid-session: on a light-theme user's
+ *  **first** load the attribute starts at the HTML default and `ThemeFromProfile`
+ *  corrects it once `/api/me` answers. Every token repainted; the components
+ *  did not. The result was Night Athletic's rounded-square log button wearing
+ *  Field Notes' vermilion, which reads as a botched port rather than as a
+ *  stale render. */
+export function useActiveMotifs(): MotifSet {
+  return MOTIFS[useTheme()];
 }

@@ -16,6 +16,7 @@ forks a component, with the sole exception of the motif slots below.
 | `--surface` / `--surface-raised` | Cards; raised = elevated gradient stop |
 | `--viewfinder-surface` | Full `background` for the camera stage (#13) — darker than `--page-surface` so a live preview reads as the lit thing on screen. Same job as `--page-surface`: a flat theme swaps in one color. The camera is **not** a motif slot; it re-skins through this one token with no per-theme code |
 | `--chrome` | Bottom-bar surface. iOS Safari blends its own chrome with it, so it extends through the safe area with **zero seam**, is **never accent-tinted**, and must be applied **fully opaque** — Safari won't tint from translucent or backdrop-filtered edges (field-tested on device vs Field Notes) |
+| `--on-chrome` / `--on-chrome-active` | Ink **on** the bottom bar, which is a different surface from the page and may be a different world (#30). Night Athletic's chrome is a shade of its page, so these are the page's own `--ink-muted` and `--accent`; Field Notes' is a pine notebook cover under ivory paper, where page ink is invisible and both are paper. The tab bar must never reach for `--ink-*` directly |
 | `--track` | Empty meter/bar track |
 | `--line` / `--line-soft` | Hairlines |
 | `--ink` / `--ink-secondary` / `--ink-muted` | Text tiers (Night Athletic: no pure white anywhere) |
@@ -30,6 +31,7 @@ forks a component, with the sole exception of the motif slots below.
 | `--scrim` | Dim wash behind the confirm sheet |
 | `--meter-height` / `--macro-bar-height` / `--week-bar-height` | Meter metrics; the last is trends' weekly intake bar (#22), sized so a dozen stack while the earned hatch still reads |
 | `--tabbar-height` | Bottom chrome height, excluding the safe area. Screens pad their bottom by it so the fixed bar never covers content |
+| `--hero-num-size` | The budget figure, in **this pack's numeral face** (#30). 86px is a Barlow Condensed measurement; Courier Prime sets the same four digits ~40% wider and broke the hero onto three lines, so the size travels with the font rather than living in the shared layer |
 
 Mapping from the sketch's local names (`sketches/c2-night-athletic.html`):
 `--bg-page→--canvas`, `--bg-low→--bg-bottom`, `--surface-2→--surface-raised`,

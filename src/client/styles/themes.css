@@ -1,0 +1,129 @@
+/* Per-theme motif CSS (#30).
+ *
+ * **Almost nothing belongs here.** A theme is a token pack; `design/tokens.css`
+ * carries colour, type, radius and the bar metrics, and app.css reads only
+ * those (build rule 2 — verified: app.css contains no literal colour outside a
+ * comment). What lands in this file is the residue: the handful of places where
+ * a pack's motif is a different *shape*, not a different value, and so cannot
+ * be expressed as a token.
+ *
+ * Every rule is scoped to its theme's own class, emitted by that theme's motif
+ * component. Nothing here uses `:root[data-theme=…] .someSharedClass` to reach
+ * into the shared layer and restyle it from a distance — that is how a theme
+ * stops being a pack and starts being a fork, and the four motif slots exist
+ * precisely so it doesn't have to. The one exception is `.tl::before`, the
+ * timeline rail, which is drawn by the screen and has no element of its own to
+ * hang a theme class on; it is recoloured in place rather than moved, so
+ * app.css's 375px narrowing keeps working untouched.
+ *
+ * **This file is `@import`ed, so it loads BEFORE app.css's own rules and loses
+ * every equal-specificity tie.** A rule that overrides a shared one is written
+ * with both classes (`.log-btn.fn-log-btn`), never relying on order — the
+ * first draft did, and Field Notes' round log button silently rendered as
+ * Night Athletic's rounded square.
+ */
+
+/* ══ Field Notes ═══════════════════════════════════════════════════════════ */
+
+/* Slot 1 — THE STAMP. The theme's one hero motif (sketch: .stamp).
+   `mix-blend-mode: multiply` is what makes it ink *on* paper rather than a
+   sticker over it, and the mask is fractal noise thresholded to mostly-opaque,
+   so the edges break up the way a rubber stamp's do. The rotation is the
+   sketch's -2deg: enough to read as struck by hand, not enough to look broken. */
+.fn-stamp {
+  display: inline-block;
+  margin-top: 14px;
+  padding: 8px 14px 7px;
+  font-family: var(--data-font);
+  font-weight: 700;
+  font-size: 12px;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--accent);
+  border: 2.5px solid var(--accent);
+  border-radius: var(--radius-mark);
+  transform: rotate(-2deg);
+  mix-blend-mode: multiply;
+  -webkit-mask-image: var(--fn-stamp-mask);
+  mask-image: var(--fn-stamp-mask);
+}
+
+/* The uneven-ink mask, kept in one place because it is quoted twice above and
+   is unreadable inline. Not in tokens.css: it is this motif's material, not a
+   value any other component could reference. */
+:root[data-theme="field-notes"] {
+  --fn-stamp-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='44'%3E%3Cfilter id='r'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.5' numOctaves='2' stitchTiles='stitch'/%3E%3CfeComponentTransfer%3E%3CfeFuncA type='discrete' tableValues='0 .45 .85 1 1 1 1 1 1 1 1 1'/%3E%3C/feComponentTransfer%3E%3C/filter%3E%3Crect width='160' height='44' fill='black' filter='url(%23r)'/%3E%3C/svg%3E");
+}
+
+/* The stale-sync state is a margin note, not a stamp — see EarnedNote.tsx. */
+.fn-margin-note {
+  display: inline-block;
+  margin-top: 14px;
+  font-family: var(--data-font);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-muted);
+}
+
+/* Slot 2 — the ledger bar. A ruled fill inside a printed trough, hence the
+   2px inset on both children rather than a bar that fills its own box. */
+.fn-meter {
+  position: relative;
+  height: var(--meter-height);
+  margin-top: 16px;
+  background: var(--track);
+  border-radius: var(--radius-mark);
+}
+
+.fn-meter .fn-fill,
+.fn-meter .fn-earned {
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  border-radius: 2px;
+}
+
+.fn-fill {
+  left: 2px;
+  background: var(--ink);
+}
+
+/* Right-anchored and pure hatch — no boundary tick. The fill is ink and this
+   is vermilion, so the two materials already separate (build rule 7). */
+.fn-earned {
+  right: 2px;
+  background: repeating-linear-gradient(
+    135deg,
+    var(--accent-soft) 0 1.5px,
+    transparent 1.5px 5px
+  );
+}
+
+/* Slot 3 — a disc pinned to the sheet. `--shadow-lift` is a paper ring plus a
+   short drop in this pack, so only the shape is stated here. Both classes: see
+   the header on why order cannot be relied on. */
+.log-btn.fn-log-btn {
+  border-radius: var(--radius-pill);
+}
+
+/* Slot 4 — the ledger. The rail is the red margin rule, and rows are divided
+   by hairlines instead of by space. `.entry`'s own rail is drawn by the
+   screen's `.tl::before`, which is a token-coloured hairline; this overrides
+   its colour to vermilion at the same position rather than moving it, so the
+   375px narrowing in app.css keeps working untouched. */
+:root[data-theme="field-notes"] .tl::before {
+  background: var(--accent);
+  opacity: 0.35;
+}
+
+.fn-entry + .fn-entry {
+  border-top: 1px solid var(--line);
+}
+
+/* The just-saved mark: a bar pencilled in the margin. One accent mark on the
+   row, which is #80's rule for every pack. */
+.entry.fn-entry.fresh .meal {
+  background: var(--accent-wash);
+  box-shadow: inset 2px 0 0 var(--accent);
+}

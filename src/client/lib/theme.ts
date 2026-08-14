@@ -1,3 +1,4 @@
+import { useSyncExternalStore } from "react";
 import type { Accent, Theme } from "../../shared/api";
 import { PROFILE_DEFAULTS } from "../../shared/profile";
 
@@ -28,7 +29,7 @@ export type ThemePack = {
 
 export const THEME_PACKS: Record<Theme, ThemePack> = {
   "night-athletic": { label: "Night Athletic", hint: "Blue hour, 5:45 AM", ready: true },
-  "field-notes": { label: "Field Notes", hint: "Warm ivory ledger, vermilion stamp", ready: false },
+  "field-notes": { label: "Field Notes", hint: "Warm ivory ledger, vermilion stamp", ready: true },
   instrument: { label: "Instrument", hint: "Bone paper, machined dial", ready: false },
 };
 
@@ -50,6 +51,36 @@ export function hasAccentChoice(theme: Theme): boolean {
 }
 
 const STORE_KEY = "mymacros.theme";
+
+/* The document attribute is the source for *tokens* — CSS reads it directly —
+ * but React components that branch on the theme (the motif registry) need to
+ * be told when it moves. Before #30 nothing did: `applyTheme` swapped the
+ * attribute, every token repainted, and the motif COMPONENTS kept rendering
+ * the previous theme's until something else re-rendered them. Invisible while
+ * only one pack existed, and on a light-theme user's first-ever load it showed
+ * as Night Athletic's rounded-square log button wearing Field Notes' colours.
+ *
+ * `useSyncExternalStore` rather than a context: the writer is `applyTheme`,
+ * which is called from an event handler and from an effect, and neither has a
+ * provider in scope. */
+const listeners = new Set<() => void>();
+
+function subscribe(listener: () => void) {
+  listeners.add(listener);
+  return () => {
+    listeners.delete(listener);
+  };
+}
+
+function currentTheme(): Theme {
+  const theme = document.documentElement.dataset.theme;
+  return theme && theme in THEME_PACKS ? (theme as Theme) : PROFILE_DEFAULTS.theme;
+}
+
+/** The active theme, re-rendering the caller when it changes. */
+export function useTheme(): Theme {
+  return useSyncExternalStore(subscribe, currentTheme, () => PROFILE_DEFAULTS.theme);
+}
 
 /** Put a theme on the document, now.
  *
@@ -89,6 +120,10 @@ export function applyTheme(theme: Theme, accent: Accent): void {
     /* Private modes throw on write. A flash on boot is not worth an exception
        on the path that renders the app. */
   }
+
+  // CSS already repainted off the attribute; this is for the components that
+  // branch on the theme rather than read a token — see the note by `subscribe`.
+  for (const listener of listeners) listener();
 }
 
 /** The mirror, for the inline boot script in index.html to read.

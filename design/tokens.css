@@ -60,6 +60,14 @@
                                    from the BODY background (set it to
                                    --bg-top on phone widths); theme-color
                                    meta is ignored in-browser */
+  /* Ink ON the bottom chrome, which is a different surface from the page and
+     may be a different world (#30). Night Athletic's chrome is a shade of the
+     page, so these are the page's own tokens; Field Notes' is a pine notebook
+     cover, where page ink is unreadable. The active state is `--accent` here
+     because build rule 5 wants the switch visible in the chrome too. */
+  --on-chrome: var(--ink-muted);
+  --on-chrome-active: var(--accent);
+
   --track: #263041;             /* empty meter/bar track */
   --line: rgba(214,226,240,.10);
   --line-soft: rgba(214,226,240,.06);
@@ -125,6 +133,10 @@
   --shadow-card: 0 10px 26px rgba(5, 9, 15, 0.35); /* raised cards: run card, toast */
   --shadow-sheet: 0 -18px 44px rgba(5, 9, 15, 0.5); /* the confirm bottom sheet */
   --scrim: rgba(5, 9, 15, 0.55); /* dim wash behind the sheet */
+  /* The hero figure, in THIS pack's numeral face. Barlow Condensed sets four
+     digits comfortably at 86; a monospace pack needs its own number (#30). */
+  --hero-num-size: 86px;
+
   --meter-height: 18px;         /* budget meter */
   --macro-bar-height: 6px;
   --week-bar-height: 11px;      /* trends' weekly intake bars (#22) — between
@@ -150,11 +162,120 @@
   --accent-glow: rgba(82,196,162,.07);
 }
 
-/* ── light packs: placeholders until the M5 port (#30) ──
- * :root[data-theme="field-notes"]  — ground truth sketches/d2-field-notes.html
- *   (warm-ivory ledger, vermilion stamp; --canvas ivory, flat --page-surface)
- * :root[data-theme="instrument"]   — ground truth sketches/b2-instrument.html
- *   (bone paper, machined Braun-style dial)
- * Both are color-scheme: light and have NO data-accent variants — the
- * switchable accent is a Night Athletic feature.
+/* ── Field Notes (#30) ─ ground truth sketches/d2-field-notes.html ──
+ *
+ * A warm-ivory ledger: typewriter numerals, ink and whitespace, rules instead
+ * of boxes, and one hero motif — the vermilion rubber stamp for earned credit.
+ * No `data-accent` variants: a light pack's accent is its *material*, not a
+ * setting, which is why Settings hides the accent picker off Night Athletic.
+ *
+ * **Three values are extrapolations, not ports**, and they are called out
+ * because a reviewer should look at them rather than assume the sketch decided:
+ *
+ *   - `--surface` / `--surface-raised`. The sketch has no cards at all — it is
+ *     flat paper divided by rules. The app does have them (meal rows, options,
+ *     segmented buttons), so these are a shade above the paper and the real
+ *     structural work still falls to `--line`.
+ *   - `--danger`. The sketch's one red IS the accent (`--vermilion`), and build
+ *     rule 9 forbids an alert colour that equals the accent — rule 8 spends the
+ *     accent on the focus macro, so a vermilion bar and a vermilion alarm would
+ *     mean two things at once. Danger is therefore a darker oxblood. Under
+ *     deuteranopia it will not separate from the accent; TOKENS.md already
+ *     requires every `--danger` use to be sign-carrying and labelled, which is
+ *     what carries this.
+ *   - `--positive`. The sketch has no "trending the right way" colour. Taken
+ *     from the notebook-cover pine so it belongs to the palette.
+ *
+ * `--canvas` is the desk the notebook lies on and shows only in the desktop
+ * letterbox; on phone widths the canvas colour is `--bg-top`, the paper itself
+ * (#38 — and the sketch does exactly this in its own 430px media query).
+ */
+:root[data-theme="field-notes"] {
+  color-scheme: light;
+
+  /* ── surfaces ─ warm ivory paper on a dark desk ── */
+  --canvas: #1c1a15;            /* the desk, desktop letterbox only */
+  --bg-top: #f7f3e8;            /* the paper — and the phone-width canvas */
+  --bg: #f7f3e8;
+  --bg-bottom: #f7f3e8;
+  /* Flat, which is what the token was composed for: no glow, no gradient —
+     paper is paper all the way down. */
+  --page-surface: var(--bg);
+
+  /* Extrapolated — see the header — and the SEPARATION between them is the
+     part that matters. A first pass put both a shade above the paper (#fffcf3
+     / #fffefa), three units apart; Night Athletic's pair is twelve apart, and
+     every "this one is selected" state in the app is drawn by that difference
+     alone. On paper it had all but vanished. So a card is a shallow well the
+     sketch already has a colour for, and "raised" is the only true white on
+     the screen — which is what makes a selected range button read. */
+  --surface: #f1ebdb;
+  --surface-raised: #fffdf4;
+  /* A viewfinder is the lit thing on the screen in any theme, so this stays
+     dark — the desk, not the paper. */
+  --viewfinder-surface: linear-gradient(180deg, #1c1a15 0%, #141209 100%);
+  --chrome: #24513f;            /* the notebook cover. Opaque, never accent-
+                                   tinted — iOS Safari blends its bottom bar
+                                   from this (#38) */
+  /* Paper ink on the cover, because page ink is invisible there. The sketch
+     dims the inactive tabs rather than recolouring them, and the active one
+     is NOT vermilion: at 12px on pine the accent is barely legible, and this
+     pack's accent doesn't switch, so nothing is lost by spending full-strength
+     paper on "you are here". */
+  --on-chrome: rgba(247, 243, 232, 0.55);
+  --on-chrome-active: #f7f3e8;
+  --track: #ece6d4;             /* paper-deep: meter tracks, wells */
+  --line: rgba(46, 44, 36, 0.14);
+  --line-soft: rgba(46, 44, 36, 0.07);
+
+  /* ── ink ─ typewriter warm black ── */
+  --ink: #2e2c24;
+  --ink-secondary: #6e6a5c;
+  --ink-muted: #7e7966;
+
+  /* ── data marks ── */
+  --mark-neutral: #8f8a78;
+  --positive: #2f7a55;
+  --danger: #8c2114;
+  --on-danger: #f7f3e8;
+
+  /* ── accent ─ the stamp, and it does not switch ── */
+  --accent: #c13a28;
+  --accent-soft: rgba(193, 58, 40, 0.5);   /* the stamp's hatch */
+  --accent-wash: rgba(193, 58, 40, 0.08);
+  --accent-glow: rgba(193, 58, 40, 0.04);  /* unused: --page-surface is flat */
+  --on-accent: #f7f3e8;
+
+  /* ── type ─ the signature. Numerals are typewriter, not condensed. ── */
+  --display-font: "Alegreya Sans", "Gill Sans", system-ui, sans-serif;
+  --body-font: "Alegreya Sans", "Gill Sans", system-ui, sans-serif;
+  --numeral-font: "Courier Prime", "Courier New", monospace;
+  --data-font: "Courier Prime", "Courier New", monospace;
+
+  /* ── shape ─ paper is squarer than glass ── */
+  --radius-card: 4px;
+  --radius-thumb: 3px;
+  --radius-button: 6px;
+  --radius-mark: 3px;
+
+  /* Ink on paper casts almost nothing. The log button is the exception: the
+     sketch rings it in paper so it reads as pinned ON the page. */
+  --shadow-lift:
+    0 0 0 4px var(--bg-top),
+    0 4px 14px rgba(28, 26, 21, 0.3);
+  --shadow-card: 0 1px 0 rgba(46, 44, 36, 0.1);
+  --shadow-sheet: 0 -8px 30px rgba(28, 26, 21, 0.25);
+  --scrim: rgba(28, 26, 21, 0.45);
+
+  /* Courier Prime sets four digits ~40% wider than Barlow Condensed. */
+  --hero-num-size: 58px;
+
+  /* The ledger's rules are thinner than Night Athletic's bars. */
+  --meter-height: 10px;
+  --macro-bar-height: 5px;
+  --week-bar-height: 8px;
+}
+
+/* ── Instrument (#30) ─ ground truth sketches/b2-instrument.html ──
+ * Bone paper, machined Braun-style dial. Ported in the next commit.
  */
