@@ -31,7 +31,11 @@ const EDITABLE = {
   // to say the user's choice was discarded. If a manual override is ever
   // wanted it needs its own column, so that both values stay visible.
   start_weight_kg: positive,
-  goal_weight_kg: positive,
+  /* Nullable where `start_weight_kg` isn't, and the asymmetry is the point:
+     the goal line on Trends is optional, so Settings has to be able to take it
+     away again (#23). `positive` alone refuses null, which made "clear the
+     field" a 400 — an erasable value needs an erasing write. */
+  goal_weight_kg: (v: unknown) => (v === null ? null : positive(v)),
   eat_back_pct: (v: unknown) => (isNum(v) && v >= 0 && v <= 100 ? Math.round(v) : undefined),
   // #77. Bounds are the slider's, so a value the UI can't produce is refused
   // rather than clamped silently; the tenth is the stored resolution.

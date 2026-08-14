@@ -8,6 +8,7 @@ import {
   computeBudget,
   macroTargets,
 } from "../../shared/budget";
+import { PROFILE_DEFAULTS } from "../../shared/profile";
 import { KCAL_PER_KG } from "../../shared/trends";
 import { cmToFtIn, ftInToCm, kgToLb, lbToKg } from "../../shared/units";
 import { ApiError, api, useApi } from "../lib/api";
@@ -61,7 +62,7 @@ export function Onboarding() {
   // since a field the user has touched must not be overwritten by a refetch
   const [form, setForm] = useState<Partial<Form>>({});
   const p = me?.profile;
-  const imperial = (p?.units ?? "imperial") === "imperial";
+  const imperial = (p?.units ?? PROFILE_DEFAULTS.units) === "imperial";
   /** Already been through this once — the screen is an editor now, not an
    *  introduction. Read off the profile rather than the form, so it doesn't
    *  flip while someone is typing. */
@@ -79,17 +80,19 @@ export function Onboarding() {
      * It is null only before the first weigh-in, which is what the fallback is
      * for. */
     weight_kg: form.weight_kg ?? me?.trend_weight_kg ?? p?.start_weight_kg ?? null,
-    activity_level: form.activity_level ?? p?.activity_level ?? "moderate",
-    goal: form.goal ?? p?.goal ?? "cut",
-    athlete_profile: form.athlete_profile ?? p?.athlete_profile ?? "general",
-    deficit_kcal: form.deficit_kcal ?? p?.deficit_kcal ?? 500,
-    eat_back_pct: form.eat_back_pct ?? p?.eat_back_pct ?? 50,
+    /* Every fallback below restates a column DEFAULT, so all of them come from
+     * `PROFILE_DEFAULTS` (#86) — the one copy the client is allowed, pinned
+     * against a freshly inserted row in me.route.test.ts. They read as literals
+     * here once, and one of them was already stale within a day. */
+    activity_level: form.activity_level ?? p?.activity_level ?? PROFILE_DEFAULTS.activity_level,
+    goal: form.goal ?? p?.goal ?? PROFILE_DEFAULTS.goal,
+    athlete_profile: form.athlete_profile ?? p?.athlete_profile ?? PROFILE_DEFAULTS.athlete_profile,
+    deficit_kcal: form.deficit_kcal ?? p?.deficit_kcal ?? PROFILE_DEFAULTS.deficit_kcal,
+    eat_back_pct: form.eat_back_pct ?? p?.eat_back_pct ?? PROFILE_DEFAULTS.eat_back_pct,
+    /* The two the preset owns rather than PROFILE_DEFAULTS, so there is no
+     * third copy: protein follows the default goal, carb:fat follows the
+     * default training profile. */
     protein_g_per_kg: form.protein_g_per_kg ?? p?.protein_g_per_kg ?? PROTEIN_G_PER_KG.cut,
-    /* From the preset, not a literal (#86). This read `?? 62` — the schema
-     * default before migration 0008 rebuilt it to 58 — so within a day of the
-     * default moving, the third copy of it was already stale. Only visible in
-     * the window before /api/me answers, which is precisely why nobody would
-     * have caught it. */
     carb_ratio_pct: form.carb_ratio_pct ?? p?.carb_ratio_pct ?? ATHLETE_PROFILES.general.carb_ratio_pct,
   };
   const set = (patch: Partial<Form>) => setForm((f) => ({ ...f, ...patch }));

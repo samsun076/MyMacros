@@ -3,6 +3,7 @@ import { Hono } from "hono";
 import { beforeEach, describe, expect, it } from "vitest";
 import type { Profile } from "../../shared/api";
 import { ATHLETE_PROFILES, PROTEIN_G_PER_KG } from "../../shared/budget";
+import { PROFILE_DEFAULTS } from "../../shared/profile";
 import { createDb } from "../db";
 import type { AppEnv } from "../types";
 import me from "./me";
@@ -132,6 +133,36 @@ describe("PATCH /api/me/profile — the athlete profile (#79)", () => {
   });
 });
 
+/** #23. Settings is the only writer of this column, and the only one of the
+ *  three it edits that can be *removed* — Trends draws a goal line when it is
+ *  set and a plain trend label when it isn't. `positive` refuses null, so
+ *  before this the field could be filled and never emptied. */
+describe("PATCH /api/me/profile — the goal weight is erasable (#23)", () => {
+  it("stores a goal weight and takes it away again", async () => {
+    expect((await (await patch({ goal_weight_kg: 77.5 })).json<Profile>()).goal_weight_kg).toBe(77.5);
+
+    const cleared = await patch({ goal_weight_kg: null });
+    expect(cleared.status).toBe(200);
+    expect((await cleared.json<Profile>()).goal_weight_kg).toBeNull();
+  });
+
+  /** Nullable is not "anything goes" — a weight of zero or a string is still
+   *  the client sending nonsense, and it must be refused rather than stored. */
+  it("still refuses a non-positive or non-numeric goal weight", async () => {
+    for (const bad of [0, -5, "77", {}]) {
+      const res = await patch({ goal_weight_kg: bad });
+      expect(res.status, `goal_weight_kg: ${JSON.stringify(bad)}`).toBe(400);
+    }
+  });
+
+  /** The asymmetry is deliberate, so it gets pinned: start weight means the
+   *  weight at onboarding and there is no such thing as erasing having had
+   *  one. If this ever goes green, someone widened the wrong validator. */
+  it("does not make start_weight_kg erasable too", async () => {
+    expect((await patch({ start_weight_kg: null })).status).toBe(400);
+  });
+});
+
 /** #86. Every column default is a second statement of a number the code also
  *  states, and the pair is only correct while someone keeps them in step by
  *  hand. The sweep found one that had already rotted — onboarding's carb:fat
@@ -143,9 +174,27 @@ describe("column defaults agree with the code that also states them", () => {
     expect(fresh.protein_g_per_kg).toBe(PROTEIN_G_PER_KG[fresh.goal]);
   });
 
-  /** The deficit slider's own default, restated in Onboarding's fallback. */
-  it("starts a new profile on the deficit onboarding falls back to", async () => {
-    expect((await freshProfile()).deficit_kcal).toBe(500);
+  /** The whole of `PROFILE_DEFAULTS`, against what SQLite actually wrote.
+   *
+   *  Table-driven rather than a test per field on purpose: a new column with a
+   *  DEFAULT is added to that object and pinned here in the same motion, where
+   *  a hand-written list is a place to forget one. This test replaced a version
+   *  that asserted `deficit_kcal === 500` — a *third* statement of the number,
+   *  in the file whose job was to stop the second one. */
+  it.each(Object.entries(PROFILE_DEFAULTS))(
+    "starts a new profile on the %s the client seeds from",
+    async (column, expected) => {
+      const fresh = await freshProfile();
+      expect(fresh[column as keyof typeof fresh]).toBe(expected);
+    },
+  );
+
+  /** The two DEFAULTs `PROFILE_DEFAULTS` deliberately omits, because a preset
+   *  already owns them. Absent from that object, present here — so skipping
+   *  the object costs no coverage. */
+  it("starts a new profile on the carb:fat its own default training preset implies", async () => {
+    const fresh = await freshProfile();
+    expect(fresh.carb_ratio_pct).toBe(ATHLETE_PROFILES[fresh.athlete_profile].carb_ratio_pct);
   });
 });
 

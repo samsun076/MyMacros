@@ -1,16 +1,41 @@
+import { useState } from "react";
 import { Link } from "react-router";
-import type { Me } from "../../shared/api";
+import type { Macro, Me, Profile, Units } from "../../shared/api";
+import { kgToLb, lbToKg } from "../../shared/units";
 import { PasskeyManager } from "../components/PasskeyManager";
 import { Sources } from "../components/Sources";
-import { useApi } from "../lib/api";
+import { ApiError, api, useApi } from "../lib/api";
 import { authClient } from "../lib/auth";
 import { useUpdate } from "../lib/sw";
 
-/** The real settings screen — TDEE inputs, deficit, protein anchor, eat-back,
- *  theme switcher — is #23 and #29. What's here already works: the account,
- *  and passkey management, which needs a live session to register against. */
+/** Settings (#23).
+ *
+ *  **What this screen edits is what nothing else does.** The budget inputs —
+ *  TDEE, deficit, protein anchor, carb:fat, eat-back — are edited by
+ *  `/onboarding`, which #17 made re-enterable precisely so a returning user
+ *  could change them. Building a second field-by-field editor for the same
+ *  columns here would be one quantity with two sources, the defect class the
+ *  register in CLAUDE.md exists to stop, and the weaker of the two: only that
+ *  screen carries the live budget preview, the fat-floor warning and #84's
+ *  guard against writing a stale weight as today's weigh-in. So the budget
+ *  reads here and edits there.
+ *
+ *  That leaves three values with no editor anywhere, which is this screen's
+ *  actual job:
+ *
+ *  - **goal weight** — Trends draws a GOAL line and the chart marks it, from a
+ *    column nothing in the app could set.
+ *  - **focus macro** — build rule 8's whole subject.
+ *  - **units** — every weight and height on every screen reads from it.
+ *
+ *  `timezone` is shown and deliberately not editable: `POST /api/food-logs`
+ *  mirrors it from the device on every save (#44), so a picker here would be
+ *  reverted by the next meal — the same silent-revert shape as #71's scale.
+ */
 export function Settings() {
-  const { data: me, error } = useApi<Me>("/api/me");
+  const { data: me, error, reload } = useApi<Me>("/api/me");
+  const edit = useProfileEdit(me, reload);
+  const p = edit.profile;
 
   return (
     <>
@@ -63,16 +88,6 @@ export function Settings() {
             <dt>Eat-back</dt>
             <dd>{me ? `${me.profile.eat_back_pct}%` : "—"}</dd>
           </div>
-          <div>
-            <dt>Focus macro</dt>
-            <dd>{me ? label(me.profile.focus_macro) : "—"}</dd>
-          </div>
-          <div>
-            <dt>Theme</dt>
-            <dd>
-              {me ? `${label(me.profile.theme)} · ${label(me.profile.accent)}` : "—"}
-            </dd>
-          </div>
         </dl>
         {/* The way back into #17's flow. Without this, onboarding is a
             one-shot: Today only offers it while `onboarded` is false, so
@@ -83,10 +98,88 @@ export function Settings() {
           Edit budget inputs
         </Link>
         <p className="placeholder-note">
-          Opens the setup flow with your current numbers in it. Editing each field
-          in place is #23; the theme and accent pickers are #29.
+          Opens the setup flow with your current numbers in it, and the live preview
+          that shows what each one does to your target.
         </p>
       </section>
+
+      {/* The one budget number `/onboarding` doesn't own. Trends draws a GOAL
+          line and the chart marks it (Trends.tsx), off a column nothing in the
+          app could write — so it read as a feature that only worked if you
+          edited the database by hand. */}
+      <section>
+        <div className="sec-head">
+          <span className="eyebrow">Goal weight</span>
+          <span className="mono">#22</span>
+        </div>
+        <GoalWeightField edit={edit} />
+      </section>
+
+      <section>
+        <div className="sec-head">
+          <span className="eyebrow">Display</span>
+          <span className="mono">#23</span>
+        </div>
+
+        {/* Build rule 8: --accent on a macro bar means the macro being
+            *targeted*, and this is the control that picks it. */}
+        <div className="field">
+          <span className="eyebrow">Focus macro</span>
+          <div className="seg">
+            {(["protein", "carbs", "fat"] as Macro[]).map((m) => (
+              <button
+                key={m}
+                type="button"
+                className={p?.focus_macro === m ? "seg-btn on" : "seg-btn"}
+                aria-pressed={p?.focus_macro === m}
+                disabled={!p}
+                onClick={() => void edit.save({ focus_macro: m })}
+              >
+                {label(m)}
+              </button>
+            ))}
+          </div>
+          <span className="opt-hint">
+            The one drawn in your accent colour on Today, with the rest recessive.
+          </span>
+        </div>
+
+        <div className="field">
+          <span className="eyebrow">Units</span>
+          <div className="seg">
+            {(["imperial", "metric"] as Units[]).map((u) => (
+              <button
+                key={u}
+                type="button"
+                className={p?.units === u ? "seg-btn on" : "seg-btn"}
+                aria-pressed={p?.units === u}
+                disabled={!p}
+                onClick={() => void edit.save({ units: u })}
+              >
+                {u === "imperial" ? "Pounds" : "Kilograms"}
+              </button>
+            ))}
+          </div>
+          <span className="opt-hint">Every weight and height in the app, including the one above.</span>
+        </div>
+
+        {/* Read-only on purpose — see this component's own note. Shown rather
+            than hidden because it is an input to every "today" the server
+            resolves without you present (#19's launchd sync, refreshTarget). */}
+        <div className="field">
+          <span className="eyebrow">Timezone</span>
+          <p className="mono">{p?.timezone ?? "—"}</p>
+          <span className="opt-hint">
+            Follows the device you last logged a meal on. Nothing to set.
+          </span>
+        </div>
+      </section>
+
+      {edit.error && (
+        <p className="signin-error" role="alert">
+          {edit.error}
+        </p>
+      )}
 
       {/* The weigh-in link used to live here, and Settings was the wrong home
           for a daily action — two taps into a settings screen. It moved to
@@ -102,6 +195,101 @@ export function Settings() {
         Sign out
       </button>
     </>
+  );
+}
+
+/** One profile edit: apply locally, PATCH, keep it or put it back.
+ *
+ *  Optimistic because every control here is a toggle whose whole value is
+ *  being instant — a segmented button that waits for a round trip before
+ *  moving reads as broken, and #29's theme switch has to repaint before the
+ *  request even leaves. The overlay is dropped on `reload`, so the server's
+ *  answer is what survives; a failure puts the control back and says so
+ *  rather than leaving the screen quietly disagreeing with the database.
+ */
+function useProfileEdit(me: Me | null, reload: () => void) {
+  const [draft, setDraft] = useState<Partial<Profile>>({});
+  const [error, setError] = useState<string | null>(null);
+
+  const profile: Profile | null = me ? { ...me.profile, ...draft } : null;
+
+  async function save(patch: Partial<Profile>) {
+    setDraft((d) => ({ ...d, ...patch }));
+    setError(null);
+    try {
+      await api.patch("/api/me/profile", patch);
+      setDraft({});
+      reload();
+    } catch (err) {
+      setDraft((d) => {
+        const next = { ...d };
+        for (const key of Object.keys(patch)) delete next[key as keyof Profile];
+        return next;
+      });
+      setError(
+        err instanceof ApiError && err.code === "network"
+          ? "Couldn't reach the server — that change didn't save."
+          : "That didn't save. Try again in a moment.",
+      );
+    }
+  }
+
+  return { profile, save, error };
+}
+
+/** Goal weight, in whichever units are set.
+ *
+ *  Committed on blur rather than on every keystroke: PATCHing per character
+ *  writes "7", "77", "776" to a column Trends draws a line from, and the
+ *  middle values are real saves that a dropped connection can leave behind.
+ *  Held as text while being typed so a cleared field doesn't snap back to the
+ *  stored number under the cursor.
+ */
+function GoalWeightField({ edit }: { edit: ReturnType<typeof useProfileEdit> }) {
+  const p = edit.profile;
+  const imperial = p?.units === "imperial";
+  const stored =
+    p?.goal_weight_kg == null
+      ? ""
+      : Math.round((imperial ? kgToLb(p.goal_weight_kg) : p.goal_weight_kg) * 10) / 10;
+  const [typing, setTyping] = useState<string | null>(null);
+
+  function commit() {
+    if (typing === null) return;
+    const text = typing.trim();
+    setTyping(null);
+    if (text === String(stored)) return;
+    if (text === "") {
+      if (p?.goal_weight_kg != null) void edit.save({ goal_weight_kg: null });
+      return;
+    }
+    const n = Number(text);
+    if (!Number.isFinite(n) || n <= 0) return;
+    void edit.save({ goal_weight_kg: imperial ? lbToKg(n) : n });
+  }
+
+  return (
+    <div className="field">
+      <div className="field-pair">
+        <input
+          type="number"
+          inputMode="decimal"
+          step="0.1"
+          aria-label={imperial ? "Goal weight in pounds" : "Goal weight in kilograms"}
+          placeholder="—"
+          disabled={!p}
+          value={typing ?? stored}
+          onChange={(e) => setTyping(e.target.value)}
+          onBlur={commit}
+          onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
+        />
+        <span className="mono">{imperial ? "LB" : "KG"}</span>
+      </div>
+      <span className="opt-hint">
+        Drawn as the goal line on Trends. Leave it empty for no line — it doesn't change
+        your budget, which follows your deficit.
+      </span>
+    </div>
   );
 }
 
