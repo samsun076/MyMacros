@@ -94,12 +94,27 @@ body {
    it is hidden by .frame, which covers everything above the bar. */
 @media (max-width: 499px) {
   body {
-    background: linear-gradient(
+    /* **The colour and the image are separate declarations on purpose, and the
+       colour is the load-bearing one.**
+
+       Measured on device, three configurations, iOS Safari's top chrome:
+
+         body { background: <colour> }        → #1a2230   correct
+         html { background: var(--canvas) }   → #0e1118   = --canvas
+         html none, body = gradient only      → #000000   black
+
+       The third is what the `background:` shorthand does — it resets
+       background-color to transparent and sets background-image. **Safari
+       propagates a background-COLOUR to the canvas, not a background-image**,
+       so with only a gradient there was nothing to propagate and the UA's
+       dark-scheme canvas (black) won. Writing the shorthand here would look
+       tidier and would silently reintroduce that. */
+    background-color: var(--bg-top);
+    background-image: linear-gradient(
       to top,
       var(--chrome) 0,
       var(--chrome) 90px,
-      var(--bg-top) 130px,
-      var(--bg-top) 100%
+      transparent 130px
     );
   }
 }
