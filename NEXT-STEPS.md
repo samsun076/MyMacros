@@ -1,13 +1,24 @@
 # Next steps — session playbook
 
-State as of 2026-08-06: plan locked (PLAN.md), **M0–M3 done**, the app live at
-https://fuel.debrief.run. All three input modes log a meal end to end — photograph it,
-scan its barcode, or describe it — each feeding one `AnalyzeResponse` into one editable
-confirm sheet, one save route and one toast. Session E closed #13–#16 and settled the
-last two M3 decisions with Dave. **Next up: Session F builds M4, the budget engine
-(#47 first, then #17–#21)** — where the daily target starts breathing with the running.
-This file is the runway: what to run next, on which model, with paste-ready starter
-prompts.
+This file is the runway: what to run next, on which model, with paste-ready
+starter prompts. Sessions are appended in order, oldest first.
+
+**The current state of the project is the last session section in this file —
+not this header.** Scroll to the bottom, or `grep -n '^## Session' NEXT-STEPS.md`
+and open the last hit; its "Next up" heading is what to run and its "Still owed"
+list is what the milestone is waiting on. For the board itself, ask GitHub
+rather than this file:
+
+```bash
+gh api repos/:owner/:repo/milestones --jq '.[] | "\(.title)  open:\(.open_issues)"'
+gh issue list --milestone "M9 Budget truth" --state open
+```
+
+This paragraph used to restate milestone status and a "next up" line, and it was
+wrong for five consecutive sessions — H, I, J, K and L each appended a section
+and left the header describing Session F. A summary that lives in two places is
+the defect #86 swept for; the fix is that it lives in one. Don't reintroduce a
+dated state line here.
 
 ## Model guidance (Claude Code sessions)
 
@@ -1046,6 +1057,75 @@ Model: Opus 5 @ xhigh.
 
 ### Still owed after that, before M9 closes
 
-- **Theme QA (build rule 4)** for Session K's two onboarding sections and four
-  Settings rows — carried forward, still not done.
-- **The site's stale macro claims** (`stale-claim` in the site repo).
+- ~~**Theme QA (build rule 4)** for Session K's two onboarding sections and
+  four Settings rows~~ — **done 2026-08-14, passes.** See below.
+- **The site's stale macro claims** — see below; the debt is real but it is
+  *not* the prose claim it was written down as.
+
+### Theme QA — Session K's surfaces — ✅ 2026-08-14
+
+Night Athletic at 375/390/428, `/onboarding` and `/settings`, plus
+`verify-viewport` across all 12 routes × 3 widths: **no overflow anywhere, no
+reflow breakage.** `/settings` is 1304px tall at all three widths (no reflow at
+all); `/onboarding` differs by 24px at 428 only, which is one helper line
+unwrapping. #79's training picker and #77's protein slider both render in the
+pack with no untokenised values.
+
+Two things worth keeping:
+
+- **Eat-back prints its own value twice.** The other sliders put the *setting*
+  in the section head and the *consequence* on the track — protein reads
+  `2.0 G/KG` / `160g`, carbs & fat reads `62 : 38` / `239C · 65F`. Eat-back
+  reads `50%` in both places, so the track earns nothing; the consequence is
+  already in the prose under it ("a 500 kcal run would add 250 kcal"). Cosmetic,
+  and a design call rather than a defect — but it is the same one-quantity-two-
+  places shape #86 swept for, one layer down. Not filed; decide first.
+- **The dev user still carries `carb_ratio_pct = 62`**, which is 0007's default,
+  not 0008's 58. That is 0008 working as designed — it rebuilt the column around
+  its own default and *preserved existing rows* — so every local database seeded
+  before Session K reads 62 while a fresh account reads 58. Worth knowing before
+  reading 62 off a screenshot as a bug.
+
+**How to redo this.** A dev server is often already up on **5173**; a second
+`npm run dev` silently takes **5174** and then every auth call 403s with
+`INVALID_ORIGIN`, because `APP_URL` in `.dev.vars` pins better-auth's trusted
+origin to 5173. Check `curl -s localhost:5173/api/health` before starting one.
+A cookie without a browser:
+
+```bash
+curl -si -X POST localhost:5173/api/auth/sign-in/email \
+  -H 'Content-Type: application/json' -H 'Origin: http://localhost:5173' \
+  -d '{"email":"dev@mymacros.local","password":"dev-password-not-for-production"}' \
+  | grep -i '^set-cookie: better-auth.session_token'
+```
+
+Then `node tools/shot-matrix.mjs --settle 900 --cookie better-auth.session_token=… <urls>`
+and `node tools/verify-viewport.mjs --cookie …`. Run both: shot-matrix renders
+at a *fixed* width, so horizontal overflow is cropped into looking like a
+screenshot rather than a defect — only verify-viewport sees that class.
+
+### The site's macro claims — swept 2026-08-14, and the premise was wrong
+
+The debt was written as "anything asserting a percentage split is now false."
+**No such claim exists, and none ever did** — `git grep` for `percent` across
+every revision of `mymacros-site/src` returns nothing but the 60%-of-target rule
+from #74, which is still true. Nothing on the page describes how macros are
+computed, so #77 falsified no prose.
+
+What *is* stale is arithmetic baked into the media, which no text edit reaches:
+
+- `index.html:114` — "133 g of a 158 g protein target"
+- `index.html:150` — the `today-scroll.mp4` `aria-label`: "protein at 133 of 158
+  grams … carbs 159 of 181 and fat 61 of 50"
+
+Those figures encode the pre-#77 model: 158 g protein against an 1,810 kcal
+target is 35% of calories, and the implied carb:fat on the remainder is 62:38.
+Protein is `g/kg × trend weight` now and independent of the target, and the
+remainder splits at the 58:42 default. The numbers are a real screenshot of a
+day the current app would not produce.
+
+**This is issue #2's re-record, not a separate job.** #2 already needs
+`today-scroll.mp4` reshot with a run in the day, already says to regenerate the
+clips as a set because they cross-reference one date, and already needs a dev
+server, a seeded DB and a real `ANTHROPIC_API_KEY`. Fold the macro figures into
+it rather than filing a second issue that blocks on the same recording.
