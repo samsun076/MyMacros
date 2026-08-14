@@ -1604,3 +1604,119 @@ Commit per issue with "closes #N" only where genuinely finished.
 
 Model: Opus 5 @ xhigh.
 ```
+
+---
+
+# Session Q — M11 built, nothing pushed
+
+**Six issues built, four genuinely closed, nothing deployed.** Every commit is
+on local `main` and `origin` has not been touched — that was the call made at
+the start of the session, on the grounds that nothing stops a visual regression
+reaching production unseen and M11 is almost entirely visual.
+
+```
+2501d6c  Settings edits what nothing else could            closes #23
+6719788  Theme and accent are the user's                   closes #29
+06eadb8  Today's timeline reads newest first               closes #80
+b466acc  Groundwork for the light packs                    refs   #30
+8a70480  Field Notes, ported                               refs   #30
+1151044  Instrument, ported                                closes #30
+1434ef4  Swipe a timeline entry to delete it               refs   #52  ← open
+11b331f  Polish: the app moves now                         refs   #24  ← open
+```
+
+`git push` deploys all eight. Read the two open ones first — they are open
+because their acceptance needs a person, not because they are unfinished.
+
+## The device check — in priority order
+
+**1. The light packs, on the phone (#30).** This is the one that matters, and
+it is the #38 shape again: `--canvas`, `--chrome` and `--bg-top` have stopped
+being nearly the same colour for the first time, which is exactly the
+divergence that cost a whole session. What to look at, in Safari **and** as an
+installed app:
+
+- **Field Notes' tab bar is pine `#24513f` under ivory paper.** iOS Safari
+  blends its bottom bar from that surface. Night Athletic's `--chrome` was
+  always a shade of its own page; this one is a different world.
+- **The canvas at phone widths is `--bg-top`** — ivory for Field Notes, bone
+  for Instrument. `tools/canvas.test.mjs` proves the *declaration*; only a
+  device proves Safari agrees. Check the top chrome and the standalone bottom
+  gap together, since #38 established they are one surface.
+- **`color-scheme: light`** now flips with the theme, and the boot script
+  rewrites the meta before first paint. Watch a cold launch of a light theme
+  for a dark flash — that is #53's white flash inverted and nothing here can
+  see it.
+- Mint accent vs `--positive` on Trends: two greens, close together
+  (`#52c4a2` and `#4ec77a`). A taste call, not a defect. Look at it once.
+
+**2. The swipe gesture (#52).** shot-matrix drives CDP and has no finger.
+`/#swiped` renders the revealed state, which is not evidence that swiping
+reaches it. On device:
+
+- a vertical scroll started **on a row** must still scroll — the axis is
+  decided in the first 8px and never revisited mid-drag;
+- the row should track the finger, not ease behind it;
+- a flick past ~35px opens, a shorter one snaps back;
+- the panel is tappable without deleting the wrong meal;
+- delete → undo puts the meal back **where it was**, not at the top.
+
+**3. The motion (#24).** `cdp.mjs` forces `prefers-reduced-motion: reduce` on
+every page it opens, so **no screenshot in this repo has ever shown any of it.**
+The open question is whether the entrance stagger reads as arrival or as lag —
+and note the routes remount, so it **replays on every tab switch**. That is the
+judgment call. Also whether the meter's draw is delight or delay when you are
+just checking a number.
+
+**4. The install card (#24).** Its wording names Safari's Share menu. Confirm
+that is still what the menu says, and that the card is genuinely absent inside
+the installed app — the standalone check could only be stubbed here, because
+CDP cannot emulate `display-mode` (measured: `matchMedia` stays false).
+
+## Things worth knowing before the next session
+
+- **shot-matrix was shooting loading states, and had been for a long time.**
+  It measured page height once, before the app mounted and before its fetches
+  landed, then shot at that height — so anything not yet rendered was silently
+  cropped off the bottom of the PNG. Three separate misses in one session:
+  Settings clipped mid-page at 375 while 390 was complete, and Today shot at
+  812px (the viewport, header only) twice. It now waits for `aria-busy` to
+  clear, then for a live in-flight request count to reach zero, then for the
+  height to stop moving. **Design QA before this commit was less trustworthy
+  than it looked**, and old PNGs may be cropped.
+- **`verify:viewport` learned about clipping.** It flagged six correct screens
+  when #52's off-stage panel landed. An element inside a clipping ancestor
+  cannot be seen or scrolled to; it is skipped now, but only when that
+  ancestor's own edge is inside the viewport. Proven still able to fail by
+  injecting a 600px block.
+- **Night Athletic is the base pack now**, on bare `:root`. An unknown or
+  unported theme degrades to dark instead of rendering with every token
+  undefined. `tools/theme-packs.test.mjs` cross-checks `THEME_PACKS[t].ready`
+  against tokens.css in both directions and fails if a ready pack misses any
+  colour or typeface.
+- **The light packs' fonts are not precached** (~106 KB, seven faces). A
+  light-theme user offline with a cold cache gets fallback faces until they
+  have been online once. Deliberate; `SHELL_FAMILIES` in `tools/fetch-fonts.mjs`
+  is the single source and `vite.config.ts` imports it.
+- **`npm run fonts` now refuses duplicate faces.** Asking a variable family for
+  a weight *list* returns the same file under every name — Instrument Sans came
+  back as 87 KB of identical bytes under four names before this caught it. Use
+  a range (`wght@400..700`).
+- **Two dev servers were running this session**; an orphan held 5173, so
+  everything here used **5176**. Kill the orphan before the next run or the
+  ports will keep drifting.
+
+## What M11 did not do
+
+- **Auto theme mode (`prefers-color-scheme`) is deliberately not built.** #29
+  asks for it, and it resolves to "dark → Night Athletic, light → your chosen
+  light theme" — which needed a fourth enum value and a table rebuild for the
+  CHECK (#79's price) at a time when there was no light theme for it to choose.
+  Now that both packs exist the choice is real. It is the obvious next slice.
+- **The tab-bar labels at 375 are still tight** (the B1 note on issue #2, never
+  actioned). `TRENDS` and `SETTINGS` nearly touch. Inherited from the frozen
+  sketch rather than introduced, and unchanged by M11.
+- **A run row in the timeline has no treatment.** #80 removed the node dot,
+  which was the only thing marking `.entry.run`, and newest-first would put a
+  morning run at the bottom of the day anyway. Recorded in design/TOKENS.md as
+  an open design question rather than an unported sketch detail.

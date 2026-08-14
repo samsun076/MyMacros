@@ -342,3 +342,37 @@ target = 2150.328 − 250               = 1900.33 → 1900   ✓ matches
 
 **Verdict:** no seventh input bug. The one wrong input was known and cost 13
 kcal/day.
+
+---
+
+## M11 (#23, #29, #30, #80) — no computed figure, not applicable, 2026-08-14
+
+**Nothing to reconcile, and that is a result rather than a gap.** M11 changed
+how the app *looks*: an editable Settings screen, a theme and accent picker,
+the two light packs, and the Today timeline's order. No milestone work changed
+how any number is computed. The trigger for rule 4b is a computation, not a
+calendar, and a forced entry here would be theatre — the same argument M10 and
+the service-worker work were exempted under.
+
+The two places it was worth checking rather than assuming, because both touch
+screens that *display* computed numbers:
+
+- **#23 added a writer, not a computation.** Settings edits goal weight, focus
+  macro and units. None is an input to `computeBudget` or `macroTargets`: the
+  goal weight draws the Trends goal line and nothing else reads it, the focus
+  macro decides which bar wears `--accent` (build rule 8), and units are a
+  display conversion. The budget inputs are still edited only by `/onboarding`,
+  deliberately — see the commit.
+- **#30 and #80 never touch a value.** Token packs, motif variants and render
+  order. `timelineView` reorders and computes a header span; it does no
+  arithmetic on anything a user eats.
+
+The one thing M11 *did* do to the register (CLAUDE.md, "one quantity, one
+source") is remove a hazard rather than add one: Onboarding's six `?? <literal>`
+fallbacks restating column DEFAULTs now come from `PROFILE_DEFAULTS`, pinned
+against a freshly inserted row by a table-driven route test. That was the trap
+the #86 sweep named as the one that keeps producing these defects, and it is
+closed on the surface that was about to copy it.
+
+**Verdict:** no computed figure — not applicable. Next entry is due whenever a
+milestone next changes an arithmetic path; nothing in M11 did.
