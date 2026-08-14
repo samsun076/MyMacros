@@ -1,8 +1,13 @@
 # Reconciliations
 
-Build rule 4b: at the end of each milestone, take a figure the app is showing a
-real user, pull its inputs out of **production**, and recompute it by hand. Ten
-minutes.
+Build rule 4b: when a milestone **changes how a number is computed**, take a
+figure the app is showing a real user, pull its inputs out of **production**,
+and recompute it by hand. A milestone that changes none still gets a one-line
+entry saying so — silence and nothing-to-report must not look identical.
+
+Budget 45–90 minutes, or 25–45 once `npm run reconcile` has cleared the SQL.
+This paragraph said "ten minutes" until 2026-08-14; the rule as amended lives
+in CLAUDE.md and is the source, and no entry here has ever cost ten minutes.
 
 Tests prove the arithmetic and screenshots prove the layout. Neither can tell
 you an *input* is wrong, and that is the failure this project keeps producing —
@@ -18,6 +23,134 @@ intake with its row count, runs, and sync health, straight out of production.
 It prints **inputs only** (#83), and that is load-bearing rather than a
 limitation: the recomputation stops being independent the moment the answer is
 sitting above it.
+
+---
+
+## M9 (#77, #79) — the protein target and the base target, 2026-08-14
+
+**Figure:** Today, Friday 14 August, shows **BASE 1,909 kcal** and macro targets
+of **153 g protein · 188 g carbs · 61 g fat**. Protein is the focus macro and
+M9 is the milestone that changed how it is computed, so it is the figure this
+entry owes.
+
+**Inputs, pulled from production D1** by `npm run reconcile -- --date 2026-08-14
+--weeks 2` (the full block is #83's output; the load-bearing rows):
+
+| | |
+|---|---|
+| sex / birth_date | male / 1980-04-03 → age 46 |
+| height_cm / activity | 165.1 / `light` → ×1.375 |
+| goal / deficit / eat-back | cut / 250 / 50% |
+| protein_g_per_kg / carb_ratio_pct | 2.0 / 58 (`athlete_profile` = `general`) |
+| weigh-ins in the 7-day window (08-08…08-14) | 08-09 76.6, 08-10 76.2, 08-12 75.8, 08-13 76.4 — **all `garmin`** |
+| runs on 08-14 | none (last run 08-13) → earned 0 |
+
+**By hand:**
+
+```
+trend  = (76.6 + 76.2 + 75.8 + 76.4) / 4 = 76.25 → round1 → 76.3 kg
+BMR    = 10(76.3) + 6.25(165.1) − 5(46) + 5   = 1569.875
+TDEE   = 1569.875 × 1.375                     = 2158.578
+base   = 2158.578 − 250                       = 1908.578 → 1,909   ✓
+
+protein   = 2.0 × 76.3                        = 152.6 g → 153 g    ✓
+remainder = 1909 − (152.6 × 4)                = 1298.6 kcal
+carbs     = 0.58 × 1298.6 / 4                 = 188.3 g → 188 g    ✓
+fat       = 0.42 × 1298.6 / 9                 = 60.6 g  → 61 g     ✓
+fat floor = 0.6 × 76.3 = 45.8 g — not binding
+```
+
+**Arithmetic: exact, all four figures.** Once again the value was in the inputs.
+
+### The one-kcal gap, and why it is worth recording
+
+The first hand pass produced **1,908**, not 1,909 — a mean of 76.25 kg carried
+straight into Mifflin-St Jeor gives 1907.89. The gap is `trendWeightKg`
+applying `round1` to the *window mean* before anything consumes it, so the
+budget is built from 76.3 rather than 76.25.
+
+That is correct and deliberate — the trend weight is one quantity with one
+source (#78), and it is rounded once at its source rather than differently by
+each caller. But it means **a reconciler working from the printed weigh-ins
+cannot reproduce the app exactly without knowing it**, and a 1 kcal miss is
+exactly the size that reads as "close enough, must be rounding" and gets
+waved through. It is written down here so the next pass spends thirty seconds
+on it rather than twenty minutes. Protein, carbs and fat all match under
+either weight, so the base target is the only place it shows.
+
+### What the inputs turned up
+
+- **The weigh-in feed is clean, and that is the finding this milestone needed.**
+  #77 made body weight enter the protein target directly — before M9 protein was
+  a percentage of energy and a bad weigh-in could not touch it. All four
+  readings in the current window are `source = garmin`, spread 75.8–76.6 kg
+  over five days, no outlier and no manual row. So today's 153 g rests entirely
+  on scale readings. This was the thing most likely to be wrong and it is not.
+
+- **One weigh-in nobody can vouch for, and `manual` makes it permanent.**
+  2026-08-05's 76.0 is `source = manual`. Asked directly, Dave does not
+  remember whether he stood on the scale or typed it. It is outside today's
+  7-day window so it costs the reconciled figure nothing — but it is the
+  *first* weigh-in on file, so 08-05 through 08-08 have no other weight to
+  smooth and four days of the Trends chart rest on it.
+
+  The structural half is worse than the row: **`manual` is unconditional
+  protection.** #20 refuses to let sync overwrite a manual row and #71 lets it
+  clear tombstones, both on the premise that the word means *a human typed this
+  deliberately*. An unremembered manual row is indistinguishable from a
+  deliberate one, so if Garmin holds a different reading for 08-05 it can never
+  land. Not filed: the fix is a provenance question ("typed when?"), and M8's
+  entry already established that the honest move for a soft weigh-in is to
+  delete it once identified. Flagged for Dave rather than patched.
+
+- **`athlete_profile` is `general` on someone who ran six times in fourteen
+  days** — 47 km, kcal/km 54–60, a tempo run on 08-13 at 8:36/mile. #79 exists
+  to ask exactly this question and the answer on file is "a bit of everything".
+  It is a preference rather than a fact, so it is not wrong — but it is the
+  input most likely to be mis-set, and it is not free: `runner` carries
+  `carb_ratio_pct` 65, which on today's numbers is **211 g carbs / 51 g fat
+  instead of 188 / 61**. Protein and the base target are unaffected. Dave's
+  call, not a defect.
+
+- **`start_weight_kg` = 74.84274104995843 — that is exactly 165.0 lb**, typed at
+  onboarding, and it is *below* the current 76.3 trend. Read as progress it says
+  a cut has gone 1.5 kg the wrong way. Checked what consumes it: nothing
+  user-facing does. Its only reader is Onboarding's form seeding, as the last
+  fallback behind `trend_weight_kg` (#78 removed the Settings preview that used
+  it). So a stale anchor costs nothing today — worth re-confirming before any
+  future screen draws a "since you started" figure off it.
+
+- **No unit trap in the runs.** Six runs, 54.1–60.4 kcal/km, median 57.3 —
+  inside the documented 56–63 band and far clear of #63's 35 kcal/km floor.
+  `energy_kj` is still holding kilocalories.
+
+- **Both sync feeds healthy at the pull** (`sync_sources`: runs
+  2026-08-14T17:42:24Z / 15 items, weights 17:42:25Z / 4 items), well inside
+  the 18h staleness threshold. The two-day gap in food logs on 08-13/08-14 is
+  behaviour, not a dead feed — 08-13 carries a run and a weigh-in from the same
+  window.
+
+- **Height and age corroborated, unchanged since M8.** 165.1 cm still
+  back-solves against Garmin's BMI (164.9), and 1980-04-03 gives 46 on
+  2026-08-14. Both re-checked because height enters BMR at 6.25× and age at 5×.
+
+**Verdict: arithmetic exact on all four figures; no input defect.** Two
+provenance questions for Dave (the 08-05 manual row, the `general` profile),
+neither of which moves today's numbers.
+
+### Did the tool save time? — yes, roughly half the exercise
+
+`npm run reconcile` replaced five hand-written `wrangler d1 execute --remote`
+calls and their formatting with one command and a paste-ready block; measured
+against M5 and M8, that is the ~half of rule 4b that always finished first
+because it was the part with a known ending. **The `rows_n` column earned its
+place immediately** — 2026-08-06 reads `1 | 77` at a glance, which is #74
+visible as a shape rather than as a small number.
+
+What it did not do is the check itself. Every finding above came from reading
+the block and asking which row was lying, and the one-kcal gap came from
+recomputing by hand and refusing to wave the difference through. The tool
+buys the hour back; it does not spend it.
 
 ---
 

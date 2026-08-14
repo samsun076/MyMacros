@@ -1129,3 +1129,62 @@ day the current app would not produce.
 clips as a set because they cross-reference one date, and already needs a dev
 server, a seeded DB and a real `ANTHROPIC_API_KEY`. Fold the macro figures into
 it rather than filing a second issue that blocks on the same recording.
+
+## Session M — M9's reconciliation, and M9 closed — ✅ done 2026-08-14
+
+**Closed: #83, and with it milestone M9.** The rule 4b entry is in
+[RECONCILIATIONS.md](RECONCILIATIONS.md); this is the pointer, not the record.
+
+**Figure reconciled:** Today on 2026-08-14 — `BASE 1,909` and
+`153 g protein · 188 g carbs · 61 g fat`. All four match by hand.
+**No input defect found**, which is a first for this exercise and is the
+result #77 most needed: protein now depends on body weight, and every weigh-in
+in the window is a real `garmin` scale reading.
+
+### Worth not re-deriving
+
+- **`trendWeightKg` rounds the window mean to 1 dp before anything consumes
+  it.** A hand pass from the printed weigh-ins gives 76.25 kg and a base target
+  of 1,908; the app builds from 76.3 and gets 1,909. Correct and deliberate —
+  one quantity rounded once at its source — but it is a 1 kcal gap, which is
+  precisely the size that gets waved through as "rounding" instead of chased.
+  Only the base target shows it; the three macro targets match under either
+  weight.
+- **`manual` on a weigh-in is unconditional protection, and provenance decays.**
+  2026-08-05's 76.0 is `manual`; asked directly, Dave does not remember whether
+  he stood on the scale. #20 will never let sync correct it and #71 lets it
+  clear tombstones — both on the premise that the word means a human typed it
+  deliberately. Four days of the Trends chart rest on it. Not filed; it is a
+  question to answer, and M8 already established that the honest move for a
+  soft weigh-in is deletion once identified.
+- **`athlete_profile` is `general` on someone who ran 6× in 14 days.** Not a
+  defect — it is a preference, and #79 asked the question properly. But
+  `runner` carries `carb_ratio_pct` 65, which on these numbers is 211 g carbs /
+  51 g fat instead of 188 / 61. Dave's call. Base target and protein unaffected.
+- **`start_weight_kg` is 74.84 kg = exactly 165.0 lb, typed at onboarding, and
+  now below the current trend.** Enumerated its readers: nothing user-facing
+  consumes it (Onboarding's form seeding only, as the last fallback behind
+  `trend_weight_kg`). Costs nothing today — re-check before any future screen
+  draws a "since you started" figure.
+- **The tool saved roughly half the exercise, and `rows_n` earned its place.**
+  Recorded on the entry per #83's third done-when.
+- **RECONCILIATIONS.md's header said "ten minutes"** while CLAUDE.md's amended
+  rule says 45–90. Two sources for one number, #86's exact shape. The header
+  now defers to CLAUDE.md.
+
+### Next up: pick a milestone
+
+M9 is closed. Nothing is blocked and nothing is half-finished, so the next
+session starts clean on whichever of these you want:
+
+| Milestone | Open | What it buys |
+|---|---|---|
+| **M10 Launch & offline** | #53, #35, #54 | The cold-launch white screen, fonts off the critical path, a service worker. Most user-visible, and #54 is the real mitigation for the mixed-version window this project keeps documenting |
+| **M11 Look & feel** | 8 issues | Editable Settings (#23), theme/accent picker (#29), light packs (#30), timeline order (#80), swipe-to-delete (#52), plus the two device-only questions (#38, #39) |
+| **M7 Log flow** | 5 issues | Multi-capture meals (#81), favourites made reachable (#82), edit a saved meal (#60), portion scaling (#58), tell-the-reader-it-was-wrong (#59). #81 and #82 are both mostly built already |
+| **M6 OSS-ready** | 11 issues | The self-hoster story — BYOK, claim flow, landing page, Garmin sync into the Worker |
+
+**Rule 4b for whichever lands next:** M10 and M11 change how the app looks,
+loads and navigates, so they owe a one-line "no computed figure — not
+applicable", not an entry. M7 changes how a meal is assembled, which touches
+`foldMeals` — if it changes what counts as one meal, it owes a real entry.
