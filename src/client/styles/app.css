@@ -50,10 +50,44 @@ body {
 }
 
 /* iOS Safari paints its top chrome from the document background and ignores
-   theme-color in-browser (field-tested) — match the page top on phones. */
+   theme-color in-browser (field-tested) — match the page top on phones.
+
+   The gradient's TOP STOP IS THE FIELD-TESTED VALUE and must stay --bg-top:
+   Safari samples the top of this surface, so that half of the contract is
+   unchanged. What the bottom stop fixes is #38.
+
+   Measured twice on device: during launch the fixed tab bar's `bottom: 0`
+   resolves ~51pt above the physical bottom, and <body> fills the gap — which
+   put --bg-top, the LIGHTEST surface in the pack, directly beneath --chrome,
+   the darkest. A 51pt band, worst possible pairing, on every launch. Ending
+   the gradient at --chrome makes that gap match the bar instead of announcing
+   it. Same cause, same fix, for the band under the boot skeleton.
+
+   Deliberately not the other repair. The gap is a TRANSIENT — iOS recomputes
+   the viewport and the bar drops into place — so extending the bar to cover it
+   would overshoot in the corrected state and trade a launch-time band for a
+   permanent one. This colours the gap rather than closing it, which is correct
+   precisely because the gap is supposed to disappear.
+
+   Anchored to the BOTTOM in absolute units, not in percentages. This
+   background propagates to the canvas, and how a propagated background sizes
+   its percentage stops is exactly the kind of detail that differs between
+   engines — a guess there would be untestable in Chrome and wrong on the one
+   device that matters. `to top` with px stops measures from the bottom edge,
+   which is where the defect is.
+
+   90px of solid --chrome covers the measured 51pt with margin and still sits
+   entirely behind the ~95px tab bar once the viewport corrects. The ramp above
+   it is hidden by .frame, which covers everything above the bar. */
 @media (max-width: 499px) {
   body {
-    background: var(--bg-top);
+    background: linear-gradient(
+      to top,
+      var(--chrome) 0,
+      var(--chrome) 90px,
+      var(--bg-top) 130px,
+      var(--bg-top) 100%
+    );
   }
 }
 
