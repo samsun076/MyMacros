@@ -481,16 +481,23 @@ result about the *inputs* and says nothing about this register.
   `backdrop-filter`, no border below it, extended through
   `env(safe-area-inset-bottom)`.
 - `--chrome` is **never accent-tinted** (the accent switches live).
-- `theme-color` meta stays at `--bg-top` for the standalone/PWA case — but
-  **what it actually does there is unverified** (#39). Measured on device:
-  at the top of a standalone launch the page gradient runs continuously to
-  y=0, so `apple-mobile-web-app-status-bar-style: black-translucent` plus
-  `viewport-fit=cover` are what put content under the status bar —
-  `theme-color` paints nothing there. The bottom inset is still unattributed
-  because `theme_color`, `--bg-top` and the body background are all
-  `#1a2230`; only a contrast test can separate them, and every attempt so
-  far was defeated by iOS manifest caching. Don't state what `theme-color`
-  does in standalone until #39 is closed.
+- **`theme-color` is inert in standalone — settled 2026-08-14 (#39).** The
+  whole screen is the page plus the canvas. Proven by a regression that
+  separated the three candidates for free: with `background:` shorthand having
+  reset the canvas to transparent, `theme-color` and manifest `theme_color`
+  were both `#1a2230` and the standalone screen rendered **black** at both
+  ends. Neither was consulted. (The top was already known: `black-translucent`
+  + `viewport-fit=cover` run the page to y=0.) The meta stays in `index.html`
+  for iOS Safari *in-browser* and for future installable contexts — but nothing
+  in standalone depends on it, and no change should be justified by what it
+  "should" do there. **For #30, the value that matters is the canvas colour**
+  (`background-color` on `body` at phone widths), not `theme_color`.
+- **The top chrome cannot exactly match the page, and that is deliberate.**
+  The canvas is a flat `--bg-top`; the page top is `--bg-top` *plus* the radial
+  accent glow, measured ~6 lighter. Closing that gap would mean accent-tinting
+  the canvas, and the accent switches live (rule 5) while `--chrome` is never
+  accent-tinted. Baking a glowed value in would be right for coral and wrong
+  for gold and mint.
 - **Standalone is not Safari.** In standalone the app owns the full screen,
   so the tab bar must cover the bottom safe area itself; Safari hides that
   case behind its own bottom bar. There is an open seam defect there (#38),

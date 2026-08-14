@@ -1461,6 +1461,43 @@ that commit also touched CSS. Fixed by hashing the emitted shell into the cache
 name — in `writeBundle`, not `generateBundle`, because the stylesheet is not
 inlined yet at the earlier hook.
 
+### Session P outcome — #38 and #39 both closed
+
+**Closed this session: #56, #87, #88, #38, #39.** M9 and M10 closed as
+milestones. M11 has 6 issues left (#23, #24, #29, #30, #52, #80) — all screen
+work, none device-gated. **The two oldest device debts in the project are
+paid.**
+
+**#38 — accepted with the residual explained, not merely tolerated.**
+
+| | before | now |
+|---|---|---|
+| Safari top chrome | `#1a2230` → broke twice → | **`#1c222f`**, delta 2 from `--bg-top` ✓ |
+| standalone bottom gap, delta from the bar | 16 | **8** |
+
+- **The top will never match the page exactly**, and that is correct: the
+  canvas is flat `--bg-top`, the page top is `--bg-top` *plus the accent glow*
+  (~6 lighter). Matching it means accent-tinting the canvas, which rule 5 and
+  the never-tint-`--chrome` convention both forbid. Don't "fix" it.
+- **The bottom's remaining 8 has one known lever**: the gap is landing in the
+  gradient's 90px→130px *ramp*, not its solid section. Widen the solid
+  `--chrome` band to ~140px. One value. Not attempted — six configurations in
+  one session, and the last three moved single digits.
+
+**#39 — answered for free, after three attempts had failed.** `theme-color` is
+**inert in standalone**. The `background:`-shorthand regression set the canvas
+transparent while `theme-color` and manifest `theme_color` were both
+`#1a2230`; the screen rendered **black at both ends**. Neither was consulted.
+A question open since Session B2, settled by a bug.
+
+**Why six configurations were needed, and the lesson to carry:** every one of
+them passed `verify:firstpaint`, `verify:viewport` and 323 unit tests, and one
+passed a direct read of the computed style that correctly reported
+`rgb(26,34,48)`. **The right number on the wrong property.** No check here can
+distinguish those, because the claim is about what iOS *does*. Every regression
+was caught by a photograph of a phone, and the fix rate was roughly one useful
+configuration per screenshot.
+
 ### The device check M10 cannot do without Dave
 
 Headless Chrome has no iOS launch screen, so #53's acceptance test is a cold
