@@ -1345,8 +1345,21 @@ before code (table above) and all four held.
 
 ### #87 — #54 bricked the app on iOS, same day
 
-**M10 was closed and is reopened.** A milestone that shipped this was not
-finished. Fixed in `4bf6084`; the milestone closes when Dave confirms on device.
+**M10 was closed, reopened for this, and closed again once it was confirmed on
+device** — 4 issues, all shipped. A milestone that shipped a bricking bug was
+not finished, and reopening it is cheaper than a milestone list that lies.
+Fixed in `4bf6084`.
+
+**Recovery worked without clearing website data**: two swipe-closed relaunches.
+A worker that breaks the navigation leaves no *controlled client* behind — an
+error page is not one — so the browser's soft update of `/sw.js` still runs
+after the navigation fetch event, the fixed worker installs, finds nothing to
+wait behind, and activates. **That was luck, not design.** A worker that threw
+during `install`, or a `/sw.js` that 404'd, gets no fetch event and no update:
+the registration sits there and the app's own `register()` can never run
+because the page never loads. **The update flow lives inside the thing it may
+need to repair** — named on #87, deliberately not closed with it, and owed its
+own decision in a later milestone.
 
 Cloudflare's asset router **307s `/index.html` → `/`**, so precaching the shell
 at `/index.html` stored a *redirected* response — and a redirected response may
@@ -1378,6 +1391,31 @@ Two test-design faults found in passing, both now fixed:
 - **The offline probe read `navigator.serviceWorker.controller` unguarded**, so
   a failed navigation — the single most important thing the file can report —
   surfaced as a harness crash. #87 first appeared as a stack trace.
+
+### Next up: #38, and the M11 device session
+
+**M10 is closed. #38 is the next thing**, and the approach is already decided
+(comment on #38, 2026-08-14) so the session starts from a decision:
+
+**Give `<body>` at phone widths a gradient — `--bg-top` at the top, `--chrome`
+at the bottom — instead of today's flat `--bg-top`.** Measured twice on device:
+the tab bar stops ~51pt short of the physical bottom during launch and `<body>`
+fills the gap, pairing the *lightest* surface in the pack against the
+*darkest*. The gradient makes the gap match the bar instead of contrasting with
+it, and fixes the boot-skeleton band (same cause) in the same line.
+
+**Not the viewport fix**, because the defect is a *transient*: it corrects when
+iOS recomputes the viewport, so permanently extending the bar would overshoot
+in the corrected state and trade a launch-time band for a permanent one.
+
+**Three device checks before it counts as done** — it touches a field-tested
+value: the Safari top-chrome tint (in-browser, not standalone), the band during
+and after launch in standalone, and that desktop widths are untouched (`body`
+is `--canvas` there; the change lives inside the existing
+`@media (max-width: 499px)` block).
+
+**Do #39 in the same session.** Both are device-only and both are about what
+iOS paints outside the app's own frame.
 
 ### The device check M10 cannot do without Dave
 
