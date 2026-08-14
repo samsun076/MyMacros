@@ -1241,6 +1241,42 @@ decisions were settled with Dave before any code — see below.
   the accent glow; a flat vertical gradient would compress to almost nothing,
   at the price of a seam at handoff.
 
+### Two things device testing turned up the same day
+
+- **The white blip, and the frame that belonged to nobody.** `color-scheme:
+  dark` lived only in `design/tokens.css` under `:root[data-theme=…]`, so it
+  took effect only once the inlined stylesheet parsed — and until then the UA
+  canvas is white by spec. The launch image covers up to the moment iOS starts
+  painting the web view; the inlined CSS covers from the moment our styles
+  apply; between them was a frame nothing owned. `<meta name="color-scheme">`
+  applies from HTML parse. **Two rival explanations were measured and killed
+  first** — a font swap (fallback vs real differs by 0.01pp of bright pixels)
+  and anything in the load at all (12-frame screencast of the real production
+  document, peak mean luminance 33/255). Fixed and confirmed on device.
+- **#38 is now measured, from a boot-skeleton screenshot.** The page gradient
+  runs cleanly to `#11161e` at 92% of the screen and then jumps to `#1b212e`
+  for the bottom ~50pt — that is `--bg-top`, i.e. **`<body>` showing through
+  because `.frame`/`.splash` at `min-height: 100dvh` stops short of the
+  physical bottom in standalone.** The loaded app hides it behind the fixed tab
+  bar; during boot nothing does. Numbers on #38. **Don't "fix" it by changing
+  body's phone-width background** — that value is field-tested for the Safari
+  top-chrome tint.
+
+### The bundle, measured — and #53's guess was wrong
+
+#53 hypothesised that "the better-auth client is likely a big slice that only
+the sign-in path needs". Measured by splitting every package into its own
+chunk: **better-auth totals 18.6 KB gzip**, about 15%. The weight is
+`react-dom` 57.2, `react-router` 29.2, app code 20.0 — no fat chunk to cut.
+
+The one real win is **`@sec-ant/barcode-detector` at 15.3 KB**, imported
+eagerly and only ever needed by `/log#barcode`; a dynamic import takes first
+load to ~107 KB. Its 406 KB of wasm is already lazy. **Fold that into #54** —
+it is not worth its own pass, and code splitting is not the lever for the ~1.2s
+first load anyway. That time is distributed across fetch → download → parse and
+execute on a phone CPU → two API round trips, which is exactly what a shell
+precache removes.
+
 ### Next up: #54, the service worker — decisions already made
 
 Settled with Dave 2026-08-14, before code, because #54's own body says these
