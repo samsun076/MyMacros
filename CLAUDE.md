@@ -578,6 +578,21 @@ result about the *inputs* and says nothing about this register.
   should too. This is #49's finding in code: an attempt cap was never the
   lever, because the slowest call ever measured was a *single un-retried*
   attempt.
+- **The service worker precaches the shell and nothing else** (#54). Its logic
+  is `src/client/sw.js` (plain, unbundled); a plugin in `vite.config.ts` emits
+  `/sw.js` with this build's manifest and a cache name hashed from it.
+  **`/api` is skipped entirely, navigations included** — answering
+  `/api/auth/callback/google?code=…` from the shell is B2's outage with a
+  service worker on top. **No API response is ever cached**: a cached `/api/day`
+  beside a live one is the register's own defect with a stale timestamp.
+  Excluded on size: the 991 KB wasm, and everything in `public/` (icons, the
+  1.4 MB of launch images) which never enters the bundle at all.
+  **`install` must never call `skipWaiting`** — the update flow is
+  *on next launch*, so a deploy can't reload the page under someone mid-meal;
+  Settings → App is the only thing that forces it. Registration is
+  `import.meta.env.PROD`-gated, a build-time literal, because a worker in front
+  of Vite's dev server serves a stale document and the symptom is "my edit
+  didn't take".
 - **The launch path has three moving parts and one check** (#53). The
   stylesheet is inlined into `index.html` by a plugin in `vite.config.ts`
   (build only — dev injects CSS through JS), `#root` ships a boot skeleton that

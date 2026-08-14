@@ -220,10 +220,105 @@ async function main() {
     check(px.brightest < 90, "every sampled pixel is dark, not white", `brightest ${px.brightest}/255`);
   });
 
-  server.close();
+  /* #54. A precache is one of those things that looks finished the moment the
+     file exists — the manifest is right, the tests are green, and the only
+     question that matters ("does the app open with no connection?") is
+     answered by nothing so far. So: register the real worker, wait for it to
+     activate, cut the network at the CDP layer, and navigate again. */
+  console.log("\nservice worker, with the network cut");
+  await withChrome(async (cdp) => {
+    const { sessionId } = await openPage(cdp);
+    await cdp.send("Network.enable", {}, sessionId);
+    await cdp.send("Page.navigate", { url: `http://localhost:${port}/` }, sessionId);
+    await settle(cdp, sessionId);
+
+    // `ready` resolves as soon as there IS an active worker, which is a moment
+    // before that worker finishes activating — clients.claim() is inside
+    // waitUntil. Reading .state at that instant races and reports "activating".
+    const ready = await evaluate(
+      cdp,
+      sessionId,
+      `navigator.serviceWorker.ready.then(r => new Promise(res => {
+        const w = r.active;
+        if (!w) return res('none');
+        if (w.state === 'activated') return res('activated');
+        w.addEventListener('statechange', () => w.state === 'activated' && res('activated'));
+      }))`,
+    );
+    check(ready === "activated", "the worker installs and activates", `state: ${ready}`);
+
+    // waitUntil(addAll) gates activation, so an activated worker has a
+    // complete cache by construction — but assert the contents anyway, since
+    // "activated with an empty cache" is exactly what a silently-failing
+    // addAll would look like from the outside.
+    const cached = await evaluate(
+      cdp,
+      sessionId,
+      `caches.keys()
+        .then(ks => Promise.all(ks.map(k => caches.open(k).then(c => c.keys()))))
+        .then(all => JSON.stringify({
+          generations: all.length,
+          urls: all.flat().map(r => new URL(r.url).pathname).sort(),
+        }))`,
+    );
+    const c = JSON.parse(cached);
+    check(c.generations === 1, "exactly one cache generation", `${c.generations}`);
+    check(c.urls.includes("/index.html"), "the shell is cached");
+    check(
+      c.urls.filter((u) => u.endsWith(".woff2")).length === 7,
+      "all seven fonts are cached",
+      `${c.urls.filter((u) => u.endsWith(".woff2")).length}`,
+    );
+    check(!c.urls.some((u) => u.endsWith(".wasm")), "the 991 KB wasm is not cached");
+    check(!c.urls.some((u) => u.startsWith("/api")), "no API response is cached");
+
+    /* The network is cut by **stopping the server**, not by CDP's offline
+       emulation. `Network.emulateNetworkConditions` applies to the page's
+       session, and once a service worker controls the page the actual requests
+       originate from the worker's own session — so the emulation did nothing,
+       the server quietly kept answering, and every check below passed for the
+       wrong reason. Found by the negative control, which reported
+       `reached:200` on a URL that was supposed to be unreachable. A dead
+       socket cannot be argued with. */
+    server.close();
+    server.closeAllConnections?.();
+    await cdp.send("Page.navigate", { url: `http://localhost:${port}/trends` }, sessionId);
+    await settle(cdp, sessionId);
+
+    const offline = JSON.parse(
+      await evaluate(
+        cdp,
+        sessionId,
+        `(async () => JSON.stringify({
+          title: document.title,
+          controlled: !!navigator.serviceWorker.controller,
+          styled: !!document.querySelector('style'),
+          js: performance.getEntriesByType('resource')
+            .filter(r => r.name.includes('/assets/') && r.name.endsWith('.js')).length,
+          uncached: await fetch('/icons/icon-512.png', { cache: 'no-store' })
+            .then(r => 'reached:' + r.status).catch(() => 'failed'),
+        }))()`,
+      ),
+    );
+
+    /* The negative control, and the check the rest of this section is worthless
+       without. `navigator.onLine` was the obvious thing to assert and it stayed
+       `true` under CDP's offline emulation — so trusting it would have reported
+       "loaded from cache" for a page the server was quietly still answering.
+       Ask the network instead: /icons/icon-512.png is deliberately NOT
+       precached, so it must fail at the same moment the shell succeeds. */
+    check(offline.uncached === "failed", "an un-precached URL really cannot be reached", offline.uncached);
+    // /trends rather than / on purpose: a deep link is the case a plain HTTP
+    // cache cannot serve offline, so this separates "the worker is working"
+    // from "the browser had it lying around".
+    check(offline.title === "MyMacros", "a deep link still returns the app shell", offline.title);
+    check(offline.controlled, "the page is served by the worker");
+    check(offline.styled, "the inlined stylesheet came with it");
+    check(offline.js > 0, "the JS bundle loaded from cache", `${offline.js} chunk(s)`);
+  });
 
   console.log(
-    fail.length ? `\n${fail.length} check(s) failed` : "\nfirst paint is the app's own frame, with no JavaScript",
+    fail.length ? `\n${fail.length} check(s) failed` : "\nfirst paint is the app's own frame, and it survives losing the network",
   );
   process.exit(fail.length ? 1 : 0);
 }

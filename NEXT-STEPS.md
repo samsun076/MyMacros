@@ -1269,13 +1269,18 @@ the sign-in path needs". Measured by splitting every package into its own
 chunk: **better-auth totals 18.6 KB gzip**, about 15%. The weight is
 `react-dom` 57.2, `react-router` 29.2, app code 20.0 — no fat chunk to cut.
 
-The one real win is **`@sec-ant/barcode-detector` at 15.3 KB**, imported
-eagerly and only ever needed by `/log#barcode`; a dynamic import takes first
-load to ~107 KB. Its 406 KB of wasm is already lazy. **Fold that into #54** —
-it is not worth its own pass, and code splitting is not the lever for the ~1.2s
-first load anyway. That time is distributed across fetch → download → parse and
-execute on a phone CPU → two API round trips, which is exactly what a shell
-precache removes.
+**Correction, made while building #54:** the first version of this note (and
+the first comment on #53) said `@sec-ant/barcode-detector` at 15.3 KB was
+"imported eagerly" and worth splitting out. **It was already lazy** —
+`src/client/lib/barcode.ts` has always used `import()`, and the default build
+emits it as its own `pure-*.js` chunk outside the 122 KB entry. The
+`manualChunks` experiment gave it a name and made it *look* like part of the
+client bundle; it never was.
+
+So there is **no code-splitting win available at all** — which strengthens the
+conclusion rather than weakening it. The ~1.2s first load is distributed across
+fetch → download → parse and execute on a phone CPU → two API round trips, and
+a shell precache is the only thing that removes most of it.
 
 ### Next up: #54, the service worker — decisions already made
 
@@ -1299,6 +1304,44 @@ asset manifest.
 
 **Don't precache the launch images** — 1.4 MB, only one is ever used, and iOS
 fetches them outside the service worker anyway.
+
+## Session O — #54, and M10 closed — ✅ done 2026-08-14
+
+**Closed: #54, and with it milestone M10.** All four decisions were taken
+before code (table above) and all four held.
+
+- **`src/client/sw.js`** — plain, unbundled, readable. A plugin in
+  `vite.config.ts` emits `/sw.js` with the manifest baked in and a cache name
+  hashed from it, so a rebuild that changes no asset re-downloads nothing.
+- **`src/client/lib/sw.ts`** — registration (PROD-only), `useUpdate` for
+  Settings → App, `useOnline` for the banner.
+- **`npm run verify:firstpaint` now drives the real worker**, installs it, and
+  **kills the server** before navigating to a deep link.
+
+### Worth not re-deriving
+
+- **CDP's offline emulation does not reach the service worker.**
+  `Network.emulateNetworkConditions {offline:true}` applies to the *page*
+  session; once a worker controls the page, requests originate from the
+  worker's own session. The server kept answering and every offline check
+  passed for the wrong reason. **Caught only by a negative control** — an
+  un-precached URL that must fail at the same moment the shell succeeds. The
+  fix is to stop the HTTP server; a dead socket cannot be argued with. Any
+  future offline test needs the same control.
+- **`navigator.serviceWorker.ready` resolves a moment before `active.state` is
+  `"activated"`** — `clients.claim()` sits inside `waitUntil`. Reading state at
+  that instant races and reports `"activating"`. Wait on `statechange`.
+- **A test that reads code must strip comments first.** Twice now: the worker
+  says "No skipWaiting" in prose right beside the rule, so a substring search
+  reports the rule broken while it is being kept. Same shape as #35's
+  `unicode-range` test.
+- **The `.png` / `launch-` filter in the plugin was dead code.** Nothing under
+  `public/` enters the rollup bundle, so icons and launch images are excluded
+  by absence, not by rule. The filter looked like it was doing something and
+  never matched once.
+- **The offline banner is not `--danger`** (rule 9). Losing signal is a fact
+  about the room, not a fault in the numbers, and every figure behind the
+  banner is still the last true one.
 
 ### The device check M10 cannot do without Dave
 

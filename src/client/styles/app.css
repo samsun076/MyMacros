@@ -302,6 +302,24 @@ section {
   text-wrap: pretty;
 }
 
+/* Offline notice (#54). Deliberately NOT --danger: rule 9 spends that colour
+   on a state the user should act on, and losing signal is a fact about the
+   room rather than a fault in the numbers. A muted card reads as "context",
+   which is what it is — every figure on the screen behind it is still the last
+   true one. */
+.offline {
+  margin-bottom: 18px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  background: var(--surface);
+  color: var(--ink-muted);
+  font-family: var(--body-font);
+  font-size: 11.5px;
+  line-height: 1.5;
+  text-wrap: pretty;
+}
+
 .kv {
   display: grid;
   gap: 1px;

@@ -4,6 +4,7 @@ import { PasskeyManager } from "../components/PasskeyManager";
 import { Sources } from "../components/Sources";
 import { useApi } from "../lib/api";
 import { authClient } from "../lib/auth";
+import { useUpdate } from "../lib/sw";
 
 /** The real settings screen — TDEE inputs, deficit, protein anchor, eat-back,
  *  theme switcher — is #23 and #29. What's here already works: the account,
@@ -95,10 +96,54 @@ export function Settings() {
 
       <Sources />
 
+      <UpdateSection />
+
       <button className="btn btn-quiet" onClick={() => void authClient.signOut()}>
         Sign out
       </button>
     </>
+  );
+}
+
+/** The escape hatch for #54's update flow.
+ *
+ *  A new build installs quietly and waits for the app to be closed, so nothing
+ *  ever reloads the page mid-meal. The price of that is not knowing whether
+ *  you're on the newest version — and the answer to "am I updated?" should not
+ *  be "swipe the app closed and hope". This asks, and applies. */
+function UpdateSection() {
+  const { state, check, apply } = useUpdate();
+
+  const copy: Record<typeof state, string> = {
+    current: "You're on the latest version.",
+    checking: "Checking…",
+    available: "A new version is ready. It installs on its own next time you close the app.",
+    updating: "Updating…",
+  };
+
+  return (
+    <section>
+      <div className="sec-head">
+        <span className="eyebrow">App</span>
+        <span className="mono">#54</span>
+      </div>
+      <p className="placeholder-note" role="status">
+        {copy[state]}
+      </p>
+      {state === "available" ? (
+        <button className="btn btn-quiet" onClick={() => void apply()} disabled={state !== "available"}>
+          Update and reload now
+        </button>
+      ) : (
+        <button
+          className="btn btn-quiet"
+          onClick={() => void check()}
+          disabled={state === "checking" || state === "updating"}
+        >
+          Check for updates
+        </button>
+      )}
+    </section>
   );
 }
 

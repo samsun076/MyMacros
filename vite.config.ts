@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+import { readFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { cloudflare } from "@cloudflare/vite-plugin";
@@ -73,8 +75,69 @@ function inlineStylesheets() {
   };
 }
 
+/** Emit /sw.js with this build's precache manifest baked in (#54).
+ *
+ *  The worker's logic lives in `src/client/sw.js` — plain, unbundled, readable.
+ *  All this does is tell it *what* to cache, which only the build knows,
+ *  because every asset name is content-hashed.
+ *
+ *  Hand-rolled rather than Workbox: the whole job is a file list and three
+ *  event handlers, and the house rule is no new dependency without cause.
+ *  What Workbox would buy — runtime caching strategies, expiration, background
+ *  sync — is precisely the surface this deliberately does not have.
+ *
+ *  The cache name is a hash of the manifest itself, so a rebuild that changes
+ *  no asset reuses the existing cache and re-downloads nothing, while any
+ *  change at all produces a new generation that installs whole.
+ */
+function serviceWorker() {
+  /** What the running app needs to boot and render: every emitted code chunk,
+   *  and the type. One deliberate exception — `.wasm` is 991 KB the barcode
+   *  path fetches only once a scan actually starts.
+   *
+   *  Note what is *absent* rather than filtered: everything under `public/`
+   *  (the icons, the twelve launch images, the manifest) never enters the
+   *  bundle at all, so it is not precached and needs no rule saying so. That
+   *  is the right outcome and not an accident worth "fixing" — those files are
+   *  read by the OS at install time, not by the app at runtime, so caching
+   *  100 KB of icons and 1.4 MB of launch images would buy a running app
+   *  nothing. An earlier draft of this filter excluded `launch-` explicitly
+   *  and looked like it was doing something; it never once matched. */
+  const wanted = (name: string) =>
+    !name.endsWith(".wasm") && (name.endsWith(".js") || name.endsWith(".woff2"));
+
+  return {
+    name: "mymacros:service-worker",
+    apply: "build" as const,
+    enforce: "post" as const,
+    async generateBundle(
+      this: { emitFile: (f: { type: "asset"; fileName: string; source: string }) => void },
+      _options: unknown,
+      bundle: Record<string, unknown>,
+    ) {
+      const names = Object.keys(bundle);
+      // The client build is the one with an index.html; the Worker build must
+      // not get a service worker emitted into it.
+      if (!names.includes("index.html")) return;
+
+      const precache = ["/index.html", ...names.filter(wanted).map((n) => `/${n}`)].sort();
+
+      const source = await readFile(join(import.meta.dirname, "src/client/sw.js"), "utf8");
+      const cacheName = `mymacros-${createHash("sha256").update(precache.join("\n")).digest("hex").slice(0, 12)}`;
+
+      this.emitFile({
+        type: "asset",
+        fileName: "sw.js",
+        source: source
+          .replace("__CACHE_NAME__", cacheName)
+          .replace("__PRECACHE__", JSON.stringify(precache, null, 2)),
+      });
+    },
+  };
+}
+
 export default defineConfig({
-  plugins: [react(), cloudflare(), inlineStylesheets()],
+  plugins: [react(), cloudflare(), inlineStylesheets(), serviceWorker()],
   resolve: {
     // regex rather than a plain string key: the import carries a `?url`
     // suffix, and only the pattern form rewrites the id while leaving the
