@@ -5,6 +5,27 @@
     <!-- viewport-fit=cover is what makes env(safe-area-inset-*) non-zero -->
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 
+    <!-- The browser's default canvas is WHITE, and `color-scheme: dark` lives
+         in design/tokens.css under :root[data-theme=...] — so it only takes
+         effect once the stylesheet has been parsed. This meta applies from
+         HTML parse instead, which is the one window nothing else in #53
+         reaches: iOS drops the launch image when the web view starts
+         painting, and if that first paint is the UA canvas rather than ours,
+         it is white.
+
+         Reported on device after #53 shipped ("a quick blip of white"), and
+         **not reproducible in Chrome** — a screencast of the real production
+         document over a throttled connection peaks at mean luminance 33/255
+         with no bright frame anywhere. Same class as #38/#39: a standalone
+         iOS behaviour the harness structurally cannot see.
+
+         Hardcoded `dark` is consistent with data-theme below, which is also
+         hardcoded while the app is Night Athletic only (build rule 1). When
+         the light packs land (#30) this needs to follow the user's theme the
+         way main.tsx already syncs theme-color — otherwise a light-theme user
+         gets this flash in reverse. -->
+    <meta name="color-scheme" content="dark" />
+
     <title>MyMacros</title>
     <meta
       name="description"

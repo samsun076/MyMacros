@@ -76,6 +76,13 @@ async function main() {
   check(!/<link[^>]*rel="stylesheet"/.test(html), "no render-blocking stylesheet link");
   check(html.includes("<style>"), "stylesheet is inlined");
   check(!/googleapis|gstatic|jsdelivr|unpkg/.test(html), "no third-party host in <head>");
+  /* Asserted here rather than trusted, because its whole job happens before
+     any CSS is parsed and **Chrome cannot show it failing** — a screencast of
+     the full load peaks at mean luminance 33/255 with or without it. It is
+     the only defence for the frame between iOS dropping the launch image and
+     our stylesheet applying, so losing it would be silent everywhere except
+     on a phone. */
+  check(/<meta name="color-scheme" content="dark"/.test(html), "color-scheme declared before any CSS");
   // Comments survive the build, so "the next character is a tag" is not the
   // question — "is there an element in there at all" is.
   const root = html.slice(html.indexOf('<div id="root">')).replace(/<!--[\s\S]*?-->/g, "");

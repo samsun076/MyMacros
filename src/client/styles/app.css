@@ -15,6 +15,14 @@
 
 html {
   -webkit-text-size-adjust: 100%;
+  /* The canvas colour normally propagates up from <body>, which means it is
+     only settled once body's style is resolved. Stating it here paints the
+     document's own background at the earliest moment CSS can — the belt to
+     <meta name="color-scheme">'s braces in index.html, which is what covers
+     the frame before any CSS at all. --canvas rather than --bg-top because
+     this is the desktop letterbox surface; on phone widths body covers it
+     completely and only overscroll ever reveals it. */
+  background: var(--canvas);
 }
 
 body {
