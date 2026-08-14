@@ -1343,6 +1343,42 @@ before code (table above) and all four held.
   about the room, not a fault in the numbers, and every figure behind the
   banner is still the last true one.
 
+### #87 — #54 bricked the app on iOS, same day
+
+**M10 was closed and is reopened.** A milestone that shipped this was not
+finished. Fixed in `4bf6084`; the milestone closes when Dave confirms on device.
+
+Cloudflare's asset router **307s `/index.html` → `/`**, so precaching the shell
+at `/index.html` stored a *redirected* response — and a redirected response may
+not answer a navigation. Safari refuses the page outright ("Response served by
+service worker has redirections"), which is an app that will not open rather
+than a slow one.
+
+**The lesson is about the harness, not the worker.** `verify:firstpaint` drove
+the real worker, cut the network, and asserted a deep link still loaded — all
+green, against a hand-written server that answered `/index.html` with a plain
+200. That is the one behaviour production does not have. Same family as design
+QA never seeing loading states and curl's `Accept: */*` passing an OAuth
+callback a browser failed: **the stand-in was wrong in exactly the way that
+mattered.** It now 307s like the real thing.
+
+**And the part that would have defeated any amount of behavioural testing:**
+re-running the broken worker against the fixed harness, the deep-link
+navigation **still succeeded in headless Chrome**. Chrome does not enforce the
+rule Safari does. The check that catches it is *structural* — assert the cached
+shell has `redirected === false` — not behavioural. Measured, not assumed.
+
+Two test-design faults found in passing, both now fixed:
+
+- **`service-worker.test.mjs` read `dist/`.** `npm run build` is
+  `check && test && vite build`, so it validated the **previous** build every
+  time; #87's fix went green against the broken output on its first run. It
+  reads `src/client/sw.js` now, and everything about the emitted manifest is
+  asserted in `verify:firstpaint` against a browser's live Cache Storage.
+- **The offline probe read `navigator.serviceWorker.controller` unguarded**, so
+  a failed navigation — the single most important thing the file can report —
+  surfaced as a harness crash. #87 first appeared as a stack trace.
+
 ### The device check M10 cannot do without Dave
 
 Headless Chrome has no iOS launch screen, so #53's acceptance test is a cold
