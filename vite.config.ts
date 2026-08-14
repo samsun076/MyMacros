@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { readFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { cloudflare } from "@cloudflare/vite-plugin";
@@ -110,11 +110,16 @@ function serviceWorker() {
     name: "mymacros:service-worker",
     apply: "build" as const,
     enforce: "post" as const,
-    async generateBundle(
-      this: { emitFile: (f: { type: "asset"; fileName: string; source: string }) => void },
-      _options: unknown,
-      bundle: Record<string, unknown>,
-    ) {
+    /* `writeBundle`, not `generateBundle`, and the difference is the whole of
+     * #88's fix. The stylesheet is folded into index.html by another plugin's
+     * `transformIndexHtml`, which has not run by the time `generateBundle`
+     * sees the bundle — so `bundle["index.html"].source` there is the shell
+     * *before* the CSS is inlined, and hashing it caught nothing. Verified by
+     * experiment: a CSS-only edit left the cache name identical.
+     *
+     * On disk, after everything is written, there is exactly one index.html
+     * and it is the one users receive. Hash that. */
+    async writeBundle(options: { dir?: string }, bundle: Record<string, unknown>) {
       const names = Object.keys(bundle);
       // The client build is the one with an index.html; the Worker build must
       // not get a service worker emitted into it.
@@ -125,24 +130,47 @@ function serviceWorker() {
       const precache = ["/", ...names.filter(wanted).map((n) => `/${n}`)].sort();
 
       const source = await readFile(join(import.meta.dirname, "src/client/sw.js"), "utf8");
-      // Hashed over the worker's SOURCE as well as the file list. Hashing the
-      // list alone means a logic-only fix reuses the existing cache — and the
-      // case where that matters most is a worker shipped with a bug, whose
-      // entries are exactly what must be thrown away (#87 cached a redirected
-      // shell; the fix changed no asset name).
+
+      /* Three inputs, and each one is here because leaving it out shipped a bug.
+       *
+       *  - the file LIST, so a new asset hash makes a new generation;
+       *  - the worker's own SOURCE, or a logic-only fix reuses the cache it
+       *    was written to replace (#87 cached a redirected shell and changed
+       *    no asset name);
+       *  - the shell's CONTENT (#88). Since #53 the stylesheet is inlined into
+       *    index.html, so a CSS-only change alters no filename and no JS hash.
+       *    Without this, `sw.js` came out byte-identical, the browser saw no
+       *    update, and the cached shell was served **forever** — measured on
+       *    device as two deployed fixes that simply never arrived.
+       *
+       * The rule the third one generalises: a precache generation must be
+       * keyed by everything it serves, not by the names of the things it
+       * serves. `index.html` is the one entry whose bytes are not summarised
+       * by its URL. */
+      const dir = options.dir;
+      if (!dir) throw new Error("service worker: no output dir (#88)");
+
+      const shellSource = await readFile(join(dir, "index.html"), "utf8");
+      // A shell with no inlined stylesheet means the inlining plugin stopped
+      // running, and hashing it would silently go back to missing CSS-only
+      // changes. Fail the build rather than ship a worker that cannot update.
+      if (!shellSource.includes("<style>")) {
+        throw new Error("service worker: index.html has no inlined <style> — the hash would miss CSS changes (#88)");
+      }
+
       const cacheName = `mymacros-${createHash("sha256")
         .update(precache.join("\n"))
         .update(source)
+        .update(shellSource)
         .digest("hex")
         .slice(0, 12)}`;
 
-      this.emitFile({
-        type: "asset",
-        fileName: "sw.js",
-        source: source
+      await writeFile(
+        join(dir, "sw.js"),
+        source
           .replace("__CACHE_NAME__", cacheName)
           .replace("__PRECACHE__", JSON.stringify(precache, null, 2)),
-      });
+      );
     },
   };
 }
