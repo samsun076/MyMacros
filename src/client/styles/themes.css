@@ -87,6 +87,8 @@
 .fn-fill {
   left: 2px;
   background: var(--ink);
+  /* the grow animation scales from the left edge (#24) */
+  transform-origin: left center;
 }
 
 /* Right-anchored and pure hatch — no boundary tick. The fill is ink and this
@@ -158,6 +160,8 @@
   background: linear-gradient(180deg, #3a332a 0%, var(--ink) 42%, #14110c 100%);
   border-top: 1px solid rgba(255, 244, 220, 0.16);
   border-radius: 1px;
+  /* the grow animation scales from the left edge (#24) */
+  transform-origin: left center;
 }
 
 /* The earned zone is ruled off INSIDE the same channel — not appended past its

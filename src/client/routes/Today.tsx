@@ -7,6 +7,7 @@ import { ApiError, api, useApi } from "../lib/api";
 import { localDay } from "../lib/day";
 import { fmtInt } from "../lib/format";
 import { timelineView } from "../lib/timeline";
+import { InstallPrompt } from "../components/InstallPrompt";
 import { SwipeToDelete } from "../components/SwipeToDelete";
 import { useActiveMotifs } from "../motifs";
 import type { BudgetData } from "../motifs/types";
@@ -232,7 +233,7 @@ export function Today() {
           <svg width="18" height="18" viewBox="0 0 18 18" fill="none" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M3 9.5l4 4 8-9" />
           </svg>
-          {slotLabel(logged.slot)} logged — {fmtInt(logged.kcal)} kcal
+          {slotLabel(logged.slot)} logged — {fmtInt(logged.kcal)} kcal
           <span className="mono">
             {(logged.ms / 1000).toFixed(1)}S{logged.edited > 0 ? ` · EDITED ×${logged.edited}` : ""}
           </span>
@@ -360,6 +361,13 @@ export function Today() {
           )}
         </section>
       )}
+
+      {/* Below the day, not above it (#24). An install card at the top of the
+          first screen is an advert; below the timeline it is the last thing
+          you pass on the way down and easy to dismiss forever. It renders
+          nothing at all once installed, which is the state this app is
+          normally in. */}
+      <InstallPrompt />
     </>
   );
 }

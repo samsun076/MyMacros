@@ -2484,3 +2484,95 @@ section {
   color: var(--ink-muted);
   opacity: 0.8;
 }
+
+/* ══ motion (#24) ══════════════════════════════════════════════════════════
+   Ported from the sketch's own entrance block (c2-night-athletic.html), which
+   the app had never picked up — before this there were two transitions in the
+   whole stylesheet and both belonged to the camera.
+
+   **Opt-IN, not opt-out.** Everything below lives inside
+   `prefers-reduced-motion: no-preference`, so the default for a system that
+   hasn't answered is stillness. The sketch does the same, and it matters more
+   here than there: `.rise` starts at `opacity: 0`, so a rule that escaped the
+   query would hide the whole screen for anyone whose animations don't run.
+   `backwards` fill rather than `forwards` for the same reason — the pre-delay
+   state is the animation's, not the element's.
+
+   **Nothing here is verifiable by this project's tooling.** `cdp.mjs` forces
+   `prefers-reduced-motion: reduce` on every page it opens, so every PNG this
+   repo has ever produced is of a still app, and these rules are invisible to
+   shot-matrix, verify:viewport and verify:firstpaint alike. They need a person
+   with a phone. */
+@media (prefers-reduced-motion: no-preference) {
+  /* Structural rather than a class per section: a screen gets its entrance by
+     being a screen, and a new one cannot forget to opt in. */
+  .frame > header,
+  .frame > section {
+    animation: rise 0.5s cubic-bezier(0.2, 0.7, 0.2, 1) backwards;
+  }
+
+  .frame > *:nth-child(1) { animation-delay: 0.04s; }
+  .frame > *:nth-child(2) { animation-delay: 0.1s; }
+  .frame > *:nth-child(3) { animation-delay: 0.16s; }
+  .frame > *:nth-child(4) { animation-delay: 0.22s; }
+  .frame > *:nth-child(5) { animation-delay: 0.28s; }
+  .frame > *:nth-child(n + 6) { animation-delay: 0.32s; }
+
+  /* The bars draw themselves, which is the sketch's one piece of real
+     delight — the budget meter filling is the screen's whole subject. */
+  .fuel .fill,
+  .fn-fill,
+  .in-fill {
+    animation: grow 0.75s cubic-bezier(0.2, 0.7, 0.2, 1) 0.3s backwards;
+  }
+
+  .mbar i {
+    animation: grow 0.65s cubic-bezier(0.2, 0.7, 0.2, 1) 0.45s backwards;
+  }
+
+  /* The toast arrives rather than appearing. */
+  .toast {
+    animation: rise 0.28s cubic-bezier(0.2, 0.7, 0.2, 1) backwards;
+  }
+
+  @keyframes rise {
+    from {
+      opacity: 0;
+      transform: translateY(10px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+
+  @keyframes grow {
+    from {
+      transform: scaleX(0);
+    }
+    to {
+      transform: scaleX(1);
+    }
+  }
+}
+
+/* Press feedback is NOT inside the query. It is not decoration — it is the
+   only thing that tells you a tap registered on a screen where the result
+   arrives over the network, and someone who asked for reduced motion asked for
+   fewer animations, not for controls that feel dead. Same 1px the primary
+   buttons have used since M2. */
+.tab:active,
+.opt:active,
+.seg-btn:active,
+.range button:active {
+  transform: translateY(1px);
+}
+
+/* The add-to-home-screen card (#24). Quiet by construction: it is a section
+   like any other, it sits below the day, and once dismissed or installed it
+   does not exist. */
+.install .sec-head .btn-text {
+  font-size: 14px;
+  line-height: 1;
+  padding: 2px 6px;
+}
