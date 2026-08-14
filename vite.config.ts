@@ -120,10 +120,21 @@ function serviceWorker() {
       // not get a service worker emitted into it.
       if (!names.includes("index.html")) return;
 
-      const precache = ["/index.html", ...names.filter(wanted).map((n) => `/${n}`)].sort();
+      // "/" and not "/index.html": the asset router 307s the latter, and a
+      // redirected response cannot answer a navigation (#87).
+      const precache = ["/", ...names.filter(wanted).map((n) => `/${n}`)].sort();
 
       const source = await readFile(join(import.meta.dirname, "src/client/sw.js"), "utf8");
-      const cacheName = `mymacros-${createHash("sha256").update(precache.join("\n")).digest("hex").slice(0, 12)}`;
+      // Hashed over the worker's SOURCE as well as the file list. Hashing the
+      // list alone means a logic-only fix reuses the existing cache — and the
+      // case where that matters most is a worker shipped with a bug, whose
+      // entries are exactly what must be thrown away (#87 cached a redirected
+      // shell; the fix changed no asset name).
+      const cacheName = `mymacros-${createHash("sha256")
+        .update(precache.join("\n"))
+        .update(source)
+        .digest("hex")
+        .slice(0, 12)}`;
 
       this.emitFile({
         type: "asset",

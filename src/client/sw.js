@@ -39,18 +39,46 @@
 const CACHE = "__CACHE_NAME__";
 const PRECACHE = __PRECACHE__;
 
-/** The document every navigation resolves to. Held under its own key rather
- *  than "/" so that a navigation to /trends and one to / hit the same entry. */
-const SHELL = "/index.html";
+/** The document every navigation resolves to, so /trends and / hit one entry.
+ *
+ *  **"/" and not "/index.html" — #87.** Cloudflare's asset router answers
+ *  `/index.html` with a 307 to `/`, so caching that URL stores a response whose
+ *  `redirected` flag is set, and the Fetch spec forbids using a redirected
+ *  response to satisfy a navigation. Safari enforces it by refusing the page
+ *  outright — "Response served by service worker has redirections" — which
+ *  bricks the installed app rather than degrading it. */
+const SHELL = "/";
+
+/** A response safe to answer a navigation with.
+ *
+ *  Belt to SHELL's braces: any host that redirects the shell for its own
+ *  reasons would poison the cache the same way, and reconstructing the response
+ *  drops the `redirected` flag because a Response built by hand has never been
+ *  redirected anywhere. */
+async function navigable(response) {
+  if (!response.redirected) return response;
+  return new Response(await response.blob(), {
+    status: response.status,
+    statusText: response.statusText,
+    headers: response.headers,
+  });
+}
 
 self.addEventListener("install", (event) => {
   // No skipWaiting — see the header. `reload` because a precache that
   // revalidates against the HTTP cache can install a generation that is
   // already stale on arrival.
   event.waitUntil(
-    caches
-      .open(CACHE)
-      .then((cache) => cache.addAll(PRECACHE.map((url) => new Request(url, { cache: "reload" })))),
+    (async () => {
+      const cache = await caches.open(CACHE);
+      const assets = PRECACHE.filter((url) => url !== SHELL);
+      await cache.addAll(assets.map((url) => new Request(url, { cache: "reload" })));
+      // The shell goes in by hand rather than through addAll, because it is
+      // the one entry that has to survive the navigable() check.
+      const res = await fetch(new Request(SHELL, { cache: "reload" }));
+      if (!res.ok) throw new Error(`shell precache failed: ${res.status}`);
+      await cache.put(SHELL, await navigable(res));
+    })(),
   );
 });
 
@@ -88,10 +116,17 @@ self.addEventListener("fetch", (event) => {
   // what keeps a document and its assets on one generation.
   if (request.mode === "navigate") {
     event.respondWith(
-      caches
-        .open(CACHE)
-        .then((cache) => cache.match(SHELL))
-        .then((hit) => hit ?? fetch(request)),
+      (async () => {
+        const cache = await caches.open(CACHE);
+        const hit = await cache.match(SHELL);
+        // A redirected response here is fatal, not degraded: the browser
+        // refuses the navigation and the installed app cannot open at all
+        // (#87). Falling through to the network turns a brick into a slow
+        // launch, which is the difference between a bug and an outage — and
+        // it is what lets a cache poisoned by an older worker heal itself.
+        if (hit && !hit.redirected) return hit;
+        return fetch(request);
+      })(),
     );
     return;
   }

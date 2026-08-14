@@ -578,6 +578,18 @@ result about the *inputs* and says nothing about this register.
   should too. This is #49's finding in code: an attempt cap was never the
   lever, because the slowest call ever measured was a *single un-retried*
   attempt.
+- **The shell is precached at `/`, never `/index.html`** (#87), and the cached
+  shell must not be a redirect. Cloudflare's asset router **307s
+  `/index.html` → `/`**, and a redirected response cannot answer a navigation:
+  **Safari refuses the page outright** ("Response served by service worker has
+  redirections"), which bricks the installed app rather than degrading it.
+  **Chrome does not enforce this** — measured, by running the broken worker
+  against the harness, where the navigation succeeded and rendered. So no
+  amount of behavioural testing in headless Chrome can find it; the guard is
+  the *structural* assertion in `verify:firstpaint` that the cached shell has
+  `redirected === false`. The worker also refuses to answer a navigation from a
+  redirected cache entry, so a cache poisoned by an older worker heals instead
+  of bricking.
 - **The service worker precaches the shell and nothing else** (#54). Its logic
   is `src/client/sw.js` (plain, unbundled); a plugin in `vite.config.ts` emits
   `/sw.js` with this build's manifest and a cache name hashed from it.

@@ -41,12 +41,28 @@ const TYPES = {
   ".wasm": "application/wasm",
 };
 
-/** Serve the built client exactly as the assets binding would, minus the SPA
+/** Serve the built client the way the assets binding does, minus the SPA
  *  fallback — a 404 here should be a loud missing asset, not a silent
- *  index.html with the wrong content-type (the trap CLAUDE.md names). */
+ *  index.html with the wrong content-type (the trap CLAUDE.md names).
+ *
+ *  **The 307 on `/index.html` is not decoration — it is the whole reason this
+ *  server exists in this shape (#87).** Cloudflare normalises `/index.html` to
+ *  `/`, and the first version of this file served it as a plain 200. Every
+ *  service-worker check below passed against that, and the worker shipped a
+ *  cached-redirect that Safari refuses for navigations, bricking the installed
+ *  app. A stand-in for production is only worth what it reproduces; anything
+ *  learned about the real host's behaviour belongs here, in code, the same day.
+ */
 function serve(root) {
   const server = createServer(async (req, res) => {
-    const path = join(root, normalize(decodeURIComponent(req.url.split("?")[0])));
+    const pathname = req.url.split("?")[0];
+
+    if (pathname === "/index.html") {
+      res.writeHead(307, { location: "/" }).end();
+      return;
+    }
+
+    const path = join(root, normalize(decodeURIComponent(pathname)));
     const file = existsSync(path) && (await stat(path)).isDirectory() ? join(path, "index.html") : path;
     if (!existsSync(file)) {
       res.writeHead(404).end("not found");
@@ -263,7 +279,21 @@ async function main() {
     );
     const c = JSON.parse(cached);
     check(c.generations === 1, "exactly one cache generation", `${c.generations}`);
-    check(c.urls.includes("/index.html"), "the shell is cached");
+    check(c.urls.includes("/"), "the shell is cached", c.urls.filter((u) => !u.startsWith("/assets")).join(" "));
+
+    /* #87 in one assertion. A redirected response cannot answer a navigation,
+       and Safari's reaction is to refuse the page — so this is the difference
+       between an app and an error screen, and nothing else here would notice:
+       the entry is present, the URL is right, the bytes are right. */
+    const shellRedirected = await evaluate(
+      cdp,
+      sessionId,
+      `caches.keys()
+        .then(ks => Promise.all(ks.map(k => caches.open(k).then(c => c.match("/")))))
+        .then(rs => rs.find(Boolean))
+        .then(r => r ? String(r.redirected) : "missing")`,
+    );
+    check(shellRedirected === "false", "the cached shell is not a redirect", `redirected: ${shellRedirected}`);
     check(
       c.urls.filter((u) => u.endsWith(".woff2")).length === 7,
       "all seven fonts are cached",
@@ -290,8 +320,14 @@ async function main() {
         cdp,
         sessionId,
         `(async () => JSON.stringify({
+          // Guarded rather than read directly: when the navigation fails the
+          // browser shows its own error page, where navigator.serviceWorker is
+          // undefined — and an uncaught TypeError there reports "the harness
+          // crashed" for what is actually "the app would not open", which is
+          // the single most important thing this file can tell you. #87 was
+          // first seen here as a stack trace.
+          controlled: !!(navigator.serviceWorker && navigator.serviceWorker.controller),
           title: document.title,
-          controlled: !!navigator.serviceWorker.controller,
           styled: !!document.querySelector('style'),
           js: performance.getEntriesByType('resource')
             .filter(r => r.name.includes('/assets/') && r.name.endsWith('.js')).length,

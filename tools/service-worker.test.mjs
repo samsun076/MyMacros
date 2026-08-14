@@ -2,15 +2,22 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
-/** #54's worker is generated, so the things worth testing are the ones a
- *  future edit could quietly get wrong — and every one of them fails *silently*
- *  in production rather than loudly in CI.
+/** #54's worker, asserted on the rules a future edit could quietly break —
+ *  each of which fails *silently in production* rather than loudly in CI.
  *
- *  Read from the built output rather than re-implementing the plugin: the
- *  question is what actually shipped, and a test that recomputes the manifest
- *  the same way the plugin does would agree with a broken plugin. Skips
- *  cleanly when there is no build, so `npm test` stays fast and standalone. */
-const SW = join(process.cwd(), "dist/client/sw.js");
+ *  **Reads `src/client/sw.js`, the source, not `dist/client/sw.js`.** The
+ *  first draft read the build, which looked stricter and was worse than
+ *  useless: `npm run build` is `check && test && vite build`, so a test
+ *  reading `dist/` validates the *previous* build every time. #87's fix went
+ *  green against the broken output on its first run.
+ *
+ *  What the build actually produces — the precache list, the cache name, and
+ *  whether the cached shell is a redirect — is asserted in
+ *  `tools/verify-firstpaint.mjs`, against the live Cache Storage of a browser
+ *  that has really installed the worker. That is a stronger check than reading
+ *  the emitted text, and it can only run after a build, which is precisely why
+ *  it lives there and not here. */
+const SW = join(process.cwd(), "src/client/sw.js");
 const source = (() => {
   try {
     return readFileSync(SW, "utf8");
@@ -29,17 +36,20 @@ const precache = () => JSON.parse(source.match(/const PRECACHE = (\[[\s\S]*?\]);
 const code = (text) => text.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
 
 describe.skipIf(!source)("generated service worker", () => {
-  it("bakes in a real cache name, not the placeholder", () => {
-    expect(source).not.toContain("__CACHE_NAME__");
-    expect(source).not.toContain("__PRECACHE__");
-    expect(source).toMatch(/const CACHE = "mymacros-[0-9a-f]{12}"/);
+  /** #87. Cloudflare's asset router 307s `/index.html` to `/`, so caching that
+   *  URL stores a redirected response — and a redirected response cannot
+   *  answer a navigation. Safari refuses the page outright, which bricks the
+   *  installed app rather than degrading it. The shell must be the URL that
+   *  answers 200. */
+  it("caches the shell at / rather than at the URL that redirects", () => {
+    expect(code(source)).toContain('const SHELL = "/"');
   });
 
-  it("precaches the shell, the code and the fonts", () => {
-    const list = precache();
-    expect(list).toContain("/index.html");
-    expect(list.filter((f) => f.endsWith(".js")).length).toBeGreaterThan(0);
-    expect(list.filter((f) => f.endsWith(".woff2"))).toHaveLength(7);
+  /** The guard that turns a poisoned cache — written by some earlier worker,
+   *  or by a host that redirects for its own reasons — into a slow launch
+   *  instead of an app that cannot open. */
+  it("refuses to answer a navigation with a redirected response", () => {
+    expect(code(source)).toMatch(/hit && !hit\.redirected/);
   });
 
   /** 991 KB of WebAssembly the barcode path fetches only when a scan starts,
@@ -47,16 +57,6 @@ describe.skipIf(!source)("generated service worker", () => {
    *  worker. Precaching either spends a phone's storage on bytes almost no
    *  launch reads — and nothing about the app would look wrong afterwards,
    *  which is exactly why it needs a test rather than a comment. */
-  it("precaches neither the wasm nor the launch images", () => {
-    const list = precache();
-    expect(list.filter((f) => f.endsWith(".wasm"))).toEqual([]);
-    expect(list.filter((f) => f.includes("launch-"))).toEqual([]);
-  });
-
-  it("caches no API response", () => {
-    expect(precache().filter((f) => f.startsWith("/api"))).toEqual([]);
-  });
-
   /** The rule that is not about bytes. `/api/auth/callback/google?code=…` is a
    *  real server-side navigation, and answering it from the shell is the
    *  outage Session B2 spent most of a day on — better-auth never saw the
