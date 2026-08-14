@@ -9,6 +9,30 @@
    (--display-font, --body-font, --data-font). */
 
 @font-face {
+  font-family: "Alegreya Sans";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("./fonts/alegreya-sans-400.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Alegreya Sans";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("./fonts/alegreya-sans-500.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Alegreya Sans";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("./fonts/alegreya-sans-700.woff2") format("woff2");
+}
+
+@font-face {
   font-family: "Archivo";
   font-style: normal;
   font-weight: 100 900;
@@ -50,6 +74,30 @@
 }
 
 @font-face {
+  font-family: "Courier Prime";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("./fonts/courier-prime-400.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Courier Prime";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("./fonts/courier-prime-700.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Fragment Mono";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("./fonts/fragment-mono-400.woff2") format("woff2");
+}
+
+@font-face {
   font-family: "IBM Plex Mono";
   font-style: normal;
   font-weight: 400;
@@ -63,4 +111,13 @@
   font-weight: 500;
   font-display: swap;
   src: url("./fonts/ibm-plex-mono-500.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Instrument Sans";
+  font-style: normal;
+  font-weight: 400 700;
+  font-stretch: 100%;
+  font-display: swap;
+  src: url("./fonts/instrument-sans-variable.woff2") format("woff2");
 }

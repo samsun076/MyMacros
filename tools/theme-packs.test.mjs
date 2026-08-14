@@ -32,17 +32,40 @@ const css = readFileSync(join(process.cwd(), "design/tokens.css"), "utf8");
  *  lesson in this repo (fetch-fonts, service-worker, canvas). */
 const code = css.replace(/\/\*[\s\S]*?\*\//g, "");
 
-/** Every custom property a selector's block declares. */
+/** Every custom property a selector's block declares, name → value. */
 function tokensIn(selector) {
   const at = code.indexOf(selector);
   if (at === -1) return null;
   const open = code.indexOf("{", at);
   const body = code.slice(open + 1, code.indexOf("}", open));
-  return new Set([...body.matchAll(/(--[\w-]+)\s*:/g)].map((m) => m[1]));
+  return new Map([...body.matchAll(/(--[\w-]+)\s*:\s*([^;]+);/g)].map((m) => [m[1], m[2].trim()]));
 }
 
 /** Night Athletic, the base pack (#29) — bare `:root`, no attribute. */
 const base = tokensIn(":root {");
+
+/** Night Athletic's accent picker palette. A light pack has no accent choice —
+ *  its accent is its material, not a setting — so these three are the one
+ *  thing it is right to inherit and never use. */
+const ACCENT_PALETTE = ["--accent-coral", "--accent-gold", "--accent-mint"];
+
+/** What a ready pack MUST restate: anything carrying a colour or a typeface.
+ *
+ *  Not the metrics. `--tabbar-height: 62px` is the same 62px in every theme,
+ *  and forcing three copies of it is the register's own defect wearing a
+ *  design-system hat; a pack that wants a different bar says so and inherits
+ *  otherwise. Colour is different — a pack that forgets one gets Night
+ *  Athletic's blue-black on ivory paper, which is the failure the base-pack
+ *  decision (#29) traded *for*, on the argument that it is visible. This makes
+ *  it caught instead of merely visible.
+ *
+ *  Shadows, `--scrim` and the two gradient surfaces are all colour-bearing and
+ *  land here on their values rather than by name — `--shadow-lift`'s whole
+ *  point is that a deep blue-black drop means nothing on paper. */
+function mustRestate(name, value) {
+  if (ACCENT_PALETTE.includes(name)) return false;
+  return /#[0-9a-f]|rgba?\(/i.test(value) || name.endsWith("-font");
+}
 
 describe("theme packs (#29, #30)", () => {
   it("has a base pack on bare :root", () => {
@@ -72,10 +95,21 @@ describe("theme packs (#29, #30)", () => {
     /** The failure mode #29 chose deliberately: a base pack means a missing
      *  token inherits a DARK value rather than nothing at all. Visible, but
      *  only if someone looks — so it's checked instead. */
-    it.skipIf(!pack.ready)(`${theme}: restates every token the base pack sets`, () => {
-      const declared = tokensIn(`:root[data-theme="${theme}"] {`) ?? new Set();
-      const missing = [...base].filter((t) => !declared.has(t));
+    it.skipIf(!pack.ready)(`${theme}: restates every colour and typeface`, () => {
+      const declared = tokensIn(`:root[data-theme="${theme}"] {`) ?? new Map();
+      const missing = [...base]
+        .filter(([name, value]) => mustRestate(name, value) && !declared.has(name))
+        .map(([name]) => name);
       expect(missing, `${theme} would inherit these from Night Athletic`).toEqual([]);
+    });
+
+    /** A light pack declaring `color-scheme: dark` is the #53 white-flash bug
+     *  in reverse — the UA canvas and every form control would go dark under
+     *  ivory paper. The boot script in index.html rewrites the meta from this. */
+    it.skipIf(!pack.ready)(`${theme}: declares its colour scheme`, () => {
+      const at = code.indexOf(`:root[data-theme="${theme}"] {`);
+      const body = code.slice(code.indexOf("{", at) + 1, code.indexOf("}", at));
+      expect(body).toMatch(/color-scheme:\s*light/);
     });
   }
 });

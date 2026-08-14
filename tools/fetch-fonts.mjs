@@ -64,10 +64,54 @@ const CSS_OUT = join(ROOT, "src/client/styles/fonts.css");
  *  variable request is not a convenience. */
 export const GOOGLE_FONTS_CSS =
   "https://fonts.googleapis.com/css2" +
+  // ── Night Athletic, the base pack ──
   "?family=Archivo:wdth,wght@62..125,100..900" +
   "&family=Barlow+Condensed:wght@400;500;600;700" +
   "&family=IBM+Plex+Mono:wght@400;500" +
+  /* ── the light packs (#30) ──
+   * Typography is most of what makes these themes themselves — Field Notes is
+   * typewriter numerals on ledger paper and Instrument is a machined dial — so
+   * the packs set `--display-font` and friends the way the token schema always
+   * intended, rather than wearing Night Athletic's faces in different colours.
+   *
+   * **Weights are what the APP uses, not what the sketches declared.** app.css
+   * uses 400/500/600/700 and no italic at all, so Alegreya Sans' 800 and every
+   * italic face are left behind: that is 13 latin faces (237 KB) down to 9
+   * (~175 KB). Alegreya Sans ships no 600 — the browser picks 700 there, which
+   * is the correct graceful answer and not worth a synthetic face.
+   *
+   * These are NOT precached. See SHELL_FAMILIES. */
+  "&family=Alegreya+Sans:wght@400;500;700" +
+  "&family=Courier+Prime:wght@400;700" +
+  /* A RANGE, not a weight list — Instrument Sans is variable, and asking for
+     `400;500;600;700` got four @font-face blocks pointing at four downloads of
+     the same file, each pinned to one instance. Byte-identical (one MD5), 87 KB
+     of duplicates committed, and the axis thrown away to boot. Same syntax as
+     Archivo above, for the same reason. `assertNoDuplicateFaces` below is what
+     caught it and what stops the next one. */
+  "&family=Instrument+Sans:wght@400..700" +
+  "&family=Fragment+Mono" +
   "&display=swap";
+
+/** The families the SHELL needs, which is Night Athletic's three (#30).
+ *
+ *  The service worker precaches every `.woff2` in the bundle, and after the
+ *  light packs that would be ~175 KB of type most users never see, downloaded
+ *  on first launch, for a theme they did not pick. `vite.config.ts` filters the
+ *  precache list with this instead, so the light packs' faces load the ordinary
+ *  way when someone chooses that theme and sit in the HTTP cache afterwards.
+ *
+ *  **The cost, stated rather than hidden:** a light-theme user who is offline
+ *  with a cold cache gets fallback faces until they are online once. That is a
+ *  degradation you can read (the layout holds; `font-display: swap` was always
+ *  going to show a fallback first), where a 175 KB shell for everyone is a cost
+ *  nobody can see. #35's whole argument was about what sits on the critical
+ *  path.
+ *
+ *  Exported so vite.config.ts imports it rather than restating the list — the
+ *  register's rule, and the failure mode of a second copy here is silent: a new
+ *  family would simply never be precached, or would be precached forever. */
+export const SHELL_FAMILIES = ["Archivo", "Barlow Condensed", "IBM Plex Mono"];
 
 /** Google returns woff2 only to a browser it recognises; an unrecognised
  *  agent gets ttf, which is ~3× the bytes for the same glyphs. */
@@ -157,6 +201,36 @@ async function get(url, as) {
 
 const sha = (buf) => createHash("sha256").update(buf).digest("hex").slice(0, 12);
 
+/** Refuse to commit the same font twice under different names (#30).
+ *
+ *  Asking a **variable** family for a list of discrete weights
+ *  (`Instrument+Sans:wght@400;500;600;700`) gets four @font-face blocks whose
+ *  `src` is the same variable file, each pinned to one instance. Everything
+ *  looks right — four names, four blocks, four plausible file sizes — and it
+ *  is 87 KB of identical bytes in the repo with the weight axis discarded. The
+ *  fix is a range (`wght@400..700`), which `fileNameFor` already names
+ *  `-variable`, and this is how you find out you needed it.
+ *
+ *  Throws rather than warns: `npm run fonts` is run by hand, rarely, and a
+ *  warning in a 17-line success listing is a warning nobody reads. Exported so
+ *  the test can drive it without the network. */
+export function assertNoDuplicateFaces(files) {
+  const byDigest = new Map();
+  for (const [name, buf] of files) {
+    const digest = createHash("sha256").update(buf).digest("hex");
+    const seen = byDigest.get(digest);
+    if (seen) seen.push(name);
+    else byDigest.set(digest, [name]);
+  }
+  const dupes = [...byDigest.values()].filter((names) => names.length > 1);
+  if (!dupes.length) return;
+  throw new Error(
+    "identical font files under different names — a variable family was asked for a weight LIST " +
+      "instead of a range (`wght@400..700`), so every weight downloaded the same file:\n" +
+      dupes.map((names) => `  ${names.join(" = ")}`).join("\n"),
+  );
+}
+
 async function main() {
   const check = process.argv.includes("--check");
 
@@ -169,6 +243,8 @@ async function main() {
     if (files.has(name)) continue;
     files.set(name, await get(face.src, "buffer"));
   }
+
+  assertNoDuplicateFaces(files);
 
   const css = renderCss(faces);
 

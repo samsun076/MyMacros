@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { fileNameFor, GOOGLE_FONTS_CSS, latinOnly, parseFaces, renderCss } from "./fetch-fonts.mjs";
+import {
+  assertNoDuplicateFaces,
+  fileNameFor,
+  GOOGLE_FONTS_CSS,
+  latinOnly,
+  parseFaces,
+  renderCss,
+  SHELL_FAMILIES,
+} from "./fetch-fonts.mjs";
 
 /** #35's tool turns Google's stylesheet into ours. The properties worth
  *  testing are the ones whose failure is *silent* — a face that quietly loses
@@ -153,5 +161,47 @@ describe("GOOGLE_FONTS_CSS", () => {
     expect(GOOGLE_FONTS_CSS).toContain("family=Archivo:wdth,wght@62..125,100..900");
     expect(GOOGLE_FONTS_CSS).toContain("family=Barlow+Condensed:wght@400;500;600;700");
     expect(GOOGLE_FONTS_CSS).toContain("family=IBM+Plex+Mono:wght@400;500");
+  });
+
+  /** #30's light packs. The shell list is what the service worker precaches,
+   *  and every family in it must actually be requested or the precache filter
+   *  silently matches nothing. */
+  it("requests the light packs' families too, and every shell family is one of them", () => {
+    expect(GOOGLE_FONTS_CSS).toContain("family=Alegreya+Sans:wght@400;500;700");
+    expect(GOOGLE_FONTS_CSS).toContain("family=Courier+Prime:wght@400;700");
+    expect(GOOGLE_FONTS_CSS).toContain("family=Fragment+Mono");
+    for (const family of SHELL_FAMILIES) {
+      expect(GOOGLE_FONTS_CSS, `${family} is precached but never fetched`).toContain(
+        `family=${family.replace(/\s+/g, "+")}`,
+      );
+    }
+  });
+
+  /** Instrument Sans is variable. Asked for `400;500;600;700` it answers with
+   *  four blocks pointing at the same file — see assertNoDuplicateFaces. */
+  it("asks variable families for a range, not a weight list", () => {
+    expect(GOOGLE_FONTS_CSS).toContain("family=Instrument+Sans:wght@400..700");
+    expect(GOOGLE_FONTS_CSS).not.toContain("Instrument+Sans:wght@400;");
+  });
+});
+
+describe("assertNoDuplicateFaces (#30)", () => {
+  it("passes when every file is its own font", () => {
+    const files = new Map([
+      ["a-400.woff2", Buffer.from("alpha")],
+      ["a-700.woff2", Buffer.from("beta")],
+    ]);
+    expect(() => assertNoDuplicateFaces(files)).not.toThrow();
+  });
+
+  /** The exact shape of the Instrument Sans mistake: four names, four blocks,
+   *  four plausible sizes, one font. Everything looks right. */
+  it("refuses four names for one variable file, and names them", () => {
+    const same = Buffer.from("one variable file");
+    const files = new Map(
+      ["400", "500", "600", "700"].map((w) => [`instrument-sans-${w}.woff2`, same]),
+    );
+    expect(() => assertNoDuplicateFaces(files)).toThrow(/instrument-sans-400\.woff2 =/);
+    expect(() => assertNoDuplicateFaces(files)).toThrow(/wght@400\.\.700/);
   });
 });

@@ -5,6 +5,7 @@ import { dirname, join } from "node:path";
 import { cloudflare } from "@cloudflare/vite-plugin";
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
+import { SHELL_FAMILIES } from "./tools/fetch-fonts.mjs";
 
 const require = createRequire(import.meta.url);
 
@@ -102,9 +103,21 @@ function serviceWorker() {
    *  read by the OS at install time, not by the app at runtime, so caching
    *  100 KB of icons and 1.4 MB of launch images would buy a running app
    *  nothing. An earlier draft of this filter excluded `launch-` explicitly
-   *  and looked like it was doing something; it never once matched. */
+   *  and looked like it was doing something; it never once matched.
+   *
+   *  Since #30 the type is filtered too: only the SHELL's families, which are
+   *  Night Athletic's. The two light packs bring nine more faces (~175 KB) and
+   *  precaching them would put a theme's worth of type most users never pick
+   *  into every first launch. `SHELL_FAMILIES` is imported rather than restated
+   *  because the failure mode of a second copy is silent in both directions —
+   *  a new family never precached, or precached forever. */
+  const shellFontSlugs = SHELL_FAMILIES.map((f) => f.toLowerCase().replace(/\s+/g, "-"));
+  const isShellFont = (name: string) => {
+    const base = name.split("/").pop() ?? name;
+    return shellFontSlugs.some((slug) => base.startsWith(`${slug}-`));
+  };
   const wanted = (name: string) =>
-    !name.endsWith(".wasm") && (name.endsWith(".js") || name.endsWith(".woff2"));
+    name.endsWith(".woff2") ? isShellFont(name) : name.endsWith(".js");
 
   return {
     name: "mymacros:service-worker",
