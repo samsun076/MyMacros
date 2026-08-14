@@ -457,9 +457,25 @@ result about the *inputs* and says nothing about this register.
 
 ### Safari chrome blend (field-tested on device — don't re-derive)
 
-- iOS Safari paints its **top** chrome from the **body background** and
-  ignores `theme-color` in-browser → body background is `--bg-top` on phone
-  widths (`@media (max-width: 499px)`).
+- iOS Safari paints its **top** chrome from the **canvas** and ignores
+  `theme-color` in-browser → `background-color` is `--bg-top` on phone widths
+  (`@media (max-width: 499px)`). **"The body background" was too loose a way to
+  say it, and the vagueness cost two regressions in one session** (#38):
+  - The canvas comes from `<html>` if html declares a background, and from
+    `<body>` otherwise. Setting `html { background: var(--canvas) }` moved the
+    tint to `--canvas` — measured #0e1118, which is 1 off `--canvas` and 24 off
+    `--bg-top`. **Declare no background on `html`.**
+  - **The canvas takes a background-COLOUR, not a background-image.** Writing
+    `background: linear-gradient(…)` on body resets `background-color` to
+    transparent, nothing propagates, and the UA's dark-scheme canvas — *black* —
+    wins. Measured #000000, at both ends of the screen at once. So body keeps
+    `background-color` and `background-image` as **separate declarations** and
+    must never use the `background` shorthand here.
+  - Top chrome and the standalone bottom gap are **one surface**. They went
+    black together, which is how that was established.
+  - Every automated check stayed green through both regressions, including a
+    direct read of the computed value. It was the right number on the wrong
+    property. The claim is about what iOS *does*; only a device tests it.
 - Its **bottom** bar derives from the page's bottom-edge content, but only
   from an **opaque** surface. The tab bar is solid `--chrome`: no alpha, no
   `backdrop-filter`, no border below it, extended through

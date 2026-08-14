@@ -1417,6 +1417,50 @@ is `--canvas` there; the change lives inside the existing
 **Do #39 in the same session.** Both are device-only and both are about what
 iOS paints outside the app's own frame.
 
+### Session P — #38, and two self-inflicted regressions — 2026-08-14
+
+**Closed: #56, #88.** **#38 is at config 4, awaiting one device check.** The
+full dataset is the long comment on #38; this is the pointer.
+
+**The rule, sharpened by breaking it twice:** iOS Safari tints its top chrome
+from **the canvas**, the canvas comes from `<html>` if html declares a
+background and `<body>` otherwise, and **it takes a background-*colour*, not a
+background-image.** Three measured configurations:
+
+| config | Safari top |
+|---|---|
+| `body { background: <colour> }` — original | **#1a2230** ✓ |
+| `html { background: var(--canvas) }` (#53) | #0e1118 = `--canvas` |
+| html none, body = gradient via `background:` | **#000000** black |
+
+The third is the shorthand resetting `background-color` to transparent. Top
+chrome and the standalone bottom gap went black **together**, which is what
+proved they are one surface.
+
+**Config 4, deployed:** `background-color` and `background-image` as separate
+declarations, never the shorthand. **If it doesn't land it, revert to config 1
+(flat `--bg-top`) and accept the band** — a correct top blend on every Safari
+session beats a launch-time strip that disappears by itself, and config 1 is
+field-tested rather than reasoned about. That decision is made; don't re-open it.
+
+**The tooling lesson, which is the durable half.** Both regressions passed every
+automated check — `verify:firstpaint`, `verify:viewport`, 323 unit tests, and a
+direct read of the computed style that correctly reported `rgb(26,34,48)` for
+the gradient's top stop. **The right number on the wrong property.** No check in
+this repo can tell those apart, because the claim is about what iOS *does*, not
+what the declaration says. Both were caught by a photograph of a phone.
+
+**#88, and a correction worth more than the fix.** Filed claiming CSS-only
+changes never reached devices, "measured". The measurement edited a CSS
+*comment*, which the minifier strips — so nothing changed and a no-op was
+reported as a defect. Re-run properly, CSS-only changes were always caught
+(Vite carries the stylesheet in the JS module graph, so the entry chunk's hash
+moves). **The real gap was `index.html`-only changes**, which this session
+shipped (`<meta name="color-scheme">`) and which reached devices only because
+that commit also touched CSS. Fixed by hashing the emitted shell into the cache
+name — in `writeBundle`, not `generateBundle`, because the stylesheet is not
+inlined yet at the earlier hook.
+
 ### The device check M10 cannot do without Dave
 
 Headless Chrome has no iOS launch screen, so #53's acceptance test is a cold
