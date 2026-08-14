@@ -3,6 +3,10 @@
    values mean: sketches/c2-night-athletic.html */
 @import "../../../design/tokens.css";
 
+/* The three families the tokens above name, served by us rather than by
+   fonts.googleapis.com (#35). Generated — see tools/fetch-fonts.mjs. */
+@import "./fonts.css";
+
 * {
   margin: 0;
   padding: 0;

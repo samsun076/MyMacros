@@ -21,15 +21,13 @@
          main.tsx keeps it in sync with --bg-top when the theme changes. -->
     <meta name="theme-color" content="#1a2230" />
 
-    <!-- Same families the frozen sketches use, so the app and the design
-         ground truth render identically. Self-hosting them (one less
-         third-party dependency on first paint, and offline-safe) is #35. -->
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,100..900&family=Barlow+Condensed:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap"
-      rel="stylesheet"
-    />
+    <!-- Fonts are ours now (#35). The three families the frozen sketches use
+         are committed under src/client/styles/fonts/ and declared in
+         fonts.css, which app.css imports — so they arrive as fingerprinted
+         same-origin assets with no preconnect, no third-party DNS or TLS on
+         the way to first paint, and nothing a service worker can't precache
+         (#54). tools/fetch-fonts.mjs is the only thing that should write
+         them; `npm run fonts -- --check` fails the build if they drift. -->
 
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="icon" href="/icons/icon-32.png" sizes="32x32" type="image/png" />

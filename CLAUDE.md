@@ -41,6 +41,8 @@ npm run db:migrate     # apply migrations to LOCAL D1 (miniflare)
 npm run db:migrate:remote   # apply to REAL D1 — needs wrangler login
 npm run db:studio      # sqlite3 shell on the local D1 file
 npm run icons          # regenerate PWA icons + manifest from design/tokens.css
+npm run fonts          # re-fetch the self-hosted woff2 files (#35)
+npm run fonts -- --check     # fail if the committed fonts drifted from the spec
 npm run reconcile -- --date 2026-08-10 --weeks 1   # rule 4b's input block (#83)
 npm run verify:auth    # drive the real passkey ceremony (needs `npm run dev`)
 npm run verify:routing -- https://fuel.debrief.run   # /api survives navigation; SPA still falls back
@@ -575,6 +577,16 @@ result about the *inputs* and says nothing about this register.
   should too. This is #49's finding in code: an attempt cap was never the
   lever, because the slowest call ever measured was a *single un-retried*
   attempt.
+- **The fonts are ours now, latin subset only** (#35). `tools/fetch-fonts.mjs`
+  is the only thing that should write `src/client/styles/fonts/` or
+  `fonts.css`; the spec lives in `GOOGLE_FONTS_CSS` in that file, and
+  **Archivo's `wdth` axis is load-bearing** for the eyebrow/label style — drop
+  it on a refresh and every label on every screen reflows by a hair at once.
+  The emitted CSS carries no `unicode-range` because there is one subset per
+  face. That is a **real narrowing**: the CDN fetched `latin-ext` on demand, so
+  "Kraków" now falls back to the system sans for the ł alone. é ñ ü ç å ø are
+  all inside the latin subset, which is why it's an edge and not a bug. Adding
+  latin-ext back means restoring `unicode-range` in the same change.
 - **The barcode decoder fetches its WebAssembly from jsdelivr by default.**
   `@sec-ant/barcode-detector` is pointed at a self-hosted copy instead, via an
   alias in `vite.config.ts` and a `locateFile` override in
