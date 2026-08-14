@@ -90,7 +90,19 @@ The app never talks to Suunto or Garmin directly in v1 — the Mac does, using a
 4. **M3 Photo & barcode** — camera + R2 + vision; OpenFoodFacts
 5. **M4 Budget engine** — TDEE onboarding, weight sync, runs sync, eat-back
 6. **M5 Trends & polish** — trends screen, settings (incl. theme switcher + accent picker #29), Field Notes + Instrument theme ports (#30), micro-interactions, install prompt
-7. **M6 OSS-ready (backlog)** — settings BYOK, agent-install directives, direct Suunto OAuth
+
+**M0–M5 and M8, M9 are complete; the board past M5 is not this list.** M5 grew to 17 open
+issues and a name that stopped being true the day Trends shipped, so on 2026-08-10 it was
+split into **M7 Log flow**, **M9 Budget truth**, **M10 Launch & offline** and **M11 Look &
+feel**, with **M6 OSS-ready** unchanged. Restating them here would be the same two-sources
+defect the build rules had, so it isn't restated — ask GitHub:
+
+```bash
+gh api repos/:owner/:repo/milestones --jq '.[] | "\(.title)  open:\(.open_issues)"'
+```
+
+The plan above is the *original* build order and is kept as the record of what was decided
+up front. [NEXT-STEPS.md](NEXT-STEPS.md)'s last session section is the live runway.
 
 **Someday, unscheduled:** two-way debrief integration. Today the flow is one-way — debrief's
 pipeline pushes runs into MyMacros. The interesting direction is back: debrief showing what

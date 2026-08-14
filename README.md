@@ -50,10 +50,16 @@ The trap that shapes it: those activity factors describe life **excluding** purp
 exercise. Runs are added separately, so a multiplier that already contained them would
 count every mile twice — a plausible-looking budget a few hundred kcal too generous,
 every day, with nothing visibly broken. That class of failure is why the project
-[reconciles one real number by hand](RECONCILIATIONS.md) at every milestone close.
+[reconciles one real number by hand](RECONCILIATIONS.md) whenever a milestone changes how
+a number is computed — production inputs pulled out, the figure recomputed independently,
+and the answer deliberately not printed beside them.
 
-What's still missing is the screen that tells you whether any of it is working: Trends is
-a placeholder, and weight is synced but has no manual entry yet.
+Trends is real now: a smoothed weight trend, weekly intake against target, and two rates
+that are allowed to disagree — one observed from the scale, one predicted from the energy
+model — because pretending they reconcile is how a number stops being checkable. Weight
+has a manual entry screen alongside the sync. What's still missing is the polish layer:
+the light theme packs are unported, there's no service worker, and a cold launch shows a
+white frame before first paint.
 
 No state-management library, no component library, no CSS framework — semantic design
 tokens (`design/tokens.css`) and plain stylesheets. 375px (iPhone 13 mini) is the

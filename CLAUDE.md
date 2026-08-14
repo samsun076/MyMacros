@@ -320,10 +320,13 @@ reorder.
    applicable" is a decision. Same principle as #69's sync heartbeat: silence and
    nothing-to-report must not look identical.
 
-   **Budget 45–90 minutes, not ten.** Measured against the two entries that exist —
-   M5 took a production D1 pull across six input categories, five days of
-   hand-computed BMR → TDEE → deficit, and two cross-checks. A rule that advertises
-   ten minutes and costs sixty gets skipped the first time a milestone closes late.
+   **Budget 45–90 minutes, not ten** — 25–45 now `npm run reconcile` exists.
+   Measured: M5 took a production D1 pull across six input categories, five days of
+   hand-computed BMR → TDEE → deficit, and two cross-checks; M9 with the tool took
+   the low end and spent nearly all of it on step 4. A rule that advertises ten
+   minutes and costs sixty gets skipped the first time a milestone closes late.
+   **If it finishes much faster than that, step 4 was skipped** — reading the inputs
+   is the part with no output until it finds something.
 
    **`npm run reconcile` clears the mechanical half** (#83) — five tables out of
    production D1 as a paste-ready markdown block. **It prints no derived figure and
@@ -340,9 +343,20 @@ reorder.
    broken, four of them found only by running against real data (a
    client-day/server-day filter that froze the target, `energy_kj` holding kcal,
    Garmin reporting grams, and a scale that silently reverted a typed weigh-in every
-   30 minutes). Two entries so far, two findings: **#74** (a weekly deficit reading
-   ~2× the truth because a 77-kcal day counted as fully logged) and a soft weigh-in
-   worth 13 kcal/day.
+   30 minutes). Three entries so far: **#74** (a weekly deficit reading ~2× the
+   truth because a 77-kcal day counted as fully logged), a soft weigh-in worth
+   13 kcal/day, and M9 clean — no input defect, which is a result rather than a
+   blank. **A clean pass is worth recording precisely because it is falsifiable:**
+   M9 was the milestone that made the protein target depend on body weight, so
+   "every weigh-in in the window is a real scale reading" is the specific claim the
+   pass was there to test.
+
+   **The arithmetic can also miss by one, and that is not noise.** M9's base target
+   came out 1,908 by hand against the app's 1,909, because `trendWeightKg` rounds
+   the window mean to 1 dp before anything consumes it. Correct and deliberate —
+   but a 1 kcal gap is exactly the size that gets waved through as "rounding"
+   instead of chased, and chasing it is how you learn the inputs are not what you
+   assumed. Commit the hand figures *before* comparing.
 5. **Accent is live-switchable** — anything accent-colored references
    `--accent`, never a literal. Night Athletic users pick coral/gold/mint.
 6. **375px is the reference width** (iPhone 13 mini). Nothing is done until
@@ -411,7 +425,8 @@ inserted profile row.
 **This sweep cannot find input bugs**, and a clean result is not a clean bill of health.
 #74, `energy_kj` holding kcal, Garmin reporting grams, the scale reverting a typed
 weigh-in — in every one the code was right and the data was not what it assumed. Rule 4b
-is the check for those, and it still owes M9 an entry.
+is the check for those; M9's entry was paid 2026-08-14 and came back clean, which is a
+result about the *inputs* and says nothing about this register.
 
 ### Trends (#22) — four things not to re-derive
 
