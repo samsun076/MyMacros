@@ -66,6 +66,11 @@ if (!routes) {
         "/log#text",
         "/log#confirm",
         "/#saved",
+        // #52's revealed row. The only state in the app deliberately parked
+        // past the right edge — the panel sits outside `.swipe` and is clipped
+        // by its overflow — so it is the one screen where the clipping probe
+        // is checking a real risk rather than a hypothetical one.
+        "/#swiped",
         "/trends",
         // #22's staged empty states. They aren't cosmetic variants — each
         // swaps a chart for a paragraph, which is a different layout, and the

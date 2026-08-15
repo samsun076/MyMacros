@@ -1,5 +1,5 @@
-import type { ReactNode } from "react";
-import { REVEAL_PX, useSwipeToReveal } from "../lib/swipe";
+import { useRef, type ReactNode } from "react";
+import { DELETE_CONTROL_ATTR, REVEAL_PX, useCloseOnOutsideTap, useSwipeToReveal } from "../lib/swipe";
 
 /** A timeline row you can swipe left to reveal delete (#52).
  *
@@ -9,36 +9,43 @@ import { REVEAL_PX, useSwipeToReveal } from "../lib/swipe";
  *  opinion about. The motif slot still owns the row *chrome* around this —
  *  `TimelineRow` renders the rail and the time, and this is what it wraps.
  *
+ *  **Open is a prop, not state.** At most one row in the list may be open, and
+ *  no row can know that about itself — the list holds it and hands each row its
+ *  own answer. Which is also what makes "swiping B closes A" free: A is not
+ *  told to close, it simply stops being the open one. `Today.tsx` explains why
+ *  the list is the right owner.
+ *
  *  **The keyboard and screen-reader path is a real button, not a fallback.**
  *  It is visually hidden and reachable by tab, and it does the same thing the
  *  gesture does — because a gesture is not an interface on its own, and the
  *  panel behind the row cannot be reached by a pointer that has no way to
  *  drag. Its label names the meal, since "Delete" repeated down a list of
- *  three tells a screen-reader user nothing about which one.
+ *  three tells a screen-reader user nothing about which one. It carries
+ *  `DELETE_CONTROL_ATTR` for the same reason the revealed strip does: the
+ *  outside-tap rule must never swallow the one control that isn't a gesture.
  */
 export function SwipeToDelete({
   label,
   onDelete,
-  /** DEV-only: start revealed, so `/#swiped` can be screenshotted (#52).
-   *
-   *  The gesture itself is not testable by this harness — shot-matrix drives
-   *  CDP and has no finger — so the *state* is made reachable instead and the
-   *  motion stays a device check. Being honest about which half is covered is
-   *  the point; a screenshot of an open row is not evidence that swiping opens
-   *  it. */
-  initiallyOpen = false,
+  open,
+  onOpenChange,
   children,
 }: {
   /** What is being deleted, for the accessible name — e.g. "Dinner, salmon". */
   label: string;
   onDelete: () => void;
-  initiallyOpen?: boolean;
+  /** Is this the row the list currently has open? */
+  open: boolean;
+  /** The row reporting its own gesture, or asking to be dismissed. */
+  onOpenChange: (open: boolean) => void;
   children: ReactNode;
 }) {
-  const swipe = useSwipeToReveal(undefined, initiallyOpen);
+  const row = useRef<HTMLDivElement>(null);
+  const swipe = useSwipeToReveal(open, onOpenChange);
+  useCloseOnOutsideTap(open, row, () => onOpenChange(false));
 
   return (
-    <div className="swipe" data-open={swipe.state.open || undefined}>
+    <div className="swipe" ref={row} data-open={open || undefined}>
       {/* Row and panel travel together on one track, with the panel parked
           just past the right edge and clipped by `.swipe`'s overflow.
 
@@ -72,17 +79,18 @@ export function SwipeToDelete({
           panel rather than inside it so the hit area is the whole revealed
           strip, and it only exists while open — an invisible button under a
           closed row is a mis-tap waiting to happen. */}
-      {swipe.state.open && (
+      {open && (
         <button
           type="button"
           className="swipe-hit"
           style={{ width: REVEAL_PX }}
           aria-label={`Delete ${label}`}
           onClick={onDelete}
+          {...{ [DELETE_CONTROL_ATTR]: "" }}
         />
       )}
 
-      <button type="button" className="vh-button" onClick={onDelete}>
+      <button type="button" className="vh-button" onClick={onDelete} {...{ [DELETE_CONTROL_ATTR]: "" }}>
         Delete {label}
       </button>
     </div>

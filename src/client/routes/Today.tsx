@@ -37,6 +37,21 @@ import type { BudgetData } from "../motifs/types";
 
 type LoggedToast = { slot: MealSlot; kcal: number; ms: number; edited: number };
 
+/** DEV-only: `/#swiped` renders the newest row already revealed, so the state
+ *  can be screenshotted (#52).
+ *
+ *  The gesture itself is not reachable by shot-matrix — it drives CDP and has
+ *  no finger — so the *state* is made reachable instead and the motion stays a
+ *  device check. Being honest about which half is covered is the point; a
+ *  screenshot of an open row is not evidence that swiping opens it.
+ *
+ *  A sentinel rather than an id, because no entry id can ever be this: they are
+ *  `<ISO instant>|<slot>`. First row only — a whole list hanging open is not a
+ *  state the app has. */
+const STAGE_NEWEST = "stage:newest";
+const SWIPED_STAGE =
+  import.meta.env.DEV && window.location.hash === "#swiped" ? STAGE_NEWEST : null;
+
 type Entry = {
   /** `logged_at|meal_slot` — `foldMeals`' own grouping key, so it names the
    *  same thing the fold does. */
@@ -136,6 +151,20 @@ export function Today() {
 
   const del = useDeleteEntry(reloadDay);
 
+  /* Which timeline row is swiped open — at most one, and the list is the only
+     thing that can say so (#52).
+
+     **Here rather than in the row**, and not because it's convenient: "one open
+     at a time" is a claim about the *set* of rows, and a row that tried to
+     enforce it would have to reach outside itself to do it — a module singleton
+     or a DOM-wide event bus, i.e. list state with no list to put it in. Today
+     already owns the other piece of list-scoped state for exactly this reason
+     (#90's undo queue), and holding it here means "open" has one home instead
+     of one per row, which is what let three rows sit open at once. Closing A
+     when B opens then needs no message between them: A is simply no longer the
+     id this holds. */
+  const [openRow, setOpenRow] = useState<string | null>(SWIPED_STAGE);
+
   /* Render order and header span, computed together (#80). `entries` stays
      chronological — that is what the span reads.
 
@@ -149,6 +178,14 @@ export function Today() {
     const hidden = pendingDeletionIds(del.pending);
     return timelineView(entries.filter((e) => !hidden.has(e.id)), logged !== null);
   }, [entries, logged, del.pending]);
+
+  /* The DEV stage names a *position* — "the newest row is open" — and the id
+     that resolves to isn't known until the day's data lands, so it is held as
+     itself and resolved here rather than being turned into an id at mount,
+     where it would be null and the stage would silently render a closed list.
+     Closing the row replaces the sentinel, so the stage is a starting state
+     rather than a mode you can't leave. */
+  const openEntryId = openRow === STAGE_NEWEST ? (timeline.rows[0]?.id ?? null) : openRow;
 
   /* Macro targets, from the ADJUSTED total (sketch: 82 / 165 g) — but only
    * carbs and fat move with it now (#77).
@@ -330,15 +367,23 @@ export function Today() {
                   <TimelineRow key={entry.id} when={entry.when} fresh={fresh}>
                     <SwipeToDelete
                       label={`${slotLabel(entry.slot)}, ${entry.desc}`}
-                      onDelete={() => void del.remove(entry)}
-                      /* DEV-only stage for the state shot-matrix cannot reach
-                         with a gesture (#52). First row only — a whole list
-                         hanging open is not a state the app ever has. */
-                      initiallyOpen={
-                        import.meta.env.DEV &&
-                        window.location.hash === "#swiped" &&
-                        entry.id === timeline.rows[0]?.id
-                      }
+                      open={openEntryId === entry.id}
+                      /* A gesture that ends closed clears the slot whichever
+                         row it happened on. Scoping it to `cur === entry.id`
+                         reads more careful and is wrong: a short flick on row B
+                         that snaps back produces no click, so the outside-tap
+                         rule never sees it, and row A would sit open behind a
+                         finger that was demonstrably somewhere else. Measured —
+                         a 20px flick on a third row left the open one open. */
+                      onOpenChange={(open) => setOpenRow(open ? entry.id : null)}
+                      /* The slot is released before the request, not after: an
+                         undo restores the meal under the same
+                         `logged_at|meal_slot` id, and a stale open id would put
+                         the row back with its trash can already showing. */
+                      onDelete={() => {
+                        setOpenRow(null);
+                        void del.remove(entry);
+                      }}
                     >
                     <div className="meal">
                       {entry.photoKey ? (
