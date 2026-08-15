@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Link } from "react-router";
 import type { Accent, Macro, Me, Profile, Theme, Units } from "../../shared/api";
 import { kgToLb, lbToKg } from "../../shared/units";
+import { NumericField } from "../components/NumericField";
 import { PasskeyManager } from "../components/PasskeyManager";
 import { Sources } from "../components/Sources";
 import { ApiError, api, useApi } from "../lib/api";
@@ -318,49 +319,45 @@ function useProfileEdit(me: Me | null, reload: () => void) {
 
 /** Goal weight, in whichever units are set.
  *
- *  Committed on blur rather than on every keystroke: PATCHing per character
- *  writes "7", "77", "776" to a column Trends draws a line from, and the
- *  middle values are real saves that a dropped connection can leave behind.
- *  Held as text while being typed so a cleared field doesn't snap back to the
- *  stored number under the cursor.
+ *  This screen is where the hold-the-text-while-typing idiom was first written
+ *  (#23), and #95 lifted it into `NumericField` for the confirm sheet's five
+ *  numeric fields. Leaving the original here would be two statements of one
+ *  rule — #86's register defect, on the very code that motivated the lift — so
+ *  the copy is gone and this is now layout, units and the network write.
+ *
+ *  Blur-only, and that is the reason `live` is opt-in rather than the default:
+ *  PATCHing per character writes "7", "77", "776" to a column Trends draws a
+ *  line from, and the middle values are real saves that a dropped connection
+ *  can leave behind.
+ *
+ *  Two behaviours changed with the lift, both deliberate. A figure at or below
+ *  zero used to be dropped in silence; it now clamps to 1 and the field prints
+ *  `MIN 1`, because a discarded edit is indistinguishable from a field that
+ *  never took the keystroke — the same complaint #95 is about. And letters now
+ *  produce a visible `KEPT 78` rather than nothing, which `type="number"` used
+ *  to hide by refusing to report them at all.
  */
 function GoalWeightField({ edit }: { edit: ReturnType<typeof useProfileEdit> }) {
   const p = edit.profile;
   const imperial = p?.units === "imperial";
   const stored =
     p?.goal_weight_kg == null
-      ? ""
+      ? null
       : Math.round((imperial ? kgToLb(p.goal_weight_kg) : p.goal_weight_kg) * 10) / 10;
-  const [typing, setTyping] = useState<string | null>(null);
-
-  function commit() {
-    if (typing === null) return;
-    const text = typing.trim();
-    setTyping(null);
-    if (text === String(stored)) return;
-    if (text === "") {
-      if (p?.goal_weight_kg != null) void edit.save({ goal_weight_kg: null });
-      return;
-    }
-    const n = Number(text);
-    if (!Number.isFinite(n) || n <= 0) return;
-    void edit.save({ goal_weight_kg: imperial ? lbToKg(n) : n });
-  }
 
   return (
     <div className="field">
       <div className="field-pair">
-        <input
-          type="number"
-          inputMode="decimal"
-          step="0.1"
-          aria-label={imperial ? "Goal weight in pounds" : "Goal weight in kilograms"}
+        <NumericField
+          value={stored}
+          decimals={1}
+          min={1}
+          allowEmpty
+          onCommit={(n) => void edit.save({ goal_weight_kg: imperial ? lbToKg(n) : n })}
+          onClear={() => void edit.save({ goal_weight_kg: null })}
+          ariaLabel={imperial ? "Goal weight in pounds" : "Goal weight in kilograms"}
           placeholder="—"
           disabled={!p}
-          value={typing ?? stored}
-          onChange={(e) => setTyping(e.target.value)}
-          onBlur={commit}
-          onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
         />
         <span className="mono">{imperial ? "LB" : "KG"}</span>
       </div>

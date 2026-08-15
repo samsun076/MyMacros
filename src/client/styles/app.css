@@ -1902,6 +1902,41 @@ section {
   font-variant-numeric: tabular-nums;
 }
 
+/* NumericField (#95) — a wrapper thin enough that every layout it lands in
+   keeps styling `input` itself. It exists only to give the revert note a
+   parent: `.item-edit-nums` is a four-column grid and `.portion-row` a
+   three-column one, so a bare sibling note would take a cell of its own. */
+.numfield {
+  display: block;
+}
+
+.field-pair .numfield {
+  flex: 1;
+  min-width: 0;
+}
+
+.field-pair .numfield input {
+  width: 100%;
+}
+
+/* What the field did when it couldn't do what you typed — KEPT 280, MAX 5000.
+   Full-strength ink against the muted label above it, because the whole point
+   is that a restore you can't see is the bug wearing a different hat. Not
+   --danger: build rule 9 keeps that for sign-carrying alerts, and putting the
+   old number back is a notice, not an alarm. */
+.numfield-note {
+  display: block;
+  margin-top: 4px;
+  font-family: var(--data-font);
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  color: var(--ink);
+}
+
+.numfield-note:empty {
+  margin-top: 0;
+}
+
 /* the range's own track/thumb, so a slider isn't the one place the theme
    stops applying */
 .field-pair input[type="range"] {

@@ -12,6 +12,7 @@ import type {
 } from "../../shared/api";
 import { CameraStage } from "../components/CameraStage";
 import { LogModes, type LogMode } from "../components/LogModes";
+import { NumericField } from "../components/NumericField";
 import { ApiError, api, useApi } from "../lib/api";
 import { deviceTimezone, localDay, mealSlotFor } from "../lib/day";
 import { fmtInt } from "../lib/format";
@@ -81,6 +82,7 @@ function initialMode(): LogMode {
   switch (window.location.hash) {
     case "#text":
     case "#confirm":
+    case "#portion":
       return "text";
     case "#barcode":
       return "barcode";
@@ -92,15 +94,47 @@ function initialMode(): LogMode {
 /** DEV-only: `/log#confirm` opens the sheet pre-filled with the sketch's
  *  demo meal, mirroring e-log-flow.html's hash-navigable stages so
  *  tools/shot-matrix.mjs can shoot the sheet without a Claude round trip.
- *  import.meta.env.DEV is a build-time literal — compiled out in prod. */
+ *  import.meta.env.DEV is a build-time literal — compiled out in prod.
+ *
+ *  `/log#portion` is the same sheet as a **barcode** read, which is the only
+ *  shape that renders the portion row (#15). It had no stage until #95, and so
+ *  no screenshot and no way to drive its field in a browser: the one control
+ *  the bug report names by name was the one nothing could reach. Like
+ *  `#confirm` it opens over the text screen rather than the live viewfinder —
+ *  the sheet is the subject, and a stage that needs a camera isn't one. */
 function demoRead(): Read | null {
-  if (!import.meta.env.DEV || window.location.hash !== "#confirm") return null;
-  const items: AnalyzedItem[] = [
-    { name: "Grilled chicken breast", calories: 280, protein_g: 52, carbs_g: 0, fat_g: 6, confidence: 0.9 },
-    { name: "Jasmine rice", calories: 210, protein_g: 4, carbs_g: 45, fat_g: 0, confidence: 0.6 },
-    { name: "Steamed broccoli", calories: 55, protein_g: 4, carbs_g: 11, fat_g: 1, confidence: 0.85 },
-  ];
-  return { items: items.map((it) => ({ ...it, orig: it })), readMs: 1800, source: "text" };
+  if (!import.meta.env.DEV) return null;
+  if (window.location.hash === "#confirm") {
+    const items: AnalyzedItem[] = [
+      { name: "Grilled chicken breast", calories: 280, protein_g: 52, carbs_g: 0, fat_g: 6, confidence: 0.9 },
+      { name: "Jasmine rice", calories: 210, protein_g: 4, carbs_g: 45, fat_g: 0, confidence: 0.6 },
+      { name: "Steamed broccoli", calories: 55, protein_g: 4, carbs_g: 11, fat_g: 1, confidence: 0.85 },
+    ];
+    return { items: items.map((it) => ({ ...it, orig: it })), readMs: 1800, source: "text" };
+  }
+  if (window.location.hash === "#portion") {
+    // per-100g figures, the way OpenFoodFacts returns them, scaled to 150g
+    const base: AnalyzedItem[] = [
+      { name: "Greek yoghurt, 2%", calories: 97, protein_g: 9, carbs_g: 3.9, fat_g: 2.6, confidence: null },
+    ];
+    const items = base.map((it) => ({
+      ...it,
+      calories: Math.round(it.calories * 1.5),
+      protein_g: round1(it.protein_g * 1.5),
+      carbs_g: round1(it.carbs_g * 1.5),
+      fat_g: round1(it.fat_g * 1.5),
+    }));
+    return {
+      items: items.map((it) => ({ ...it, orig: it })),
+      readMs: 400,
+      source: "barcode",
+      barcode: "5000112637922",
+      grams: 150,
+      base,
+      baseGrams: 100,
+    };
+  }
+  return null;
 }
 
 export function Log() {
@@ -562,17 +596,19 @@ export function Log() {
                 <label className="eyebrow" htmlFor="grams">
                   How much
                 </label>
-                <input
+                {/* `live` because that is this field's whole job: every number
+                    on the sheet rescales as you type. What changed with #95 is
+                    only that the *text* stops being rewritten under the cursor
+                    — and that an out-of-range figure now clamps and says so,
+                    where before it was silently discarded, which is
+                    indistinguishable from a dead keyboard. */}
+                <NumericField
                   id="grams"
-                  type="number"
-                  inputMode="numeric"
+                  value={read.grams}
+                  onCommit={setGrams}
+                  live
                   min={1}
                   max={5000}
-                  value={read.grams}
-                  onChange={(e) => {
-                    const n = Number(e.target.value);
-                    if (Number.isFinite(n) && n >= 1 && n <= 5000) setGrams(Math.round(n));
-                  }}
                 />
                 <span className="mono">GRAMS</span>
               </div>
@@ -673,11 +709,21 @@ function ItemRow({
               onChange={(e) => onChange({ name: e.target.value })}
             />
           </label>
+          {/* All four are `live`: the footer total and the row's own kcal read
+              off them, and a sheet whose total only catches up when you tap
+              away reads as broken. Decimals follow what the app stores —
+              calories are whole, macros are `round1`, the same 1dp the barcode
+              rescale produces. */}
           <div className="item-edit-nums">
             <NumField label="KCAL" value={item.calories} onChange={(calories) => onChange({ calories })} />
-            <NumField label="PROTEIN" value={item.protein_g} onChange={(protein_g) => onChange({ protein_g })} />
-            <NumField label="CARBS" value={item.carbs_g} onChange={(carbs_g) => onChange({ carbs_g })} />
-            <NumField label="FAT" value={item.fat_g} onChange={(fat_g) => onChange({ fat_g })} />
+            <NumField
+              label="PROTEIN"
+              value={item.protein_g}
+              decimals={1}
+              onChange={(protein_g) => onChange({ protein_g })}
+            />
+            <NumField label="CARBS" value={item.carbs_g} decimals={1} onChange={(carbs_g) => onChange({ carbs_g })} />
+            <NumField label="FAT" value={item.fat_g} decimals={1} onChange={(fat_g) => onChange({ fat_g })} />
           </div>
         </div>
       )}
@@ -685,28 +731,25 @@ function ItemRow({
   );
 }
 
+/** The sheet's own wrapper: the label cell of `.item-edit-nums`, around the
+ *  shared field. Nothing but layout lives here — the commit rule, the clamp and
+ *  what an empty field means are all `NumericField`'s, so the four macros and
+ *  the portion field can't drift apart the way they had (#95). */
 function NumField({
   label,
   value,
+  decimals = 0,
   onChange,
 }: {
   label: string;
   value: number;
+  decimals?: number;
   onChange: (n: number) => void;
 }) {
   return (
     <label>
       {label}
-      <input
-        type="number"
-        inputMode="decimal"
-        min={0}
-        value={value}
-        onChange={(e) => {
-          const n = Number(e.target.value);
-          onChange(Number.isFinite(n) && n >= 0 ? n : 0);
-        }}
-      />
+      <NumericField value={value} onCommit={onChange} live min={0} decimals={decimals} />
     </label>
   );
 }

@@ -65,6 +65,10 @@ if (!routes) {
         "/log#barcode",
         "/log#text",
         "/log#confirm",
+        // #95's stage. The portion row only renders for a barcode read, so
+        // this is the only route that draws the three-column grid — and the
+        // field the bug report names by name had nothing that could reach it.
+        "/log#portion",
         "/#saved",
         // #52's revealed row. The only state in the app deliberately parked
         // past the right edge — the panel sits outside `.swipe` and is clipped
