@@ -580,8 +580,30 @@ result about the *inputs* and says nothing about this register.
 - Chrome (headless, shot-matrix) reports `env(safe-area-inset-*)` as 0 and
   can't reproduce Safari's chrome tinting — verify those in the iOS Simulator
   or on device.
-- **Design QA never sees loading states.** `shot-matrix` waits for
-  `document.fonts.ready` plus two frames and the screens' own fetches, and
+- **`shot-matrix` waits for three things, and only learned two of them on
+  2026-08-14 (#29, #52).** It now waits for the boot skeleton's `aria-busy` to
+  clear (React has mounted), then for a live in-flight request count to reach
+  zero (the screen's own `/api/*` fetches have landed), then for
+  `scrollHeight` to stop moving across a real delay. **Before that it measured
+  the page height once and shot at it**, so anything not yet rendered was
+  silently cropped off the bottom of the PNG — no error, no warning, just a
+  short image. It bit three times in one session: Settings clipped mid-page at
+  375 while 390 was complete, and Today came out at 812px twice, which is
+  exactly the viewport with a header and nothing else. **Any PNG in `shots/`
+  from before that commit may be cropped**, and any conclusion drawn from one
+  is suspect.
+- **`verify:viewport` knows about clipping (#52).** Its probe flags elements
+  whose rect passes the viewport edge; an element parked off-stage inside an
+  `overflow: hidden` ancestor is skipped, because it cannot be seen, scrolled
+  to or tapped. The exemption only applies when the *ancestor's* own edge is
+  inside the viewport, so a scroller that is itself overflowing still fails.
+  Verified still able to fail by injecting a 600px block.
+- **CDP can synthesize touch** (`Input.dispatchTouchEvent`), so a gesture's
+  *state machine* — intent thresholds, commit distance, what opens and what
+  closes — is testable unattended. What it cannot tell you is **feel**: whether
+  a row tracks the finger or lags it, whether a scroll goes sticky. Don't write
+  off a gesture as untestable; write off its feel.
+- **Design QA never sees loading states.**
   `cdp.mjs` forces `prefers-reduced-motion: reduce` on every page it opens. So
   every PNG this project has ever produced is of a fully-loaded, animation-free
   app. #51 lived entirely in the data-pending window — the frame collapsed to

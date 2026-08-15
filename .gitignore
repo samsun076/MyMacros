@@ -19,3 +19,8 @@ client_secret_*.json
 
 # Session plan files — working notes, not project state.
 plans/
+
+# Disposable human-review checklist written at the end of an unattended
+# session (Session R onward). Read it, act on it, delete it — it is a
+# handover note, not a record, and the commits are the record.
+REVIEW.md

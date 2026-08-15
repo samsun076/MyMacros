@@ -1650,9 +1650,13 @@ installed app:
 - Mint accent vs `--positive` on Trends: two greens, close together
   (`#52c4a2` and `#4ec77a`). A taste call, not a defect. Look at it once.
 
-**2. The swipe gesture (#52).** shot-matrix drives CDP and has no finger.
-`/#swiped` renders the revealed state, which is not evidence that swiping
-reaches it. On device:
+**2. The swipe gesture (#52).** `/#swiped` renders the revealed state, which is
+not evidence that swiping reaches it.
+
+**Correction to what this section first said:** it claimed the harness "has no
+finger". Wrong — **CDP can synthesize touch** (`Input.dispatchTouchEvent`), so
+the gesture's state machine is testable unattended after all. What still needs
+a person is the *feel*. On device:
 
 - a vertical scroll started **on a row** must still scroll — the axis is
   decided in the first 8px and never revisited mid-drag;
@@ -1720,3 +1724,153 @@ CDP cannot emulate `display-mode` (measured: `matchMedia` stays false).
   which was the only thing marking `.entry.run`, and newest-first would put a
   morning run at the bottom of the day anyway. Recorded in design/TOKENS.md as
   an open design question rather than an unported sketch detail.
+
+---
+
+# Session R — six defects from a day of real use
+
+M11 shipped 2026-08-14 and Dave used Field Notes as his primary theme for a
+full day. Everything held. Six things came back, filed as #90–#95, and one of
+them loses data.
+
+**This session is run as an orchestration**, which is new for this project and
+the reason the shape below is written down rather than left to judgment.
+
+## The queue, in order
+
+Sequential, not parallel — cost matters more than wall-clock, and half of these
+touch the same three files anyway.
+
+| # | What | How you know it's right |
+|---|---|---|
+| **#90** | Deleting a second meal destroys the first's undo | route test + driven browser, text oracle |
+| **#52** | One row open at a time; tap elsewhere closes it | synthetic touch → read state |
+| **#95** | Serving-size field can't be cleared, caret jumps | read back `value` + `selectionStart` |
+| **#94** | Camera re-requested on photo-take and mode-switch | count `getUserMedia` calls |
+| **#92** | Barcode names run to four lines | **a PNG** |
+
+**#90 first and alone.** It is the only one that destroys user data, it is a
+regression from the session that just shipped, and it is small.
+
+**#91 (trash panel design) is deliberately not here.** Dave wants mockups. Do
+#92 first — row height is what makes the panel look like a slab, so the clamp
+may change what the panel needs to be.
+
+**#93 (status-bar scrim) is deliberately not here.** It is #38's exact shape:
+headless Chrome reports `env(safe-area-inset-*)` as 0 and cannot render a
+translucent status bar, so it would be built blind and the checks would be
+green either way.
+
+## File collisions — why the order is not arbitrary
+
+- **#90 and #52** both touch `Today.tsx`, `lib/swipe.ts`,
+  `components/SwipeToDelete.tsx`. Same agent, or strictly sequential.
+- **#95** is `routes/Log.tsx` only.
+- **#94** is `components/CameraStage.tsx` only.
+- **#92** is the timeline row + `styles/app.css` + a long name in
+  `tools/seed-demo.mjs` to shoot against.
+
+## How the orchestration runs
+
+**Subagents produce evidence. The main session produces judgment.**
+
+- An agent gets one issue, the files it may touch, and the oracle it must
+  satisfy. It implements and verifies.
+- **Agents do not commit.** The main session writes every commit — the message
+  style in this repo is half its documentation and is not delegable.
+- An agent returns a diff summary and its verification output **verbatim**.
+  Not "all checks passed". This project's entire failure history is checks
+  passing while the thing is wrong (#38's six configurations, shot-matrix
+  cropping, the trash panel drawing on every row), and a summarised pass is
+  that same failure with a layer of insulation on it.
+- The main session opens **three or four PNGs deliberately**, not twenty — the
+  ones where structure could break. Zero would have shipped the trash panel on
+  every row.
+
+## The review doc — write it before finishing
+
+Every unattended session now ends by writing **`REVIEW.md`** at the repo root.
+It is gitignored and disposable; Dave reads it, acts on it, deletes it.
+
+It is **not a summary of the session** — that is what the commits are for. It
+is the list of things a person has to look at, ordered by what breaks worst if
+it is wrong, and it must be honest about which items were *unverifiable* versus
+merely *unverified*. Each item: what to do, what right looks like, what wrong
+looks like. Short enough to work through with a phone in one hand.
+
+Its value is highest exactly where the session's own confidence was lowest, so
+write the weak parts first and resist padding it with things that are fine.
+
+## Standing permissions for this session
+
+- **Push and deploy as you see fit.** Read the result off the Workers Builds
+  check-run, then verify the rollout by fetching the shell and its referenced
+  asset together and asserting the content-type — the hash alone marks the
+  start of a rollout, not the end.
+- **Fix forward.** Anything the review doc turns up becomes the next session's
+  work, not a revert.
+
+## Before touching any of it
+
+Kill the orphan dev server on 5173 if it is still up (`lsof -nP -iTCP:5173
+-sTCP:LISTEN`), or the ports drift and screenshots end up pointed at a stale
+server.
+
+`.dev.vars` must exist, the local D1 wants `npm run db:migrate`, and
+`node tools/seed-demo.mjs --weeks 12` gives the timeline and trends real data.
+A session cookie for shot-matrix comes from the DEV-only email/password route:
+
+```bash
+curl -s -i -X POST http://localhost:5173/api/auth/sign-in/email \
+  -H 'Content-Type: application/json' -H 'Origin: http://localhost:5173' \
+  -d '{"email":"dev@mymacros.local","password":"dev-password-not-for-production"}' \
+  | grep -i '^set-cookie'
+```
+
+The `Origin` header is required and must match `APP_URL` in `.dev.vars`, or
+better-auth answers 403.
+
+## Starter prompt (paste verbatim)
+
+```
+Working on MyMacros (~/Projects/MyMacros). Read CLAUDE.md, then the LAST
+section of NEXT-STEPS.md (Session R). M11 shipped yesterday and held up
+through a full day of real use on Field Notes; six defects came back as
+#90-#95.
+
+Run this as an ORCHESTRATION. You are the orchestrator: spin up a subagent
+per issue, sequentially, and keep your own context low. Agents implement
+and prove; YOU write every commit and push. Do not let an agent commit.
+
+Order, and the reasons are in Session R:
+
+  #90 undo loss (data loss, do it first and alone)
+  #52 one row open at a time + tap elsewhere to close
+  #95 serving-size field: cannot clear it, caret jumps to the end
+  #94 camera: stop re-requesting on photo-take and mode-switch
+  #92 barcode names run to four lines
+
+Skip #91 and #93. Session R says why for each.
+
+Require every agent to hand back its verification output VERBATIM, not a
+summary. "All checks passed" is not evidence — this project's whole failure
+history is checks passing while the thing is wrong. Read the diffs
+yourself. Open three or four PNGs where structure could break; do not open
+twenty, and do not open zero.
+
+Verification per issue: npm run build (366 tests, gates the deploy),
+shot-matrix at 375/390/428 where anything visual moved, verify:viewport,
+and verify:firstpaint after a build. #90/#52/#95/#94 all have text-shaped
+oracles - use them, they are cheaper and sharper than a screenshot.
+
+Push and deploy when you judge it ready. Read the build off the Workers
+Builds check-run, and verify the rollout by fetching the shell and its
+referenced asset together and asserting the content-type.
+
+END BY WRITING REVIEW.md at the repo root (gitignored, disposable). Not a
+session summary - a checklist for a human with a phone, ordered by what
+breaks worst if it is wrong, honest about what you could not verify versus
+what you merely did not. Session R describes it.
+
+Model: Opus 5 @ xhigh.
+```
