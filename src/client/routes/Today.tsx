@@ -7,6 +7,13 @@ import { ApiError, api, useApi } from "../lib/api";
 import { localDay } from "../lib/day";
 import { fmtInt } from "../lib/format";
 import { timelineView } from "../lib/timeline";
+import {
+  nextUndo,
+  pendingDeletionIds,
+  pendingNote,
+  pushDeletion,
+  withoutDeletion,
+} from "../lib/undo-queue";
 import { InstallPrompt } from "../components/InstallPrompt";
 import { SwipeToDelete } from "../components/SwipeToDelete";
 import { useActiveMotifs } from "../motifs";
@@ -132,14 +139,16 @@ export function Today() {
   /* Render order and header span, computed together (#80). `entries` stays
      chronological — that is what the span reads.
 
-     The just-deleted entry is filtered out *before* this, so the header span
+     EVERY pending deletion is filtered out *before* this, so the header span
      and the fresh index are both computed over what is actually on screen —
      a deleted 7:10 AM breakfast must stop being the left end of "7:10A —
-     7:10P" the moment it leaves the list, not when the refetch lands. */
-  const timeline = useMemo(
-    () => timelineView(entries.filter((e) => e.id !== del.undoable?.id), logged !== null),
-    [entries, logged, del.undoable],
-  );
+     7:10P" the moment it leaves the list, not when the refetch lands. This
+     filtered a single `undoable` until #90; with a queue, filtering only the
+     newest deletion would put the previous meal's row back on screen. */
+  const timeline = useMemo(() => {
+    const hidden = pendingDeletionIds(del.pending);
+    return timelineView(entries.filter((e) => !hidden.has(e.id)), logged !== null);
+  }, [entries, logged, del.pending]);
 
   /* Macro targets, from the ADJUSTED total (sketch: 82 / 165 g) — but only
    * carbs and fat move with it now (#77).
@@ -214,9 +223,16 @@ export function Today() {
           a one-gesture destructive action that then asks "are you sure?" has
           given back the speed that justified the gesture. The row is already
           gone from the server here — undo re-posts it. */}
-      {del.undoable && (
+      {del.next && (
         <div className="toast toast-undo" role="status">
-          {slotLabel(del.undoable.slot)} deleted
+          {/* The toast names the meal Undo will restore AND says how many
+              other deletions are still outstanding (#90). Both, because either
+              alone leaves you believing the earlier one is unrecoverable —
+              which is exactly what the single-slot version did, only truly.
+              `role="status"` re-announces on every change, so the count is
+              spoken too. */}
+          {slotLabel(del.next.slot)} deleted
+          {del.note && <span className="mono">{del.note}</span>}
           <button type="button" className="btn-text" onClick={() => void del.undo()}>
             Undo
           </button>
@@ -228,7 +244,7 @@ export function Today() {
         </p>
       )}
 
-      {logged && !del.undoable && (
+      {logged && !del.next && (
         <div className="toast" role="status">
           <svg width="18" height="18" viewBox="0 0 18 18" fill="none" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M3 9.5l4 4 8-9" />
@@ -400,9 +416,14 @@ function slotLabel(slot: MealSlot) {
  *  justified the gesture; the native idiom is to do it and offer the way back.
  *
  *  The entry is removed from the screen the moment the server confirms, and
- *  held in `undoable` — which is both the toast's subject and the filter that
- *  keeps the row out of the list. One piece of state, so the row cannot linger
- *  after the toast or vanish before it.
+ *  held in `pending` — which is both the toast's subject and the filter that
+ *  keeps the row out of the list. One piece of state, so a row cannot linger
+ *  after its toast or vanish before it.
+ *
+ *  **`pending` is a queue, LIFO (#90).** It was a single slot, and a second
+ *  delete overwrote the first entry's held rows — the only remaining copy of
+ *  a meal already gone from D1. Undo restores the newest and leaves the rest
+ *  waiting; see `lib/undo-queue.ts` for why one-at-a-time rather than all.
  *
  *  **Undo re-posts with the entry's own `logged_at`.** Since #80 the timeline
  *  renders newest first, so a restore stamped `now` would drop a breakfast in
@@ -413,16 +434,25 @@ function slotLabel(slot: MealSlot) {
  *  The toast has no timer. A disappearing undo is a race against reading, and
  *  the next thing that clears it is the next thing you do — which is the same
  *  moment you have stopped caring about the meal you just deleted.
+ *
+ *  **The toast IS the undo window, and it lives only while Today is mounted.**
+ *  Decided, not inherited from where the state happens to sit (#90): leaving
+ *  the screen commits every pending delete. The queue holds rows that no
+ *  longer exist anywhere else, so lifting it to a module store or a context
+ *  would mean an app-wide slot of ghost meals that a tab switch, a save, or
+ *  tomorrow morning could still put back — an undo whose window has no visible
+ *  edge is worse than one that ends where its toast does. Navigating away is
+ *  the deliberate way to say "yes, all of them".
  */
 function useDeleteEntry(reload: () => void) {
-  const [undoable, setUndoable] = useState<Entry | null>(null);
+  const [pending, setPending] = useState<Entry[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   async function remove(entry: Entry) {
     setError(null);
     try {
       await api.del(`/api/food-logs`, { ids: entry.rows.map((r) => r.id) });
-      setUndoable(entry);
+      setPending((queue) => pushDeletion(queue, entry));
       reload();
     } catch (err) {
       setError(
@@ -434,9 +464,12 @@ function useDeleteEntry(reload: () => void) {
   }
 
   async function undo() {
-    const entry = undoable;
+    const entry = nextUndo(pending);
     if (!entry) return;
-    setUndoable(null);
+    /* Off the queue before the POST, or the restored meal folds back to the
+       same `logged_at|meal_slot` id and the pending filter hides the row it
+       just put back. It goes on again if the POST fails. */
+    setPending((queue) => withoutDeletion(queue, entry));
     setError(null);
     try {
       const first = entry.rows[0]!;
@@ -466,13 +499,19 @@ function useDeleteEntry(reload: () => void) {
       });
       reload();
     } catch {
-      // The row is gone and the undo failed, which is the one state here with
-      // no way back — say so plainly rather than leaving a silent gap.
-      setError("Couldn't put that back. It's still deleted.");
+      /* Back on the queue, retryable (#90). Dropping it here would reproduce
+         this issue's own defect one entry at a time: these held rows are the
+         last copy of the meal, and the ordinary cause of a failed restore is a
+         dropped connection, which the next tap fixes. #52 cleared the slot
+         before the POST and left a terminal error — correct about the message,
+         wrong that there was nothing left to try. The toast stays up naming
+         this meal, so the error and the way out are on screen together. */
+      setPending((queue) => pushDeletion(queue, entry));
+      setError("Couldn't put that back — it's still deleted. Undo to try again.");
     }
   }
 
-  return { undoable, remove, undo, error };
+  return { pending, next: nextUndo(pending), note: pendingNote(pending), remove, undo, error };
 }
 
 /** The sketch's three food glyphs, keyed by slot (breakfast bowl, plate,
