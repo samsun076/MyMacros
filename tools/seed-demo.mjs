@@ -48,7 +48,13 @@ const localToday = () => {
 const args = process.argv.slice(2);
 const weeksFlag = args.indexOf("--weeks");
 const WEEKS = weeksFlag === -1 ? 0 : Number(args[weeksFlag + 1]);
-const DAY = args.filter((a, i) => !a.startsWith("--") && i !== weeksFlag + 1)[0] ?? localToday();
+/* The value slot to skip is `--weeks`', and only when `--weeks` is there:
+   `weeksFlag` is -1 with no flag, so `weeksFlag + 1` is 0 and the guard threw
+   away argv[0] — the date. `node tools/seed-demo.mjs 2026-08-06` had therefore
+   always seeded *today* while printing the day it was given, silently. Found
+   by running the usage line at the top of this file (#92). */
+const valueSlot = weeksFlag === -1 ? -1 : weeksFlag + 1;
+const DAY = args.filter((a, i) => !a.startsWith("--") && i !== valueSlot)[0] ?? localToday();
 
 if (!/^\d{4}-\d{2}-\d{2}$/.test(DAY)) {
   console.error(`Not a YYYY-MM-DD date: ${DAY}`);
@@ -69,6 +75,33 @@ const run = (sql) => {
     ["wrangler", "d1", "execute", "mymacros-db", "--local", "--file", file, "--yes"],
     { stdio: "inherit" },
   );
+};
+
+/** The long-name case (#92), and it is a *barcode* row on purpose.
+ *
+ *  OpenFoodFacts returns brand, line and variant concatenated (#15), so the
+ *  barcode path is the one source that produces names of a different order of
+ *  length — four lines for a drink. Nothing in this file was anywhere near
+ *  that long, which is why the timeline never showed the row blowing up until
+ *  it happened on a phone. The string is the real product name off the real
+ *  barcode; shortening it here would be shortening the test.
+ *
+ *  Seeded on DAY by both paths below, so `--weeks` and the one-day seed each
+ *  put it on the screen being shot. It lands on today, which trends excludes
+ *  from `counted_days` (#74), so it moves no figure on that screen.
+ *
+ *  Declared above the `--weeks` exit because `seedWindow` reads it — below it
+ *  the const is in its temporal dead zone and the window seed throws. */
+const BARCODE_MEAL = {
+  slot: "snack",
+  hour: 15, // :10 past, the minute both seed paths stamp their rows at
+  name: "OPTIMUM NUTRITION GOLD STANDARD 100% WHEY PROTEIN DOUBLE RICH CHOCOLATE",
+  kcal: 120,
+  protein: 24,
+  carbs: 3,
+  fat: 1,
+  source: "barcode",
+  barcode: "748927022728",
 };
 
 if (WEEKS) {
@@ -115,6 +148,7 @@ const MEALS = [
     source: "text",
     confidence: 0.65,
   },
+  { ...BARCODE_MEAL, at: utc(BARCODE_MEAL.hour, 10), confidence: null },
 ];
 
 // One user locally (the dev email/password account). Resolved rather than
@@ -124,9 +158,10 @@ const sql = [
   "UPDATE profiles SET target_kcal = 1810;",
   ...MEALS.map(
     (m, i) =>
-      `INSERT INTO food_logs (id, user_id, logged_on, logged_at, meal_slot, name, kcal, protein_g, carbs_g, fat_g, source, confidence, edited)
+      `INSERT INTO food_logs (id, user_id, logged_on, logged_at, meal_slot, name, kcal, protein_g, carbs_g, fat_g, source, barcode, confidence, edited)
        SELECT ${q(`demo-${DAY}-${i}`)}, id, ${q(DAY)}, ${q(m.at)}, ${q(m.slot)}, ${q(m.name)},
-              ${m.kcal}, ${m.protein}, ${m.carbs}, ${m.fat}, ${q(m.source)}, ${m.confidence}, 0
+              ${m.kcal}, ${m.protein}, ${m.carbs}, ${m.fat}, ${q(m.source)},
+              ${m.barcode ? q(m.barcode) : "NULL"}, ${m.confidence ?? "NULL"}, 0
        FROM users ORDER BY createdAt LIMIT 1;`,
   ),
 ].join("\n");
@@ -268,6 +303,15 @@ function seedWindow(weeks) {
        FROM users ORDER BY createdAt LIMIT 1;`,
       ),
     ),
+
+    /* The long barcode name (#92), on the last day only — the one this window
+       ends on is the one Today draws, and putting it on all 84 would move the
+       intake mean the trends fixture is tuned around. */
+    `INSERT INTO food_logs (id, user_id, logged_on, logged_at, meal_slot, name, kcal, protein_g, carbs_g, fat_g, source, barcode, confidence, edited)
+       SELECT ${q(`demo-w-${DAY}-barcode`)}, id, ${q(DAY)}, ${q(at(DAY, BARCODE_MEAL.hour))}, ${q(BARCODE_MEAL.slot)}, ${q(BARCODE_MEAL.name)},
+              ${BARCODE_MEAL.kcal}, ${BARCODE_MEAL.protein}, ${BARCODE_MEAL.carbs}, ${BARCODE_MEAL.fat},
+              ${q(BARCODE_MEAL.source)}, ${q(BARCODE_MEAL.barcode)}, NULL, 0
+       FROM users ORDER BY createdAt LIMIT 1;`,
   ].join("\n");
 
   run(sql);
@@ -278,6 +322,7 @@ function seedWindow(weeks) {
       `\n  ${weighIns.length} weigh-ins of ${days.length} days (one 9-day gap, on purpose)` +
       `\n  ${meals.length} logged days, mean ${meanIntake} kcal` +
       `\n  ${runs.length} runs` +
+      `\n  1 barcode snack on ${DAY}, deliberately long-named (#92)` +
       `\n\nRe-run to reproduce exactly — nothing here is random.`,
   );
 }

@@ -399,7 +399,11 @@ export function Today() {
                           <SlotIcon slot={entry.slot} />
                         </span>
                       )}
-                      <div>
+                      {/* Named so the clamped column can be told to shrink
+                          (#92) — a grid item's `min-width: auto` is its widest
+                          word, so a name with no space in it pushes the kcal
+                          figure off the row however the text is clipped. */}
+                      <div className="meal-body">
                         <div className="slot">
                           {slotLabel(entry.slot)}
                           {fresh && " · just now"}
