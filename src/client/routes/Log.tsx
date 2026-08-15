@@ -14,6 +14,7 @@ import { CameraStage } from "../components/CameraStage";
 import { LogModes, type LogMode } from "../components/LogModes";
 import { NumericField } from "../components/NumericField";
 import { ApiError, api, useApi } from "../lib/api";
+import { releaseCamera } from "../lib/camera";
 import { deviceTimezone, localDay, mealSlotFor } from "../lib/day";
 import { fmtInt } from "../lib/format";
 
@@ -26,9 +27,11 @@ import { fmtInt } from "../lib/format";
  *  `AnalyzeResponse` and hand it to the same sheet.
  *
  *  This screen owns the *photo* — the frozen frame and the request that
- *  persists and reads it — while CameraStage owns the camera. The stage tears
- *  its stream down the moment a frame is taken, so the still has to live out
- *  here to survive that. BARCODE stays parked until #15. */
+ *  persists and reads it — while CameraStage shows the viewfinder. The stage
+ *  unmounts whenever TEXT is picked, so the still has to live out here to
+ *  survive that. The camera *session* belongs to neither: it lives in
+ *  `lib/camera.ts` for the length of one visit to this screen, and this screen
+ *  ends it (#94). */
 
 type EditableItem = AnalyzedItem & { orig: AnalyzedItem };
 
@@ -158,6 +161,16 @@ export function Log() {
     if (!still) return;
     return () => URL.revokeObjectURL(still);
   }, [still]);
+
+  // The camera goes out here and nowhere else (#94). Leaving the flow — the X,
+  // a save, the tab bar — is the one moment nobody is about to point a phone at
+  // a plate. Not on a freeze and not when CameraStage unmounts for TEXT: both
+  // used to stop the tracks, and re-acquiring afterwards is a second
+  // getUserMedia, which on iOS can be a second permission prompt for a grant
+  // the user already gave. Deliberately *not* on `visibilitychange` either —
+  // WebKit already suspends capture for a hidden page, so tearing down there
+  // would buy nothing and cost a prompt on the way back.
+  useEffect(() => releaseCamera, []);
 
   // favorites first (most-used), then recents that aren't already starred
   const picks = useMemo(() => {

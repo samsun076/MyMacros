@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { scanner } from "../lib/barcode";
+import { acquireCamera, openCamera } from "../lib/camera";
 import { frameFromFile, frameFromVideo } from "../lib/photo";
 import { LogModes, type LogMode } from "./LogModes";
 
@@ -12,10 +13,11 @@ import { LogModes, type LogMode } from "./LogModes";
  *  sketch's own markup is commented "straight to the viewfinder", so handing
  *  the screen to iOS's camera app would mean never showing a designed screen.
  *
- *  The stage owns the camera; the *photo* belongs to Log, which owns the
- *  request that persists and reads it. That split is why `still`, `busy` and
- *  `error` arrive as props: the frozen frame has to survive this component
- *  tearing its stream down. */
+ *  The stage *shows* the camera; the session behind it belongs to
+ *  `lib/camera.ts` and the *photo* belongs to Log, which owns the request that
+ *  persists and reads it. That split is why `still`, `busy` and `error` arrive
+ *  as props: the frozen frame has to survive this component unmounting, which
+ *  it does every time the user picks TEXT. */
 
 /** The rear camera. The on-device probe found the default rear stream is the
  *  full 12MP sensor (3024×4032 @30fps) — far more than the 1568px long edge
@@ -23,19 +25,22 @@ import { LogModes, type LogMode } from "./LogModes";
  *  so a device that can't honour it still opens a camera instead of throwing.
  *
  *  Barcode mode asks for less again: that probe's explicit warning was not to
- *  feed full-sensor frames to a WASM decoder, and asking getUserMedia for a
- *  smaller stream is the cheapest way to honour it (#13/#15). 1280 still
- *  resolves a UPC comfortably at arm's length. */
-function constraintsFor(mode: LogMode): MediaStreamConstraints {
+ *  feed full-sensor frames to a WASM decoder, and asking for a smaller stream
+ *  is the cheapest way to honour it (#13/#15). 1280 still resolves a UPC
+ *  comfortably at arm's length.
+ *
+ *  Since #94 the size is asked for *twice over*: once in the constraints of
+ *  the session's single `getUserMedia`, and thereafter with `applyConstraints`
+ *  on the track already open. Same intent, no second acquisition — switching
+ *  PHOTO↔BARCODE used to re-acquire purely because these two numbers differ,
+ *  and on iOS that is a permission prompt for a camera already granted. */
+function sizeFor(mode: LogMode): MediaTrackConstraints {
   const edge = mode === "barcode" ? 1280 : 1920;
-  return {
-    video: {
-      facingMode: { ideal: "environment" },
-      width: { ideal: edge },
-      height: { ideal: edge },
-    },
-    audio: false,
-  };
+  return { width: { ideal: edge }, height: { ideal: edge } };
+}
+
+function constraintsFor(mode: LogMode): MediaStreamConstraints {
+  return { video: { facingMode: { ideal: "environment" }, ...sizeFor(mode) }, audio: false };
 }
 
 /** ~3 decodes a second. Fast enough to feel like lock-on, slow enough to
@@ -74,75 +79,97 @@ export function CameraStage({
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  // Seeded from the session rather than from null: mounting into a camera that
+  // is already open (TEXT → PHOTO) should not spend a render on "starting".
+  const [stream, setStream] = useState<MediaStream | null>(openCamera);
   const [finder, setFinder] = useState<Finder>("starting");
   const [captureError, setCaptureError] = useState<string | null>(null);
   const [scanning, setScanning] = useState(false);
 
-  // The stream runs only while the finder is actually showing. Freezing a
-  // frame tears it down, which is what puts the camera indicator out while
-  // the read is reviewed; retaking starts it again (no second permission
-  // prompt — the grant is already on the origin).
   const live = still === null;
 
+  /** Open the session's camera — **once**, whatever happens afterwards.
+   *
+   *  The empty dependency list is the whole of #94. This effect used to name
+   *  `live` and `mode`, so freezing a frame and switching modes each re-ran it,
+   *  and each re-run was a fresh `getUserMedia` (seven per visit, measured).
+   *  The mode at mount still picks the constraints — the effect below adjusts
+   *  the track in place when it changes. */
+  const openingMode = useRef(mode);
   useEffect(() => {
-    if (!live) return;
-
-    // undefined on an insecure origin as well as an old browser — either way
-    // there is no live viewfinder to be had here
-    if (!navigator.mediaDevices?.getUserMedia) {
-      setFinder("unsupported");
-      return;
-    }
-
-    let stream: MediaStream | null = null;
-    let mounted = true;
-    let video: HTMLVideoElement | null = null;
-    let onFrame: (() => void) | null = null;
-    setFinder("starting");
-
-    navigator.mediaDevices
-      .getUserMedia(constraintsFor(mode))
+    let cancelled = false;
+    acquireCamera(constraintsFor(openingMode.current))
       .then((s) => {
-        if (!mounted) {
-          s.getTracks().forEach((t) => t.stop());
-          return;
-        }
-        stream = s;
-        video = videoRef.current;
-        if (!video) return;
-        video.srcObject = s;
-        // set imperatively as well as in JSX: iOS refuses to autoplay a
-        // stream that isn't muted at the moment play() is called
-        video.muted = true;
-
-        // "live" waits for the first decoded frame, not for getUserMedia to
-        // resolve — between the two the element has no dimensions, and a
-        // canvas draw from it yields a blank image rather than an error.
-        // Measured: tapping the shutter the instant the stage opened failed
-        // exactly here. `loadeddata` is the event that guarantees a frame;
-        // `loadedmetadata` only guarantees the size.
-        onFrame = () => mounted && setFinder("live");
-        if (video.readyState >= 2 && video.videoWidth) onFrame();
-        else video.addEventListener("loadeddata", onFrame, { once: true });
-
-        void video.play().catch(() => {});
+        if (!cancelled) setStream(s);
       })
       .catch((err: unknown) => {
-        if (!mounted) return;
+        if (cancelled) return;
         // NotAllowedError is the user (or a policy) saying no, and it is the
         // one case a settings change can undo. Everything else — no camera,
         // hardware busy, an origin that can't ask — is the same dead end.
         const denied = err instanceof Error && err.name === "NotAllowedError";
         setFinder(denied ? "denied" : "unsupported");
       });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  /** Hang the session's stream on this stage's <video>. Detaching on the way
+   *  out lets go of the element's handle and nothing else: the stream outlives
+   *  the element, which is what makes TEXT → PHOTO free. */
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!stream || !video) return;
+
+    video.srcObject = stream;
+    // set imperatively as well as in JSX: iOS refuses to autoplay a stream
+    // that isn't muted at the moment play() is called
+    video.muted = true;
+
+    // "live" waits for the first decoded frame, not for getUserMedia to
+    // resolve — between the two the element has no dimensions, and a canvas
+    // draw from it yields a blank image rather than an error. Measured:
+    // tapping the shutter the instant the stage opened failed exactly here.
+    // `loadeddata` is the event that guarantees a frame; `loadedmetadata`
+    // only guarantees the size.
+    const onFrame = () => setFinder("live");
+    if (video.readyState >= 2 && video.videoWidth) onFrame();
+    else video.addEventListener("loadeddata", onFrame, { once: true });
+
+    void video.play().catch(() => {});
 
     return () => {
-      mounted = false;
-      if (video && onFrame) video.removeEventListener("loadeddata", onFrame);
-      stream?.getTracks().forEach((t) => t.stop());
+      video.removeEventListener("loadeddata", onFrame);
+      video.srcObject = null;
     };
-    // mode is a dependency because barcode mode asks for a different stream
-  }, [live, mode]);
+  }, [stream]);
+
+  /** Frames only while the finder is actually showing one.
+   *
+   *  This is what replaced tearing the stream down on every freeze. It is a
+   *  weaker guarantee and worth being honest about: the capture device stays
+   *  open, so the OS indicator is the platform's call, not ours. What it does
+   *  guarantee is that no image reaches the page while a read is being
+   *  reviewed or a description typed — and unlike stopping the track, coming
+   *  back costs nothing. TEXT mode is the case that earns it: the stage
+   *  unmounts, this cleanup runs, and the camera sees nothing for however long
+   *  someone spends typing. */
+  useEffect(() => {
+    const tracks = stream?.getVideoTracks() ?? [];
+    tracks.forEach((t) => (t.enabled = live));
+    return () => tracks.forEach((t) => (t.enabled = false));
+  }, [stream, live]);
+
+  /** Barcode mode wants a smaller frame than photo mode (#13/#15). Asking the
+   *  open track rather than asking for a new stream is the difference between
+   *  a mode switch and a permission prompt. Best-effort by design: a device
+   *  that refuses the size still scans, just from a heavier frame. */
+  useEffect(() => {
+    const track = stream?.getVideoTracks()[0];
+    if (!track) return;
+    void track.applyConstraints(sizeFor(mode)).catch(() => {});
+  }, [stream, mode]);
 
   /** The scan loop (#15). Runs only while barcode mode is showing a live
    *  finder with nothing pending — so a lookup in flight, or one that came
