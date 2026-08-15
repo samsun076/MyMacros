@@ -20,6 +20,7 @@
     "reconcile": "node tools/reconcile-inputs.mjs",
     "shots": "node tools/shot-matrix.mjs",
     "verify:auth": "node tools/verify-auth.mjs",
+    "verify:camera": "node tools/verify-camera.mjs",
     "verify:firstpaint": "node tools/verify-firstpaint.mjs",
     "verify:routing": "node tools/verify-routing.mjs",
     "verify:viewport": "node tools/verify-viewport.mjs",

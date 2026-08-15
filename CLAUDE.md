@@ -45,6 +45,7 @@ npm run fonts          # re-fetch the self-hosted woff2 files (#35)
 npm run fonts -- --check     # fail if the committed fonts drifted from the spec
 npm run reconcile -- --date 2026-08-10 --weeks 1   # rule 4b's input block (#83)
 npm run verify:auth    # drive the real passkey ceremony (needs `npm run dev`)
+npm run verify:camera -- --cookie <name>=<token>   # /log asks for the camera once, not seven times (#94)
 npm run verify:routing -- https://fuel.debrief.run   # /api survives navigation; SPA still falls back
 npm run verify:viewport -- --cookie <name>=<token>   # no screen overflows horizontally (#51)
 npm run verify:firstpaint   # needs `npm run build` first — the document paints the app alone (#53)
