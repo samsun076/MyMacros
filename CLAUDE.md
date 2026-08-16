@@ -549,8 +549,15 @@ result about the *inputs* and says nothing about this register.
   append-only and so cannot drift, where `PLAN.md` mirrored a live rule set and
   did — is real but does not earn a file when a comment carries the same dated,
   falsifiable record and sits on the thing it describes.
-  Record the iOS version and whether it was Safari or the installed app;
-  #94 turned entirely on that distinction.
+  **Name the build in the comment** — a SHA, not just a date. "Clean on
+  2026-08-16" is only a claim about whatever was deployed that morning, and a
+  reader three months later cannot tell what was accepted. Record the iOS
+  version and whether it was Safari or the installed app too; #94 turned
+  entirely on that distinction.
+  **A UAT finding becomes its own issue**, not a reopening, when the original
+  did what it said and the complaint is with a decision it made — #97 came out
+  of #52 that way. The issue carries the milestone, so a milestone view already
+  answers "which of this work has someone actually used".
 - Push to `main` deploys via Workers Builds (wired in M1 #7).
 - **Read the build result off GitHub, not by polling the asset hash:**
   ```bash
