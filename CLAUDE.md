@@ -83,6 +83,28 @@ include `src/`, so `npm run check` type-checks tests with no extra project.
   imported from the package root.
 - A test that can't fail is worse than no test. When one covers something that
   matters, break the source once and watch it go red before trusting it.
+- **And name the assertions that stayed green while it was broken.** Watching
+  the *suite* go red is not enough — #96's oracle went red overall while six of
+  its assertions passed anyway, because focusing an in-range field and leaving
+  without typing looks identical whether or not the fix is there (`280`
+  re-parses to `280`). Those six are a regression guard and nothing more; the
+  one case that separated the two implementations needed a real product with a
+  real barcode to reach. A green assertion inside a red run is decorative, and
+  it is decorative in the most dangerous way, because it reads as coverage.
+  Say which ones they were — the discipline is worth more than the label.
+  Mutation testing is the formal name for this and Stryker would mechanise it;
+  considered and not adopted, since the cost is a permanent slow gate to
+  replace a habit that is already working.
+- **A literal carried through a rewrite is a decision, not an inheritance.**
+  #95 lifted five numeric fields onto one component and kept the portion
+  field's `1…5000` verbatim so that the fix stayed a fix — defensible, and the
+  right call at the time. What was missing is that nobody wrote down that the
+  bound had been *preserved rather than examined*, so it read as considered.
+  Dave found it by using the app, and the macro fields turned out to have no
+  ceiling at all (#96). Same shape as the `?? <literal>` trap the register
+  warns about, one step over: there the literal restates a default, here it
+  outlives the reasoning that produced it. If a rewrite keeps a number it did
+  not derive, say so in the commit.
 
 **Shooting the camera screen needs `--camera`.** Headless Chrome has no camera, so
 `/log` and `/log#barcode` render their no-viewfinder fallback — a real screen, but not
