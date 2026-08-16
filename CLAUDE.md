@@ -534,6 +534,23 @@ result about the *inputs* and says nothing about this register.
 
 - Commit per issue, `closes #N` **only when the issue is actually finished** —
   a partial commit references `#N` without the keyword.
+- **A device check is recorded as a comment on the issue it checked, pass or
+  fail, and labelled `device-verified`.** Half of what this project gets wrong
+  is only visible to a thumb — the 5,000 g portion cap, the swallowed dismiss
+  tap, and an open swipe row hiding the name of the meal it is about to delete
+  were all found by using the app and none of them by a check. So the finding
+  is only half the artifact; the other half is that somebody looked.
+  **Clean passes get a comment too**, for rule 4b's reason exactly: a silent
+  pass and negligence are indistinguishable from the outside, and #90 is the
+  issue where "nobody looked" already cost real data.
+  **Not a file.** `UAT.md` was proposed and rejected: the issue is already the
+  home for a finding, and a second list of findings beside it is #86's own
+  defect. The distinction that nearly justified one — `RECONCILIATIONS.md` is
+  append-only and so cannot drift, where `PLAN.md` mirrored a live rule set and
+  did — is real but does not earn a file when a comment carries the same dated,
+  falsifiable record and sits on the thing it describes.
+  Record the iOS version and whether it was Safari or the installed app;
+  #94 turned entirely on that distinction.
 - Push to `main` deploys via Workers Builds (wired in M1 #7).
 - **Read the build result off GitHub, not by polling the asset hash:**
   ```bash
