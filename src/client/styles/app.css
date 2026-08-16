@@ -996,7 +996,16 @@ section {
  * `--desc-lines` rather than a bare 2 so a theme pack has a lever: the packs
  * set in different faces at the same 13.5px, and where the clamp *falls*
  * differs by several words between Archivo, Alegreya Sans and Instrument Sans.
- * None of them needs a different count today — measured at 375 in all three. */
+ * None of them needs a different count today — measured at 375 in all three.
+ *
+ * **A pack must override it with `:root[data-theme=…] .meal .desc`, not as a
+ * `:root` token.** The variable is declared on this rule *itself*, so an
+ * inherited value never reaches it — and a token block is the first thing
+ * anyone will try, because every other pack knob in this project is one.
+ * Written in `themes.css` at bare `.meal .desc` it loses the tie on source
+ * order instead, which is the trap that file's own header warns about.
+ * Exercised both ways at 375 in Night Athletic and Field Notes: the row grows
+ * by exactly one line-height and stays clipped. */
 .meal .desc {
   --desc-lines: 2;
   font-size: 13.5px;
