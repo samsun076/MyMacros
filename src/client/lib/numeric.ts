@@ -36,6 +36,50 @@ export type NumericCommit =
   | { kind: "empty" }
   | { kind: "keep"; why: "blank" | "unparsable" };
 
+/** What the confirm sheet's five fields accept, in one table.
+ *
+ *  #95 lifted the *mechanism* into one place and deliberately left the bounds
+ *  as it found them, so that the fix stayed a fix. What it found was a hole:
+ *  the portion field carried 1–5000 because the handler it replaced did, and
+ *  the four macro fields carried `min: 0` and **no ceiling at all** — so a
+ *  thumb that lands on the wrong key in KCAL puts five figures into the day's
+ *  total and nothing anywhere says otherwise. The bound that was too loose was
+ *  the visible one; the bound that was missing was the one next to it.
+ *
+ *  These are **typo-catchers, not opinions about food.** Each sits far enough
+ *  above any single item that honest input cannot reach it — 10,000 kcal is
+ *  four days of eating for the person this app is built for, 1,000 g of one
+ *  macro in one item is not a food, and 2,000 g is the far end of "how much of
+ *  this scanned product did you eat", which is what the portion field asks
+ *  (#15) rather than how big the package is. A ceiling that fires on real
+ *  meals teaches people to fight the field; one that only ever fires on a
+ *  slipped thumb costs nothing, and that asymmetry is the whole design.
+ *
+ *  **Here, and not beside the fields, because here a test can reach it.** The
+ *  numbers *are* the rule, so they are what `numeric.test.ts` asserts against;
+ *  a table living in JSX is a rule with no test, and becomes a second
+ *  statement of itself the first time a sixth field wants the same ceiling.
+ *
+ *  `decimals` rides along for the same reason the bounds do — it was three
+ *  separate `decimals={1}` props on three macro fields, which is #86's defect
+ *  at its smallest scale. The integer rows say nothing about it, because
+ *  `NumericField` already defaults to 0 and restating a default is exactly how
+ *  Onboarding's `?? 62` rotted against a column rebuilt to 58.
+ */
+export const FOOD_LIMITS = {
+  /** The portion row on a barcode read. Min 1 because 0 g of something is not
+   *  a small meal, it is a field being cleared, and clearing has its own answer. */
+  grams: { min: 1, max: 2000 },
+  /** Per item, never per meal — a sheet of several items may total more, and
+   *  the footer is right to say so. */
+  kcal: { min: 0, max: 10000 },
+  /** Per item, per macro, and the same number for all three on purpose: they
+   *  are the same mistake wearing three labels, and three different ceilings
+   *  would only invite an argument about which. 1dp matches what the app
+   *  stores and what the barcode rescale produces. */
+  macro_g: { min: 0, max: 1000, decimals: 1 },
+} as const satisfies Record<string, NumericRule>;
+
 /** A decimal literal and nothing else. `Number()` alone is too generous to be
  *  a validator: it reads `"0x1f"` as 31 and `" "` as 0, so a field backed by it
  *  accepts strings no keypad can produce and turns whitespace into a number. */

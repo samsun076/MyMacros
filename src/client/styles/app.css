@@ -1962,7 +1962,7 @@ section {
   width: 100%;
 }
 
-/* What the field did when it couldn't do what you typed — KEPT 280, MAX 5000.
+/* What the field did when it couldn't do what you typed — KEPT 280, MAX 2000.
    Full-strength ink against the muted label above it, because the whole point
    is that a restore you can't see is the bug wearing a different hat. Not
    --danger: build rule 9 keeps that for sign-carrying alerts, and putting the

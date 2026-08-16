@@ -17,6 +17,7 @@ import { ApiError, api, useApi } from "../lib/api";
 import { releaseCamera } from "../lib/camera";
 import { deviceTimezone, localDay, mealSlotFor } from "../lib/day";
 import { fmtInt } from "../lib/format";
+import { FOOD_LIMITS, type NumericRule } from "../lib/numeric";
 
 /** The log flow: capture → editable confirm sheet → saved.
  *
@@ -614,15 +615,12 @@ export function Log() {
                     only that the *text* stops being rewritten under the cursor
                     — and that an out-of-range figure now clamps and says so,
                     where before it was silently discarded, which is
-                    indistinguishable from a dead keyboard. */}
-                <NumericField
-                  id="grams"
-                  value={read.grams}
-                  onCommit={setGrams}
-                  live
-                  min={1}
-                  max={5000}
-                />
+                    indistinguishable from a dead keyboard.
+
+                    The ceiling came down from 5,000 g, which #95 inherited from
+                    that discarding handler and kept so the fix stayed a fix.
+                    5 kg was never a portion of anything; see FOOD_LIMITS. */}
+                <NumericField id="grams" value={read.grams} onCommit={setGrams} live {...FOOD_LIMITS.grams} />
                 <span className="mono">GRAMS</span>
               </div>
             )}
@@ -724,19 +722,34 @@ function ItemRow({
           </label>
           {/* All four are `live`: the footer total and the row's own kcal read
               off them, and a sheet whose total only catches up when you tap
-              away reads as broken. Decimals follow what the app stores —
-              calories are whole, macros are `round1`, the same 1dp the barcode
-              rescale produces. */}
+              away reads as broken. Bounds and decimals both come from
+              FOOD_LIMITS — three of these rows are the same rule, and stating
+              it three times is how the four fields drifted apart last time. */}
           <div className="item-edit-nums">
-            <NumField label="KCAL" value={item.calories} onChange={(calories) => onChange({ calories })} />
+            <NumField
+              label="KCAL"
+              value={item.calories}
+              rule={FOOD_LIMITS.kcal}
+              onChange={(calories) => onChange({ calories })}
+            />
             <NumField
               label="PROTEIN"
               value={item.protein_g}
-              decimals={1}
+              rule={FOOD_LIMITS.macro_g}
               onChange={(protein_g) => onChange({ protein_g })}
             />
-            <NumField label="CARBS" value={item.carbs_g} decimals={1} onChange={(carbs_g) => onChange({ carbs_g })} />
-            <NumField label="FAT" value={item.fat_g} decimals={1} onChange={(fat_g) => onChange({ fat_g })} />
+            <NumField
+              label="CARBS"
+              value={item.carbs_g}
+              rule={FOOD_LIMITS.macro_g}
+              onChange={(carbs_g) => onChange({ carbs_g })}
+            />
+            <NumField
+              label="FAT"
+              value={item.fat_g}
+              rule={FOOD_LIMITS.macro_g}
+              onChange={(fat_g) => onChange({ fat_g })}
+            />
           </div>
         </div>
       )}
@@ -747,22 +760,27 @@ function ItemRow({
 /** The sheet's own wrapper: the label cell of `.item-edit-nums`, around the
  *  shared field. Nothing but layout lives here — the commit rule, the clamp and
  *  what an empty field means are all `NumericField`'s, so the four macros and
- *  the portion field can't drift apart the way they had (#95). */
+ *  the portion field can't drift apart the way they had (#95).
+ *
+ *  It takes a whole `NumericRule` rather than a `decimals` prop and a hardcoded
+ *  `min={0}`, because that hardcode was the last place on this screen still
+ *  deciding a bound for itself — and it decided the same wrong thing four
+ *  times, silently, by having no ceiling to state. */
 function NumField({
   label,
   value,
-  decimals = 0,
+  rule,
   onChange,
 }: {
   label: string;
   value: number;
-  decimals?: number;
+  rule: NumericRule;
   onChange: (n: number) => void;
 }) {
   return (
     <label>
       {label}
-      <NumericField value={value} onCommit={onChange} live min={0} decimals={decimals} />
+      <NumericField value={value} onCommit={onChange} live {...rule} />
     </label>
   );
 }

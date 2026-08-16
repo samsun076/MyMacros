@@ -49,6 +49,28 @@ import { type NumericRule, formatNumeric, parseNumeric } from "../lib/numeric";
  *  meal with no calories in it. So the previous number goes back — and the
  *  field prints `KEPT 280` where nothing was before, because a restore nobody
  *  can see is the same defect wearing a different hat.
+ *
+ *  **Blur commits only what somebody typed.** It used to commit
+ *  unconditionally, so tapping into a field and straight back out ran a parse,
+ *  a clamp and possibly an `onCommit` over text the user never touched. That
+ *  is wrong on its own terms — a number must not change because you looked at
+ *  it — and once the fields carry real ceilings (`FOOD_LIMITS`) it is a defect
+ *  you can walk into: the portion field rescales every macro on the sheet, 2 kg
+ *  of Nutella computes to 1,150 g of carbs, and an untouched blur would have
+ *  quietly cut that to the 1,000 g ceiling and printed `MAX 1000` about an
+ *  edit nobody made. The guard is `typing === null`, which reads as "no
+ *  keystroke has landed since the last commit" — and since `commit` is reached
+ *  from nowhere but blur, that is the same statement as "not edited since this
+ *  field took focus".
+ *
+ *  **It cannot strand a `live` field**, which is the half worth checking
+ *  rather than assuming. A live commit fires from `onChange`, which has
+ *  already set `typing` and never clears it, so the field is *always* in the
+ *  typed state by the time blur arrives. And the cases where blur is doing the
+ *  real work are exactly the three that live refuses to commit — blank,
+ *  unparsable, and clamped — every one of which leaves `typing` set. So
+ *  `KEPT 280` and `MAX 2000` still fire off the last keystroke, and the only
+ *  commit the guard can ever swallow is one over text the field wrote itself.
  */
 export function NumericField({
   value,
@@ -145,7 +167,13 @@ export function NumericField({
             onCommit(res.value);
           }
         }}
-        onBlur={(e) => commit(e.target.value)}
+        // Committing is for values a person typed. `typing === null` means the
+        // element is showing text this component wrote from `value`, and
+        // re-committing that is at best a no-op and at worst a silent clamp of
+        // a number arrived at some other way. See the note above.
+        onBlur={(e) => {
+          if (typing !== null) commit(e.target.value);
+        }}
         onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
       />
       {/* Rendered even when empty so the live region exists in the a11y tree
