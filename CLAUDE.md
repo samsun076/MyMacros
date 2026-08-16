@@ -534,8 +534,8 @@ result about the *inputs* and says nothing about this register.
 
 - Commit per issue, `closes #N` **only when the issue is actually finished** —
   a partial commit references `#N` without the keyword.
-- **A device check is recorded as a comment on the issue it checked, pass or
-  fail, and labelled `device-verified`.** Half of what this project gets wrong
+- **A UAT check is recorded as a comment on the issue it checked, pass or
+  fail, and labelled `uat`.** Half of what this project gets wrong
   is only visible to a thumb — the 5,000 g portion cap, the swallowed dismiss
   tap, and an open swipe row hiding the name of the meal it is about to delete
   were all found by using the app and none of them by a check. So the finding
