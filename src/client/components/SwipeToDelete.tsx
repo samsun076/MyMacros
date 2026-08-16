@@ -22,7 +22,8 @@ import { DELETE_CONTROL_ATTR, REVEAL_PX, useCloseOnOutsideTap, useSwipeToReveal 
  *  drag. Its label names the meal, since "Delete" repeated down a list of
  *  three tells a screen-reader user nothing about which one. It carries
  *  `DELETE_CONTROL_ATTR` for the same reason the revealed strip does: the
- *  outside-tap rule must never swallow the one control that isn't a gesture.
+ *  outside-tap rule must not close the row out from under the delete that is
+ *  already unmounting it.
  */
 export function SwipeToDelete({
   label,

@@ -141,39 +141,62 @@ export function useSwipeToReveal(open: boolean, onOpenChange: (open: boolean) =>
   };
 }
 
-/** What a tap should do while some row is open (#52).
+/** What a tap does while some row is open (#52, #97).
  *
- *  **The closing tap is swallowed, and that is a decision.** iOS swallows it,
- *  and the reason generalises: an open row is a revealed destructive control,
- *  so the tap that dismisses it is usually a "get me out of this" tap rather
- *  than a considered aim at whatever is underneath. Letting it through means
- *  someone reaching to cancel lands on the camera instead. The cost is one
- *  wasted tap for the person who really did mean to hit the log button; the
- *  alternative's cost is a screen they didn't ask for while a trash can is
- *  armed behind them.
+ *  **It closes the row, and then it goes on to do whatever it was going to do.**
+ *  It used to be swallowed; see `useCloseOnOutsideTap` below for the reversal
+ *  and why the original argument lost.
  *
- *  **Two things are never swallowed.** The row's own delete control, obviously
- *  — swallowing that would make the panel unreachable, which is the gesture's
- *  whole point. And any keyboard activation: a `<button>` fired by Enter or
- *  Space reports `detail: 0`, and the visually-hidden delete button is the
- *  entire non-gesture path to this action. Eating the first Enter would make
- *  the accessible route depend on gesture state, which is the one thing it
- *  exists not to do.
+ *  One exemption survives, and it is not about protecting the tap — nothing is
+ *  protected now. The row's own delete control is about to unmount the row, so
+ *  closing it here would only race the removal.
  *
- *  Kept as a plain function over a plain record so the three cases have a test
- *  that isn't a rendered component — the house idiom, same as `timeline.ts`.
+ *  A one-line function for a one-line rule, kept out of the hook on purpose:
+ *  its failure mode is silent (invert it and the trash can becomes a button
+ *  that does nothing, or a row closes out from under its own delete), and
+ *  `npm run build` is this project's only gate. The half that can't come here
+ *  is *where* the tap landed — that is the DOM's business, and it stays in the
+ *  hook.
  */
-export function tapWhileOpen(tap: { onDeleteControl: boolean; keyboard: boolean }): {
-  close: boolean;
-  swallow: boolean;
-} {
-  // The delete is about to unmount the row anyway; closing it here would just
-  // race the removal. Never swallowed, at any cost.
-  if (tap.onDeleteControl) return { close: false, swallow: false };
-  return { close: true, swallow: !tap.keyboard };
+export function tapWhileOpen(tap: { onDeleteControl: boolean }): { close: boolean } {
+  return { close: !tap.onDeleteControl };
 }
 
-/** Close an open row when a tap lands anywhere else (#52).
+/** Close an open row when a tap lands anywhere else, and let that tap through
+ *  to whatever it hit (#52, and #97 for the "let it through" half).
+ *
+ *  **The dismissing tap used to be swallowed. It isn't, and the reversal is
+ *  the point of this comment.** `4768f7d` adopted iOS's convention on the
+ *  argument that an open row is a revealed destructive control, so the tap that
+ *  dismisses it is a "get me out of this" reflex rather than a considered aim
+ *  at what's underneath — letting it through would land someone on the camera
+ *  with a trash can armed behind them. A day of UAT on a real phone falsified
+ *  it: *"if I have a delete drawer open and hit the plus sign it should close
+ *  and take me to the camera."*
+ *
+ *  **What was wrong with the argument:** the log button is a large, fixed,
+ *  deliberate target parked in the tab bar. Nobody arrives on it while flailing
+ *  to dismiss a drawer, so the accident it protected against was hypothetical,
+ *  while the wasted tap it charged was real, reported, and sat on the app's
+ *  most-used control. A protection nobody needs is just friction with a story.
+ *
+ *  **And it was never only the log button**, which is why there is no exemption
+ *  for one. The undo toast's Undo had the identical wart — tap it while a row
+ *  was open and nothing happened until you tapped again (REVIEW.md item 4).
+ *  Two frictions, one rule, no beneficiary: the rule was wrong, not short an
+ *  exception.
+ *
+ *  **One tap still doesn't close the row: its own delete control.** Not to
+ *  protect the tap — nothing is protected now — but because that delete is
+ *  about to unmount the row, and closing it here would race the removal. The
+ *  check is scoped to *this* row, so a delete control on a different row
+ *  dismisses this one like any other outside tap.
+ *
+ *  Keyboard activation (`detail === 0`) used to be a second exemption, because
+ *  the visually-hidden button is the whole non-gesture path to delete and
+ *  eating its first Enter would have made the accessible route depend on
+ *  gesture state. It is gone as a concept: it was an exemption from
+ *  swallowing, and there is nothing left to be exempt from.
  *
  *  **A document listener rather than a scrim, and only while open.** A
  *  transparent full-screen div would have to be `position: fixed` to cover the
@@ -181,11 +204,12 @@ export function tapWhileOpen(tap: { onDeleteControl: boolean; keyboard: boolean 
  *  as long as a row is open — layout and paint, to catch an event. This adds
  *  one listener, has no box, and is removed the moment the row closes.
  *
- *  **Capture phase on `document`, above React's root.** React 19 delegates
- *  from the root container, so stopping propagation here is what actually
- *  swallows the tap; `preventDefault` covers the native half (an `<a href>`).
- *  Nothing about this reads the DOM for state — the state is the `open` prop —
- *  it only asks *where* the tap landed.
+ *  **Capture phase on `document`, above React's root.** Not to intercept
+ *  anything any more — it neither prevents nor stops the event — but because
+ *  capture is the one phase guaranteed to see the tap: a handler in between
+ *  that calls `stopPropagation` would hide it from a bubble-phase listener and
+ *  strand the row open. Nothing here reads the DOM for state — the state is the
+ *  `open` prop — it only asks *where* the tap landed.
  *
  *  **Scroll deliberately does not close the row.** Three reasons, in order of
  *  weight: a horizontal flick on iOS routinely emits a scroll from the page's
@@ -210,15 +234,12 @@ export function useCloseOnOutsideTap(
     const onClick = (e: MouseEvent) => {
       const target = e.target instanceof Element ? e.target : null;
       const el = row.current;
-      const { close, swallow } = tapWhileOpen({
+      const { close } = tapWhileOpen({
+        // Scoped to *this* row: a delete control on a different row is an
+        // outside tap like any other, and dismisses this one.
         onDeleteControl:
           !!target && !!el && el.contains(target) && !!target.closest(`[${DELETE_CONTROL_ATTR}]`),
-        keyboard: e.detail === 0,
       });
-      if (swallow) {
-        e.preventDefault();
-        e.stopPropagation();
-      }
       if (close) latest.current();
     };
     document.addEventListener("click", onClick, true);
