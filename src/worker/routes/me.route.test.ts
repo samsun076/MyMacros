@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import type { Profile } from "../../shared/api";
 import { ATHLETE_PROFILES, PROTEIN_G_PER_KG } from "../../shared/budget";
 import { PROFILE_DEFAULTS } from "../../shared/profile";
+import { MAX_WEIGHT_KG, MIN_WEIGHT_KG } from "../../shared/weight";
 import { createDb } from "../db";
 import type { AppEnv } from "../types";
 import me from "./me";
@@ -195,6 +196,57 @@ describe("column defaults agree with the code that also states them", () => {
   it("starts a new profile on the carb:fat its own default training preset implies", async () => {
     const fresh = await freshProfile();
     expect(fresh.carb_ratio_pct).toBe(ATHLETE_PROFILES[fresh.athlete_profile].carb_ratio_pct);
+  });
+});
+
+/** #99. Before this, `goal_weight_kg` and `start_weight_kg` were `positive`
+ *  alone, so the only ceiling on either was the number field in Settings — a
+ *  goal weight never passes through `/api/weights`, where the 20–400 kg window
+ *  has always lived. Measured by removing that field's max: 45,358 kg reached
+ *  the column through this route.
+ *
+ *  The bound is asserted here against the shared constants rather than against
+ *  20 and 400, because a test that restates a literal agrees with itself. What
+ *  it pins is that this route reads the *same* window as the weigh-in route and
+ *  the sync route, which is the claim #86 cares about. */
+describe("weights on the profile route are bounded (#99)", () => {
+  it("takes a weight inside the shared window", async () => {
+    await freshProfile();
+    const res = await patch({ goal_weight_kg: MAX_WEIGHT_KG, start_weight_kg: MIN_WEIGHT_KG });
+    expect(res.status).toBe(200);
+    const row = await db.selectFrom("profiles").selectAll().where("user_id", "=", USER).executeTakeFirstOrThrow();
+    expect(row.goal_weight_kg).toBe(MAX_WEIGHT_KG);
+    expect(row.start_weight_kg).toBe(MIN_WEIGHT_KG);
+  });
+
+  it("refuses a step past either end, and stores nothing", async () => {
+    const before = await freshProfile();
+    for (const body of [
+      { goal_weight_kg: MAX_WEIGHT_KG + 1 },
+      { goal_weight_kg: MIN_WEIGHT_KG - 1 },
+      { start_weight_kg: MAX_WEIGHT_KG + 1 },
+      { start_weight_kg: MIN_WEIGHT_KG - 1 },
+    ]) {
+      const res = await patch(body);
+      expect(res.status, JSON.stringify(body)).toBe(400);
+      const row = await db.selectFrom("profiles").selectAll().where("user_id", "=", USER).executeTakeFirstOrThrow();
+      expect(row.goal_weight_kg, JSON.stringify(body)).toBe(before.goal_weight_kg);
+      expect(row.start_weight_kg, JSON.stringify(body)).toBe(before.start_weight_kg);
+    }
+  });
+
+  it("refuses the figure that actually reached the column", async () => {
+    await freshProfile();
+    expect((await patch({ goal_weight_kg: 45358.78 })).status).toBe(400);
+  });
+
+  /** #23's erasable goal line. The bound must not have taken this away. */
+  it("still lets the goal line be cleared", async () => {
+    await freshProfile();
+    expect((await patch({ goal_weight_kg: 80 })).status).toBe(200);
+    expect((await patch({ goal_weight_kg: null })).status).toBe(200);
+    const row = await db.selectFrom("profiles").selectAll().where("user_id", "=", USER).executeTakeFirstOrThrow();
+    expect(row.goal_weight_kg).toBeNull();
   });
 });
 

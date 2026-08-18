@@ -5,7 +5,12 @@
  *  currently inside you. Budgeting against the raw latest number makes the
  *  daily target jitter by a few hundred kcal for reasons that have nothing to
  *  do with fat, and #18 is explicit that recalculation follows the *trend*.
+ *
+ *  It also holds what counts as a plausible weight at all (#99). Same subject,
+ *  one import for anything that has to ask either question.
  */
+
+import { kgToLb } from "./units";
 
 /** One weigh-in, as little of the row as the maths needs. */
 export type WeighIn = {
@@ -13,6 +18,48 @@ export type WeighIn = {
   measured_on: string;
   weight_kg: number;
 };
+
+/** What a person can plausibly weigh, in kilograms. Stated once (#99).
+ *
+ *  Sanity bounds, not clinical ones — they exist to catch a slipped decimal or
+ *  a pounds-shaped number typed into a kg field, both of which would move the
+ *  target hundreds of kcal without looking wrong. (The argument is the
+ *  Worker's own, and travelled here with the numbers.)
+ *
+ *  Here rather than beside the route that first wrote them down, because three
+ *  places claimed to know this quantity and only two of them agreed — and they
+ *  agreed by having been copied from one another. `POST /api/weights` and
+ *  `tools/sync-garmin.py` both carried 20–400; the goal weight field carried
+ *  `min: 1` and **no ceiling at all**, which is how 99,999 lb became a
+ *  storable goal. #86's register defect, found by a person rather than a test.
+ *
+ *  `sync-garmin.py` is a separate runtime and cannot import this; it keeps its
+ *  literals and a comment naming this file as what they track. */
+export const MIN_WEIGHT_KG = 20;
+export const MAX_WEIGHT_KG = 400;
+
+/** The same window, as the number a *field* holds — which is not the number
+ *  the database stores.
+ *
+ *  A weight field shows pounds for an imperial profile and converts on save,
+ *  so a bound applied to the stored value means one thing to the user and
+ *  another to the server: "max 400" would read as 400 lb on screen and admit
+ *  881 lb underneath. Same class as Garmin reporting grams (#20), with the
+ *  units the other way round. The bound belongs on the number being typed.
+ *
+ *  **It rounds inward, and that is the entire reason this is derived rather
+ *  than a second pair of numbers.** 400 kg is 881.85 lb, so a displayed
+ *  ceiling of 882 converts back to 400.07 and `POST /api/weights` refuses it —
+ *  a field that takes a number and then fails on save is worse than one with
+ *  no ceiling, because the failure is late and arrives with nothing on screen
+ *  to have predicted it. `floor` on the max and `ceil` on the min are what
+ *  make "nothing this field accepts is refused by the server" true by
+ *  construction: 881 lb is 399.6 kg, and 44 lb is 19.96, which is under the
+ *  floor. */
+export function weightBounds(units: "imperial" | "metric"): { min: number; max: number } {
+  if (units === "metric") return { min: MIN_WEIGHT_KG, max: MAX_WEIGHT_KG };
+  return { min: Math.ceil(kgToLb(MIN_WEIGHT_KG)), max: Math.floor(kgToLb(MAX_WEIGHT_KG)) };
+}
 
 /** Days in the smoothing window, inclusive of the end day. */
 export const TREND_WINDOW_DAYS = 7;

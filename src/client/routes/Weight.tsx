@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router";
 import type { Me, WeightsResponse } from "../../shared/api";
 import { displayWeight, lbToKg } from "../../shared/units";
+import { weightBounds } from "../../shared/weight";
 import { ApiError, api, useApi } from "../lib/api";
 import { localDay } from "../lib/day";
 
@@ -27,9 +28,24 @@ export function Weight() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  /** The window the route already enforces, read in the unit on screen (#99).
+   *
+   *  This field is not the one #99 was reported against — it has always had a
+   *  ceiling, because `POST /api/weights` has one and refusing a save is what
+   *  put "That doesn't look like a weight in lb" below the button. What it did
+   *  not have was that ceiling *before* the round trip, so the only way to
+   *  learn 900 lb is too heavy was to try it; and the silent half was worse —
+   *  `n <= 0` dropped the tap with no error and no request, which is a dead
+   *  button. Both now answer in the unit being typed, from the one source. */
+  const bounds = weightBounds(imperial ? "imperial" : "metric");
+
   async function save() {
     const n = Number(entry);
-    if (!Number.isFinite(n) || n <= 0) return;
+    if (!Number.isFinite(n)) return;
+    if (n < bounds.min || n > bounds.max) {
+      setError(`A weigh-in has to be between ${bounds.min} and ${bounds.max} ${unit.toLowerCase()}.`);
+      return;
+    }
     setSaving(true);
     setError(null);
     try {

@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import type { SyncRequest, SyncResponse } from "../../shared/api";
+import { MAX_WEIGHT_KG, MIN_WEIGHT_KG } from "../../shared/weight";
 import { refreshTarget } from "../budget";
 import { createDb } from "../db";
 import { bearerFrom, markSyncTokenUsed, userForSyncToken } from "../sync-token";
@@ -352,9 +353,12 @@ function validWeight(raw: unknown) {
   if (!w || typeof w !== "object") return null;
 
   const measured_on = isDay(w.measured_on);
-  // same sanity bounds as manual entry: catches a slipped decimal or a
-  // pounds-shaped number, both of which move the target hundreds of kcal
-  const weight_kg = isNum(w.weight_kg) && w.weight_kg >= 20 && w.weight_kg <= 400
+  // Same sanity bounds as manual entry: catches a slipped decimal or a
+  // pounds-shaped number, both of which move the target hundreds of kcal.
+  // Read from `shared/weight` since #99 — this was the fourth place stating
+  // them, and it was found by fixing the other three.
+  const weight_kg =
+    isNum(w.weight_kg) && w.weight_kg >= MIN_WEIGHT_KG && w.weight_kg <= MAX_WEIGHT_KG
     ? Math.round(w.weight_kg * 10) / 10
     : null;
   if (!measured_on || weight_kg === null) return null;

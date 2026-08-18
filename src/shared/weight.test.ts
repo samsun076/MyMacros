@@ -1,12 +1,55 @@
 import { describe, expect, it } from "vitest";
+import { kgToLb, lbToKg } from "./units";
 import {
+  MAX_WEIGHT_KG,
+  MIN_WEIGHT_KG,
   anchorDay,
   currentTrendWeightKg,
   shiftDay,
   trendSeries,
   trendWeightKg,
+  weightBounds,
   type WeighIn,
 } from "./weight";
+
+/** The bounds a weight field shows (#99).
+ *
+ *  Two claims, and only one of them is about the numbers 45 and 881. Those are
+ *  pinned because they are printed — the field says `MAX 881` to a person — so
+ *  moving them is a change to what someone reads, not an implementation
+ *  detail. The claim that actually matters is the one under it: each is the
+ *  *last* integer on its side that survives the conversion back into kg. That
+ *  is what makes "nothing this field accepts is refused by the server" true,
+ *  and it is a property no equality between constants can express.
+ */
+describe("weightBounds", () => {
+  it("hands metric the stored window untouched", () => {
+    expect(weightBounds("metric")).toEqual({ min: MIN_WEIGHT_KG, max: MAX_WEIGHT_KG });
+  });
+
+  it("is the printed pair in pounds", () => {
+    expect(weightBounds("imperial")).toEqual({ min: 45, max: 881 });
+  });
+
+  // The reason the ceiling is not 882: the honest rounding of 400 kg is
+  // 881.85 lb, and the nearest integer to that is over the line.
+  it("rounds inward, so the ceiling converts back inside the window", () => {
+    const { max } = weightBounds("imperial");
+    expect(lbToKg(max)).toBeLessThanOrEqual(MAX_WEIGHT_KG);
+    expect(lbToKg(max + 1)).toBeGreaterThan(MAX_WEIGHT_KG);
+    // named, because it is the figure the issue argues about
+    expect(kgToLb(MAX_WEIGHT_KG)).toBeCloseTo(881.85, 2);
+    expect(lbToKg(882)).toBeCloseTo(400.07, 2);
+  });
+
+  // 44 lb is 19.96 kg, which the route refuses — by 0.04, and only because it
+  // compares before it rounds to a tenth.
+  it("rounds inward at the floor too", () => {
+    const { min } = weightBounds("imperial");
+    expect(lbToKg(min)).toBeGreaterThanOrEqual(MIN_WEIGHT_KG);
+    expect(lbToKg(min - 1)).toBeLessThan(MIN_WEIGHT_KG);
+  });
+});
 
 describe("shiftDay", () => {
   it("moves whole days", () => {

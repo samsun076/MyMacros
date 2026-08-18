@@ -50,6 +50,14 @@ API = os.environ.get("MYMACROS_API", "https://fuel.debrief.run").rstrip("/")
 G_PER_KG = 1000.0
 # The same sanity window /api/sync enforces. Checked here too so a bad read is
 # reported against the weigh-in that caused it, not as an opaque 400.
+#
+# SOURCE: MIN_WEIGHT_KG / MAX_WEIGHT_KG in src/shared/weight.ts (#99). These two
+# literals are a copy of that pair and must track it. Python is a separate
+# runtime and cannot import the TypeScript, so this duplication is deliberate,
+# unlike the three it was found beside: the weights route and the goal weight
+# field now both import the shared pair rather than restating it. Change one of
+# these and you are changing that file too, or the sync starts refusing readings
+# the app would have taken.
 MIN_KG, MAX_KG = 20.0, 400.0
 
 

@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Link } from "react-router";
 import type { Accent, Macro, Me, Profile, Theme, Units } from "../../shared/api";
 import { kgToLb, lbToKg } from "../../shared/units";
+import { weightBounds } from "../../shared/weight";
 import { NumericField } from "../components/NumericField";
 import { PasskeyManager } from "../components/PasskeyManager";
 import { Sources } from "../components/Sources";
@@ -331,11 +332,20 @@ function useProfileEdit(me: Me | null, reload: () => void) {
  *  can leave behind.
  *
  *  Two behaviours changed with the lift, both deliberate. A figure at or below
- *  zero used to be dropped in silence; it now clamps to 1 and the field prints
- *  `MIN 1`, because a discarded edit is indistinguishable from a field that
- *  never took the keystroke — the same complaint #95 is about. And letters now
- *  produce a visible `KEPT 78` rather than nothing, which `type="number"` used
- *  to hide by refusing to report them at all.
+ *  zero used to be dropped in silence; it now clamps and the field says so,
+ *  because a discarded edit is indistinguishable from a field that never took
+ *  the keystroke — the same complaint #95 is about. And letters now produce a
+ *  visible `KEPT 78` rather than nothing, which `type="number"` used to hide
+ *  by refusing to report them at all.
+ *
+ *  **The bounds are the shared ones, in the unit on screen (#99).** The field
+ *  shipped with `min: 1` and no maximum, so 99,999 lb was a saveable goal
+ *  while the route that stores every actual weigh-in had held 20–400 kg all
+ *  along. `weightBounds` converts that window rounding *inward* — 881 lb, not
+ *  882 — so the clamped figure this field hands to `lbToKg` is one the server
+ *  accepts. Reading `p?.units` is what makes it the number being typed rather
+ *  than the number being stored; those are different numbers here and the
+ *  whole defect is the gap between them.
  */
 function GoalWeightField({ edit }: { edit: ReturnType<typeof useProfileEdit> }) {
   const p = edit.profile;
@@ -344,6 +354,7 @@ function GoalWeightField({ edit }: { edit: ReturnType<typeof useProfileEdit> }) 
     p?.goal_weight_kg == null
       ? null
       : Math.round((imperial ? kgToLb(p.goal_weight_kg) : p.goal_weight_kg) * 10) / 10;
+  const bounds = weightBounds(imperial ? "imperial" : "metric");
 
   return (
     <div className="field">
@@ -351,7 +362,8 @@ function GoalWeightField({ edit }: { edit: ReturnType<typeof useProfileEdit> }) 
         <NumericField
           value={stored}
           decimals={1}
-          min={1}
+          min={bounds.min}
+          max={bounds.max}
           allowEmpty
           onCommit={(n) => void edit.save({ goal_weight_kg: imperial ? lbToKg(n) : n })}
           onClear={() => void edit.save({ goal_weight_kg: null })}

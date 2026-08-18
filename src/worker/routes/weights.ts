@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import type { WeightCreate, WeightsResponse } from "../../shared/api";
-import { trendSeries, trendWeightKg } from "../../shared/weight";
+import { MAX_WEIGHT_KG, MIN_WEIGHT_KG, trendSeries, trendWeightKg } from "../../shared/weight";
 import { refreshTarget } from "../budget";
 import type { AppEnv } from "../types";
 import { isDay, isNum } from "../validate";
@@ -12,14 +12,12 @@ const weights = new Hono<AppEnv>();
  *  seven days of it. */
 const HISTORY_DAYS = 180;
 
-/** Sanity bounds, not clinical ones — they exist to catch a slipped decimal
- *  or a pounds-shaped number typed into a kg field, both of which would move
- *  the target hundreds of kcal without looking wrong. */
-const MIN_KG = 20;
-const MAX_KG = 400;
-
+/** The sanity bounds moved to `src/shared/weight.ts` (#99), reasoning and all.
+ *  They are the same window the goal weight field now enforces in whichever
+ *  unit is on screen — and this route staying their sole author is how that
+ *  field came to have no ceiling at all. Nothing here may restate them. */
 const kg = (v: unknown) =>
-  isNum(v) && v >= MIN_KG && v <= MAX_KG ? Math.round(v * 10) / 10 : undefined;
+  isNum(v) && v >= MIN_WEIGHT_KG && v <= MAX_WEIGHT_KG ? Math.round(v * 10) / 10 : undefined;
 
 weights.get("/", async (c) => {
   const rows = await c.var.db

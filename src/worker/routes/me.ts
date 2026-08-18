@@ -6,6 +6,7 @@ import { currentTrendWeightKg } from "../../shared/weight";
 import { recentWeighIns, refreshTarget } from "../budget";
 import { loadProfile } from "../profile";
 import type { AppEnv } from "../types";
+import { MAX_WEIGHT_KG, MIN_WEIGHT_KG } from "../../shared/weight";
 import { isDay, isNum, oneOf, pct, positive } from "../validate";
 
 const me = new Hono<AppEnv>();
@@ -13,6 +14,13 @@ const me = new Hono<AppEnv>();
 /** Fields a user is allowed to change about themselves, and how to validate
  *  each. Anything absent from this map is simply not writable over the wire —
  *  an allowlist, so adding a column never accidentally exposes it. */
+/** A weight, in kilograms, inside the same sanity window every other weight in
+ *  this app is held to (#99). Refuses rather than clamps: a route is not a
+ *  place to guess what somebody meant, and the field that feeds it clamps in
+ *  the unit on screen long before it gets here. */
+const weightKg = (v: unknown) =>
+  isNum(v) && v >= MIN_WEIGHT_KG && v <= MAX_WEIGHT_KG ? Math.round(v * 10) / 10 : undefined;
+
 const EDITABLE = {
   sex: (v: unknown) => (v === "male" || v === "female" ? v : undefined),
   birth_date: isDay,
@@ -30,12 +38,18 @@ const EDITABLE = {
   // derived one wins silently, on the next weigh-in, with nothing on screen
   // to say the user's choice was discarded. If a manual override is ever
   // wanted it needs its own column, so that both values stay visible.
-  start_weight_kg: positive,
+  /* Bounded since #99, and it was `positive` alone before — so the only limit
+     on either of these was the number field in Settings. Measured, by removing
+     that field's max: 45,358 kg reached the column through this route. A goal
+     weight never passes through `/api/weights`, which is where the 20–400 kg
+     window has always lived, so this path had no server-side bound at all and
+     nothing said so. */
+  start_weight_kg: weightKg,
   /* Nullable where `start_weight_kg` isn't, and the asymmetry is the point:
      the goal line on Trends is optional, so Settings has to be able to take it
-     away again (#23). `positive` alone refuses null, which made "clear the
+     away again (#23). `weightKg` alone refuses null, which made "clear the
      field" a 400 — an erasable value needs an erasing write. */
-  goal_weight_kg: (v: unknown) => (v === null ? null : positive(v)),
+  goal_weight_kg: (v: unknown) => (v === null ? null : weightKg(v)),
   eat_back_pct: (v: unknown) => (isNum(v) && v >= 0 && v <= 100 ? Math.round(v) : undefined),
   // #77. Bounds are the slider's, so a value the UI can't produce is refused
   // rather than clamped silently; the tenth is the stored resolution.
