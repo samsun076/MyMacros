@@ -1997,3 +1997,84 @@ negligence — same shape as rule 4b's recorded skip.
   `env(safe-area-inset-*)` as 0 and cannot render a translucent status bar, so
   it would be built blind with green checks either way.
 - **#98** — the tap target, filed today, untouched.
+
+---
+
+# Session T — the UAT round, and three bugs it found — ✅ 2026-08-18
+
+Session S shipped R's queue and then Dave used it. This is the second half of
+that: working `REVIEW.md` on a phone, item by item, and fixing what came back.
+
+**Everything on the list passed except what it found.** Keypads correct in all
+five fields, goal weight round-trips through a force-quit, #97's tap goes
+through in one tap, #96's bounds and blur guard behave. VoiceOver was dropped —
+Dave doesn't use it, and the affordances exist but have never met a screen
+reader, which is now stated rather than implied.
+
+## What a person found that nothing else did
+
+| | |
+|---|---|
+| **#98** | "Tap anything to change it" is false. The tap target is the item *name*; the calorie figure and macro line — the part anyone reaching to edit a number would tap — do nothing. Filed, not fixed. |
+| **#100** | Clearing a live field reverted to an artifact of the deletion. Backspacing `17.1` walks it through `17.` → 17 → `1`, each step live-committing, so the "previous value" was 1. `KEPT 1` was a truthful report of a number nobody typed, and the wrong figure had reached the sheet before blur was involved. **Fixed** (`aa1e5ee`). |
+| **#99** | Goal weight had `min 1` and no ceiling. **Fixed** (`262d41b`). |
+
+## #99 was bigger than it looked, twice
+
+The issue said "a plausible human weight is stated three ways". It was **four**
+— `sync.ts` had bare literals, found only by fixing the other three.
+
+And the field cap was the small half. `PATCH /api/me/profile` validated
+`goal_weight_kg` with `positive` alone, so the **only** bound on it was the
+number input in Settings; a goal weight never passes through `/api/weights`,
+where the 20–400 kg window has always lived. Measured by removing the field's
+max: **45,358 kg** reached the column through the API.
+
+The weigh-in screen had the mirror hole — typing `0` dropped the tap with no
+error and no request. A dead button, which is the exact complaint #95 was filed
+about.
+
+## And then #99 shipped a regression, found the same way
+
+`262d41b` carried `Math.round(v * 10) / 10` into the new profile validator,
+copied from `weights.ts` where it is correct. Wrong there: a weigh-in is
+kg-native, but a goal weight arrives from a field that may be showing **pounds**,
+and 0.1 kg is a coarser grid than 0.1 lb. 160 lb → 72.5747 → 72.6 → reads back
+160.1. Dave typed 160 and saw it. Fixed in `7102387`.
+
+**The lesson, and it is the third instance this week.** #99's tests walked both
+ends in both units and all four passed — because the clamp produces exactly
+those values. The bug lived in every ordinary number in between. Endpoints
+right, middle wrong, in a suite written by someone who had just finished #100,
+which is the same shape. The fix is a round trip over six ordinary weights
+rather than an equality at the bounds; reintroducing the rounding fails it on
+the **first** value, so the drift was most weights, not an edge.
+
+## Standing rules that earned their keep
+
+`8b8b03d`'s green-assertion audit ran on every break this session and found the
+same thing three times: **a loop-based test reports less than its assertion
+count suggests.** When the first iteration throws, the rest never run — neither
+green nor red. That is not in the rule as written and probably should be.
+
+## Open
+
+- **#101** — how this project tests sequences, and how much engine fidelity it
+  buys. **Dave's decision, deliberately unmade.** Researched and written up:
+  `fast-check`'s model-based mode is the cheap half and would have caught #100;
+  Playwright's WebKit is explicitly not mobile Safari and would have caught
+  roughly none of this week's findings. The argument to push on is that the gap
+  is *repeatability*, not fidelity — UAT finds things but doesn't stop them
+  coming back, and it costs a person's evening.
+- **UAT process** — checklist in the issue, `refs` instead of `closes`, only
+  Dave's comment closes it. Still stewing. #97 closed itself on merge two days
+  before he tested it, which is the concrete version of the problem.
+- **#98** — filed today, untouched.
+- **#91** — the trash panel. Carries the clipping finding and the agreed
+  direction (slide the panel over the row). Wants mockups.
+- **#93** — status-bar scrim. Needs a device or the Simulator.
+
+## Where it stands
+
+Live at **`7102387`**. 432 tests. Six issues closed this session across S and T;
+five of the seven fixed defects were found by a thumb, not by a check.
