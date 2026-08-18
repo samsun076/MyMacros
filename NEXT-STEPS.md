@@ -1874,3 +1874,126 @@ what you merely did not. Session R describes it.
 
 Model: Opus 5 @ xhigh.
 ```
+
+---
+
+# Session S — Session R's work, then a person used it — ✅ 2026-08-16/17
+
+Two halves, and the second one is the point. The first ran R's queue as an
+orchestration and shipped it. The second was Dave working through `REVIEW.md`
+on a phone, which produced **four findings that every automated check in this
+repo was green through**.
+
+## What R's queue produced
+
+Six commits, five issues, one agent per issue, sequential where files
+collided. Diffs read by the orchestrator, commits written by it, agents never
+touching git.
+
+| | |
+|---|---|
+| **#90** | Undo became a LIFO queue. It was losing data — a second delete overwrote the first's held rows, the only remaining copy of a meal already gone from D1. |
+| **#52** | One row open at a time, tap elsewhere to close. **Closed.** |
+| **#95** | The numeric fields. The issue predicted a React coercion loop; that was real but secondary. |
+| **#94** | Camera asked **seven** times per visit to `/log` (five in production). Now once. |
+| **#92** | Barcode names clamped to two lines. |
+
+**Two diagnoses worth not re-deriving.** #95's dominant cause was not React at
+all — `type="number"` has no selection model, `setSelectionRange` throws on it,
+so Select All and caret placement could never work on a phone no matter what
+React did. And the coercion was worse than reported: clearing a macro field
+wrote a real **0 into the meal**, because `Number("")` is 0 and passes a
+`n >= 0` test. #94 was one line: the effect that opens the camera was keyed on
+`[live, mode]`, the two things that change *during* the flow.
+
+**`npm run verify:camera` came out of it** (6cca2a2). The #94 bug was invisible
+to every check here — a viewfinder renders identically at one call or seven —
+and the probe that catches it was about to be deleted with a scratchpad.
+Trying to defeat it taught us something: reverting the fix's *obvious* line
+does not fail it, because the session cache is load-bearing now, not the
+dependency array. That is in the tool's header.
+
+## What the person produced
+
+Four findings, none reachable by a machine:
+
+- **A 5,000 g portion cap** nobody would ever type into — and the macro fields
+  next to it had **no ceiling at all**. → **#96**, with a blur that now commits
+  only what somebody typed. Measured with the guard removed: focusing two
+  computed fields and leaving without typing deleted **780 kcal and 150 g of
+  carbs** and printed `MAX 10000` about an edit nobody made.
+- **The dismissing tap was swallowed.** "If I have a delete drawer open and hit
+  the plus sign it should close and take me to the camera." → **#97**, which
+  reversed a decision made two days earlier and *deleted* code doing it.
+- **An open swipe row hides the name of the meal you are deleting** — the row
+  translates 88px and its own content goes under the clip edge. → filed on
+  **#91** with the agreed direction: slide the panel in over the row rather
+  than pushing the row left.
+- **"Tap anything to change it" is false.** The confirm sheet's tap target is
+  the item name; the calorie figure and macro line — the part anyone reaching
+  to edit a number would tap — do nothing. → **#98**.
+
+**#94 closed as a platform limit**, not a fix: iOS 26.6, installed app, no
+prompts within a session, re-asks only after a force-quit. That is the known
+standalone-PWA weakness. Lazy-start was reconsidered and rejected on the
+evidence — barcode needs the camera too, so it would spare only TEXT.
+
+## Three rules came out of it
+
+All in CLAUDE.md, all earned rather than invented:
+
+1. **A UAT check is a comment on the issue it checked, pass or fail**, labelled
+   `uat`, naming the **build** and the iOS version. Clean passes get one too —
+   rule 4b's argument moved from numbers to hands. `UAT.md` was proposed and
+   rejected; the argument for it is in e7decc5 because it will be made again.
+2. **Name the assertions that stayed green while the source was broken.**
+   Watching the *suite* go red is not the check — #96's oracle went red while
+   six of its assertions passed anyway, and they read as coverage. Mutation
+   testing is the formal name; Stryker considered, not adopted.
+3. **A literal carried through a rewrite is a decision, not an inheritance.**
+   `1…5000` survived #95's lift unexamined and nobody wrote down that it had
+   been preserved rather than chosen.
+
+## Where it stands
+
+Live at **`36c06f6`**, build green, rollout verified by fetching the shell and
+its asset together.
+
+**UAT: section A complete and clean** — every keypad correct, digits-only on
+kcal and grams, decimal on the three macros.
+
+**Still owed a thumb**, and the reason each is open rather than assumed:
+
+- **Goal weight (Settings)** — deferred to 2026-08-18 by Dave. The only numeric
+  field that writes to the server, so a mistake persists instead of being
+  discarded with the sheet.
+- **VoiceOver on a clamped barcode name** — the full name should be read, not
+  the truncation. Verified in Chrome's AX tree, never with a screen reader.
+- **#96 and #97 themselves** — both shipped after Dave's pass, so neither has
+  been on a phone. #97 especially: it reverses two days of the opposite
+  behaviour, and on the log-button path "the row closed" is not observable by
+  any check, because Today unmounts in the same React commit as the navigation.
+
+## Open, and deliberately unresolved
+
+**Should an issue be closeable before UAT?** Dave's proposal: a checklist in
+each issue, `refs #N` instead of `closes #N`, and only his comment closes it —
+so "closed" means *accepted* rather than *merged*. The cost is that milestones
+stop tracking engineering progress and start tracking his availability, which
+is either the entire point or a real problem. He is stewing. Nothing waits on
+it, and the current convention works.
+
+The exemption it would need, if adopted: work with no user-facing surface
+(`verify:camera`, route additions, refactors) closes on merge with the
+checklist saying so. "Not applicable" is a decision; a blank box is
+negligence — same shape as rule 4b's recorded skip.
+
+## Not started
+
+- **#91** — the trash panel. Now carries both the clipping finding and the
+  agreed direction. Waiting on Dave's mockups; #92's clamp already changed the
+  row height it is sized against.
+- **#93** — status-bar scrim. #38's exact shape: headless Chrome reports
+  `env(safe-area-inset-*)` as 0 and cannot render a translucent status bar, so
+  it would be built blind with green checks either way.
+- **#98** — the tap target, filed today, untouched.
