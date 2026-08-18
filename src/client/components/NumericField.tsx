@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { type NumericRule, formatNumeric, parseNumeric } from "../lib/numeric";
+import { type NumericRule, commitOnBlur, commitWhileTyping, formatNumeric } from "../lib/numeric";
 
 /** One numeric input, for every numeric input in the app (#95).
  *
@@ -71,6 +71,54 @@ import { type NumericRule, formatNumeric, parseNumeric } from "../lib/numeric";
  *  unparsable, and clamped — every one of which leaves `typing` set. So
  *  `KEPT 280` and `MAX 2000` still fire off the last keystroke, and the only
  *  commit the guard can ever swallow is one over text the field wrote itself.
+ *
+ *  ---
+ *
+ *  **What a revert reverts to: the value at focus, never the current one
+ *  (#100).** Everything above says "the previous number goes back", and in a
+ *  `live` field there is no such thing by the time it is asked for. Holding
+ *  backspace on `17.1` walks the text through `"17."`, `"17"` and `"1"` — each
+ *  parses, each is in range, each commits — so at the moment the field is empty
+ *  the item really does hold **1**, and `KEPT 1` is an accurate report of a
+ *  number nobody typed. Found on device against a scanned bar; the tell is that
+ *  the row header already reads `1C` while the keyboard is still up, so the
+ *  wrong figure had reached the sheet before blur was involved at all.
+ *
+ *  So the field remembers what it held when it took focus (`atFocus`) and puts
+ *  *that* back, committing it where the live commits have moved the real one.
+ *  Blur-only fields get the same treatment and cannot tell the difference —
+ *  their `value` can't move while you type — which is the reason it is
+ *  unconditional. "It depends whether the field is live" would be a second rule
+ *  with no visible boundary.
+ *
+ *  **The decision, made rather than fallen into: unparsable reverts to the
+ *  focus value too.** The two cases arrive at the same line of code and could
+ *  be split. Blank is unarguable — clearing a field means "I am about to retype
+ *  this". Unparsable is arguable: type `125`, land a stray character, and
+ *  reverting to focus discards a number you did fully type, where keeping
+ *  `value` would hand it back.
+ *
+ *  It is one rule anyway, for three reasons.
+ *
+ *  1. *The user cannot see the boundary.* Both cases look identical from the
+ *     outside — a field you changed, then tapped away from — and both print
+ *     `KEPT n`. Two rules would make that note name two different kinds of
+ *     number with nothing to distinguish them.
+ *  2. *The failure modes are not the same size.* Reverting to focus can only
+ *     undo something done in this visit to the field: the worst case is
+ *     retyping, and the field names the number it put back, so you can see it
+ *     is the old one. Reverting to `value` can hand back a *prefix* of a number
+ *     nobody meant — a plausible figure, silently wrong, which is the exact
+ *     class of defect rule 4b exists for.
+ *  3. *"The last good keystroke" is not the salvage it sounds like.* `"12a"`
+ *     keeps 12 only because 12 happened to be complete; `"5.."` keeps 5, and
+ *     `"1.2.3"` keeps 1.2 — half-typed numbers, restored with a note that
+ *     presents them as considered. On a phone the keypad has no letters at all
+ *     (`inputMode` is numeric/decimal), so the realistic unparsable string is a
+ *     malformed decimal *mid-construction*, which is where salvage is worst.
+ *
+ *  The cost is real and accepted: a hardware-keyboard typo at the end of a long
+ *  entry costs the whole entry. It costs it visibly.
  */
 export function NumericField({
   value,
@@ -108,6 +156,12 @@ export function NumericField({
   const [typing, setTyping] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // What `value` was when this field took focus (#100). Boxed rather than a
+  // bare `number | null`, because `null` is a real focus value — the goal
+  // weight field starts empty — and "focused on nothing" has to be
+  // distinguishable from "never focused". A ref, not state: reading it must not
+  // depend on a render having happened since the focus event.
+  const atFocus = useRef<{ was: number | null } | null>(null);
 
   useEffect(() => () => clearTimeout(timer.current ?? undefined), []);
 
@@ -121,18 +175,22 @@ export function NumericField({
 
   function commit(text: string) {
     setTyping(null);
-    const res = parseNumeric(text, rule);
-    if (res.kind === "empty") {
-      say(null);
-      if (value !== null) onClear?.();
-      return;
-    }
-    if (res.kind === "keep") {
-      say(value === null ? "NEEDS A NUMBER" : `KEPT ${formatNumeric(value, decimals)}`);
-      return;
-    }
-    say(res.clamped ? `${res.clamped === "max" ? "MAX" : "MIN"} ${formatNumeric(res.value, decimals)}` : null);
-    if (res.value !== value) onCommit(res.value);
+    // A blur with no focus behind it isn't a state React produces — `typing`
+    // can only be non-null because a keystroke landed in a focused element —
+    // so the fallback is unreachable rather than load-bearing. It is `value`,
+    // which is the behaviour this component had before #100, on the principle
+    // that an unreachable branch should degrade to the old answer rather than
+    // to a new one nobody has thought about.
+    // `?.was ?? value` would be wrong here and quietly: a field focused while
+    // empty has `was: null`, which `??` cannot tell from no box at all.
+    const action = commitOnBlur(text, rule, { value, atFocus: atFocus.current ? atFocus.current.was : value });
+    atFocus.current = null;
+    say(action.note);
+    if (action.do === "commit") onCommit(action.value);
+    // Redundant where the field is already empty, and `onClear` is absent
+    // entirely unless `allowEmpty` — the guard is here rather than in the rule
+    // so the rule can say "make it empty" without also knowing whether it is.
+    if (action.do === "clear" && value !== null) onClear?.();
   }
 
   return (
@@ -154,18 +212,18 @@ export function NumericField({
         disabled={disabled}
         autoFocus={autoFocus}
         value={typing ?? formatNumeric(value, decimals)}
+        // Where the revert target comes from (#100). Once per visit to the
+        // field, before any keystroke can move `value` out from under it.
+        onFocus={() => {
+          atFocus.current = { was: value };
+        }}
         onChange={(e) => {
           const text = e.target.value;
           setTyping(text);
           say(null); // you're typing again; whatever it said is about the past
           if (!live) return;
-          const res = parseNumeric(text, rule);
-          // Live only for a clean in-range number. Blank, unparsable and
-          // clamped are *decisions*, and a decision belongs at commit, where
-          // there is somewhere to explain it.
-          if (res.kind === "value" && res.clamped === null && res.value !== value) {
-            onCommit(res.value);
-          }
+          const action = commitWhileTyping(text, rule, value);
+          if (action) onCommit(action.value);
         }}
         // Committing is for values a person typed. `typing === null` means the
         // element is showing text this component wrote from `value`, and

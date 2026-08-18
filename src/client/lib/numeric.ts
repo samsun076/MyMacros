@@ -1,4 +1,4 @@
-/** What a typed string commits to (#95).
+/** What a typed string commits to (#95), and what a field does about it (#100).
  *
  *  **One place, and nothing may decide this a second time.** Every numeric
  *  field in the app used to carry its own inline `Number(e.target.value)` plus
@@ -9,12 +9,22 @@
  *  statements of it. This file is the statement; `NumericField` decides only
  *  *when* to ask, never *what the answer is*.
  *
- *  **Nothing here runs while you type**, and that is the bug it exists to fix.
- *  A handler that parses on every keystroke re-renders the input with a value
- *  the DOM does not have — `""` parses to 0, `"0150"` parses to 150, `"5."`
- *  parses to 5 — and React answers the mismatch by writing the canonical text
- *  back into the element, which dumps the caret at the end. See
+ *  **`parseNumeric` never runs while you type**, and that is the bug it exists
+ *  to fix. A handler that parses on every keystroke re-renders the input with a
+ *  value the DOM does not have — `""` parses to 0, `"0150"` parses to 150,
+ *  `"5."` parses to 5 — and React answers the mismatch by writing the canonical
+ *  text back into the element, which dumps the caret at the end. See
  *  `NumericField.tsx` for the other half of the fix.
+ *
+ *  **`commitWhileTyping` and `commitOnBlur` moved down here with #100**, and
+ *  they are the same argument one level up. They were four lines of JSX inside
+ *  the component, which made the field's behaviour reachable only by rendering
+ *  it — and the unit project has no DOM, so the only test that could exist was
+ *  one that restated the rule in order to agree with it. #100 shipped precisely
+ *  because every *endpoint* was covered and the *path* between them was not, so
+ *  the path had to become something a test could walk. These two functions are
+ *  that path: they take everything the field knows and return what it should
+ *  do, and `NumericField` is now wiring.
  */
 
 export type NumericRule = {
@@ -119,4 +129,77 @@ export function formatNumeric(value: number | null, decimals = 0): string {
 function roundTo(n: number, decimals: number) {
   const f = 10 ** decimals;
   return Math.round(n * f) / f;
+}
+
+/** What a field should do with the text it is holding, and what it should say.
+ *
+ *  Every variant carries a `note`, including the ones that change nothing,
+ *  because the note is not decoration. #95's whole finding was that a restore
+ *  nobody can see is the reported bug wearing a different hat — so whatever
+ *  decides *what happened* also has to decide *what to say about it*, in the
+ *  same expression, where the two cannot drift. `note: null` is a positive
+ *  statement that there is nothing to report, not an omission. */
+export type FieldAction =
+  | { do: "commit"; value: number; note: string | null }
+  | { do: "clear"; note: string | null }
+  | { do: "say"; note: string | null };
+
+/** One keystroke, in a field that commits as you type.
+ *
+ *  Live only for a clean in-range number. Blank, unparsable and clamped are
+ *  *decisions*, and a decision belongs at blur, where there is somewhere to
+ *  explain it. `null` means this keystroke changes nothing — which includes
+ *  text that parses to the number already stored, because the parent treats any
+ *  `onCommit` as an edit and `"07"` after `"7"` is not one.
+ *
+ *  The return type is narrowed to the commit arm on purpose: live can produce
+ *  nothing else, and saying so here is what spares both callers a `do` check
+ *  they would have to invent an answer for. */
+export function commitWhileTyping(
+  text: string,
+  rule: NumericRule,
+  value: number | null,
+): Extract<FieldAction, { do: "commit" }> | null {
+  const res = parseNumeric(text, rule);
+  if (res.kind !== "value" || res.clamped !== null || res.value === value) return null;
+  return { do: "commit", value: res.value, note: null };
+}
+
+/** Leaving a field, and the one place that decides what a refused commit falls
+ *  back to (#100).
+ *
+ *  **`atFocus`, never `value`.** In a `live` field `value` is not "what was
+ *  there" — it is wherever the live commits have walked it, which for a field
+ *  being cleared is an artifact of the deletion: hold backspace on `17.1` and
+ *  `"17."`, `"17"` and `"1"` all parse and all commit, so by the time the text
+ *  is empty the stored number is 1 and 17.1 exists nowhere. Falling back to
+ *  `value` there is truthful about what the code did and wrong about what the
+ *  person has. See `NumericField.tsx` for why this applies to unparsable text
+ *  too, which is the arguable half.
+ *
+ *  The restored figure is **not re-clamped**, and that is the same rule as "a
+ *  blur commits only what somebody typed": the portion row can legitimately
+ *  leave 1,150 g of carbs in a field whose ceiling is 1,000, and putting that
+ *  number back is a restore, not an entry. */
+export function commitOnBlur(
+  text: string,
+  rule: NumericRule,
+  { value, atFocus }: { value: number | null; atFocus: number | null },
+): FieldAction {
+  const decimals = rule.decimals ?? 0;
+  const res = parseNumeric(text, rule);
+  // Deliberately empty, where empty is a value. Not a revert — `allowEmpty`
+  // means the person just said something. The caller drops it if `value` is
+  // already null, so this can be returned without checking.
+  if (res.kind === "empty") return { do: "clear", note: null };
+  if (res.kind === "keep") {
+    // Nothing to put back: the field held nothing when you arrived at it.
+    // Where empty is a value, empty is what goes back; where it isn't, there is
+    // no number to name and the only honest note is what the field still wants.
+    if (atFocus === null) return { do: rule.allowEmpty ? "clear" : "say", note: "NEEDS A NUMBER" };
+    const note = `KEPT ${formatNumeric(atFocus, decimals)}`;
+    return atFocus === value ? { do: "say", note } : { do: "commit", value: atFocus, note };
+  }
+  const note = res.clamped ? `${res.clamped === "max" ? "MAX" : "MIN"} ${formatNumeric(res.value, decimals)}` : null;
+  return res.value === value ? { do: "say", note } : { do: "commit", value: res.value, note };
 }
