@@ -17,9 +17,18 @@ const me = new Hono<AppEnv>();
 /** A weight, in kilograms, inside the same sanity window every other weight in
  *  this app is held to (#99). Refuses rather than clamps: a route is not a
  *  place to guess what somebody meant, and the field that feeds it clamps in
- *  the unit on screen long before it gets here. */
+ *  the unit on screen long before it gets here.
+ *
+ *  **It bounds and does not round**, unlike the identically-shaped check in
+ *  `weights.ts`, and the difference is the unit the number was born in. A
+ *  weigh-in arrives in kilograms from a scale, where 0.1 kg is the real
+ *  resolution. These two arrive from a field that may be showing *pounds*, and
+ *  0.1 kg is a coarser grid than 0.1 lb — so rounding here silently moves the
+ *  number off the one the person typed. Measured: 160 lb is 72.5747 kg, which
+ *  rounds to 72.6 and reads back as 160.1. Shipped that way for an hour and
+ *  found by typing 160 into the field. */
 const weightKg = (v: unknown) =>
-  isNum(v) && v >= MIN_WEIGHT_KG && v <= MAX_WEIGHT_KG ? Math.round(v * 10) / 10 : undefined;
+  isNum(v) && v >= MIN_WEIGHT_KG && v <= MAX_WEIGHT_KG ? v : undefined;
 
 const EDITABLE = {
   sex: (v: unknown) => (v === "male" || v === "female" ? v : undefined),

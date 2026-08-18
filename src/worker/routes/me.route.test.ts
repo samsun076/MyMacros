@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import type { Profile } from "../../shared/api";
 import { ATHLETE_PROFILES, PROTEIN_G_PER_KG } from "../../shared/budget";
 import { PROFILE_DEFAULTS } from "../../shared/profile";
+import { kgToLb, lbToKg } from "../../shared/units";
 import { MAX_WEIGHT_KG, MIN_WEIGHT_KG } from "../../shared/weight";
 import { createDb } from "../db";
 import type { AppEnv } from "../types";
@@ -238,6 +239,44 @@ describe("weights on the profile route are bounded (#99)", () => {
   it("refuses the figure that actually reached the column", async () => {
     await freshProfile();
     expect((await patch({ goal_weight_kg: 45358.78 })).status).toBe(400);
+  });
+
+
+  /** The bug the boundary tests could not see, because they only ever walked
+   *  the ends. Typing an ordinary 160 lb read back as 160.1: the route rounded
+   *  the stored kilograms to 1 dp, and 0.1 kg is a coarser grid than 0.1 lb, so
+   *  an exact pound figure landed between two of them. Endpoints were right and
+   *  the middle was wrong — the same shape as #100.
+   *
+   *  A round trip, not an equality: type it, store it, and read back what the
+   *  field would draw. */
+  it("gives back the pounds you typed, not a kilogram's idea of them", async () => {
+    for (const lb of [100, 145, 160, 172.5, 200, 250.4]) {
+      await freshProfile();
+      const res = await patch({ goal_weight_kg: lbToKg(lb) });
+      expect(res.status, `${lb} lb`).toBe(200);
+      const row = await db
+        .selectFrom("profiles")
+        .selectAll()
+        .where("user_id", "=", USER)
+        .executeTakeFirstOrThrow();
+      const shown = Math.round(kgToLb(row.goal_weight_kg!) * 10) / 10;
+      expect(shown, `${lb} lb round-tripped`).toBe(lb);
+    }
+  });
+
+  /** And metric must not have paid for it: a kg typed in kg comes back whole. */
+  it("gives back the kilograms you typed too", async () => {
+    for (const kg of [60, 72.6, 80, 95.5]) {
+      await freshProfile();
+      expect((await patch({ goal_weight_kg: kg })).status, `${kg} kg`).toBe(200);
+      const row = await db
+        .selectFrom("profiles")
+        .selectAll()
+        .where("user_id", "=", USER)
+        .executeTakeFirstOrThrow();
+      expect(Math.round(row.goal_weight_kg! * 10) / 10, `${kg} kg`).toBe(kg);
+    }
   });
 
   /** #23's erasable goal line. The bound must not have taken this away. */
