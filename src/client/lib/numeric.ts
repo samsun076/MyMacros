@@ -88,6 +88,23 @@ export const FOOD_LIMITS = {
    *  would only invite an argument about which. 1dp matches what the app
    *  stores and what the barcode rescale produces. */
   macro_g: { min: 0, max: 1000, decimals: 1 },
+  /** The per-item portion count (#58) — "4" in *4 slices*. **Derived here, not
+   *  copied from the row above it**: `grams` measures a scanned product's
+   *  weight and 2 kg is a plausible slip; this counts *things*, and the
+   *  ceiling that matters is how many of one food a person eats at a sitting.
+   *  100 is far past a real meal in every unit the reader emits (slices,
+   *  tacos, cups, wings) and still catches the thumb that turns 4 into 44 or
+   *  drops a decimal point.
+   *
+   *  1dp because half portions are ordinary — "1.5 cups", "half a bowl" —
+   *  and min 0.1 for `grams`' reason exactly: 0 of something is not a small
+   *  meal, it is a field being cleared, and clearing has its own answer. It is
+   *  also load-bearing rather than tidy, because the rescale divides by the
+   *  as-read qty and a committed 0 would be a divide-by-zero.
+   *
+   *  `normalize()` in `src/worker/routes/analyze.ts` states the same ceiling
+   *  a second time for the wire. Deliberate, and explained there. */
+  portion_qty: { min: 0.1, max: 100, decimals: 1 },
 } as const satisfies Record<string, NumericRule>;
 
 /** A decimal literal and nothing else. `Number()` alone is too generous to be

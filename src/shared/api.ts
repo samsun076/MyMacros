@@ -139,6 +139,21 @@ export type AnalyzedItem = {
    *  bounds — #45). **null when the numbers were not AI-estimated** — a
    *  barcode's exact-match nutrition has no confidence to report (#15). */
   confidence: number | null;
+  /** How much of this food the numbers above describe (#58) — the count the
+   *  reader saw, and the thing it counted. The confirm sheet's per-item
+   *  control rescales every macro linearly from it, so "2 slices" becomes
+   *  four without hand-editing four numbers.
+   *
+   *  **`unit` is a label, never a conversion.** "slices", "cups", "g",
+   *  "bowl" — displayed and stored, and nothing anywhere reads it to convert
+   *  between units. A conversion table is a different feature and a worse one.
+   *
+   *  **Absent or null when the read has no natural portion** ("had lunch
+   *  out"). That row simply gets no control and is hand-edited as before —
+   *  nothing invents "1 serving" to have something to show. Optional *and*
+   *  nullable because the structured-output schema states it as
+   *  `anyOf: [object, null]`, so the wire can carry an explicit null. */
+  portion?: { qty: number; unit: string } | null;
 };
 
 /** POST /api/analyze/text and /api/analyze/photo response — one contract for

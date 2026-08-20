@@ -32,8 +32,48 @@ const ITEM_SCHEMA = {
             description:
               "0..1 — how confident the estimate is given portion ambiguity. Lower it when the description omits portion size.",
           },
+          /** #58. **Optional-or-absent is spelled `anyOf: [object, null]`, and
+           *  the key stays in `required`.**
+           *
+           *  Measured against the live API on 2026-08-20, both ways, because
+           *  the guess going in was wrong: dropping `portion` from `required`
+           *  is *also* accepted (200, and the model still answered
+           *  `"portion": null` on three vague samples out of three). So this is
+           *  a choice, not a constraint the API imposed — say so rather than
+           *  let a comment imply an error nobody saw.
+           *
+           *  It is in `required` because that makes "no portion" a **stated
+           *  null instead of a missing key**, which is #69's distinction one
+           *  layer down: an absent field and a field that says "there is no
+           *  amount here" are the same bytes to a reader and different claims.
+           *  The one the sheet acts on — draw no control — should be the one
+           *  the model committed to.
+           *
+           *  The null branch itself is load-bearing and is not a choice: an
+           *  object-only schema would make every read carry a portion, and an
+           *  invented "1 serving" is exactly what #58 forbids. */
+          portion: {
+            anyOf: [
+              {
+                type: "object",
+                properties: {
+                  qty: { type: "number", description: "How many of the unit below" },
+                  unit: {
+                    type: "string",
+                    description:
+                      "What is being counted, as a plain label: slices, cups, bowl, g, oz, tacos. Never a conversion factor.",
+                  },
+                },
+                required: ["qty", "unit"],
+                additionalProperties: false,
+              },
+              { type: "null" },
+            ],
+            description:
+              "How much of this food the numbers above describe. null when the description gives no natural amount to count — never invent one.",
+          },
         },
-        required: ["name", "calories", "protein_g", "carbs_g", "fat_g", "confidence"],
+        required: ["name", "calories", "protein_g", "carbs_g", "fat_g", "confidence", "portion"],
         additionalProperties: false,
       },
     },
@@ -51,6 +91,13 @@ portion, honoring modifiers like "no rice", "half", "large".
 bowl's components stay one item; "burger and fries" is two).
 - Use typical restaurant/brand portions when named, otherwise common home \
 portions.
+- The amount goes in \`portion\`, never in \`name\`. name is a plain food \
+label ("Pepperoni pizza"), and portion carries the count and what is being \
+counted ({"qty": 4, "unit": "slices"}). A name that repeats the quantity goes \
+stale the moment someone adjusts the portion.
+- \`portion.unit\` is a label, not a conversion: slices, cups, bowl, g, oz, \
+tacos. Set \`portion\` to null when the text gives no natural amount to \
+count — do not invent "1 serving".
 - confidence reflects portion certainty: ~0.9 for branded/exact items, \
 ~0.5-0.7 for typical guesses, lower when the text is vague.
 - If the text describes no food at all, return an empty items array.`;
@@ -72,6 +119,13 @@ the plate, utensils or hand for scale, and set confidence around 0.5-0.7 — \
 lower when the portion is genuinely ambiguous or the photo is unclear.
 - Split the photo into its distinct foods when that aids editing (a bowl's \
 components stay one item; a burger and fries is two).
+- The amount goes in \`portion\`, never in \`name\`. name is a plain food \
+label ("Pepperoni pizza"), and portion carries what you counted in the \
+picture ({"qty": 2, "unit": "slices"}). A name that repeats the quantity goes \
+stale the moment someone adjusts the portion.
+- \`portion.unit\` is a label, not a conversion: slices, cups, bowl, g, oz, \
+tacos. Set \`portion\` to null when nothing in the picture gives a natural \
+amount to count — do not invent "1 serving".
 - A note from the person may accompany the photo. Trust it over the picture \
 for anything it addresses — they know what they ate and what is out of frame.
 - If the photo contains no food at all, return an empty items array.`;
@@ -371,7 +425,41 @@ export function normalize(item: unknown): AnalyzedItem | null {
     carbs_g: round1(num(it.carbs_g, 1000)),
     fat_g: round1(num(it.fat_g, 1000)),
     confidence: round2(num(it.confidence, 1)),
+    portion: portion(it.portion),
   };
+}
+
+/** #58's half of normalize, and the same rule as everything above it: the
+ *  schema promises the *shape*, this decides the *range*.
+ *
+ *  A portion is all-or-nothing. Half of one — a unit with no usable qty, or a
+ *  qty with no name for what it counts — cannot draw the control and cannot be
+ *  scaled from, and "1 of something unnamed" is exactly the invented portion
+ *  #58 says never to show. So anything short of both parts becomes `null`,
+ *  which is the same answer the model gives for "had lunch out".
+ *
+ *  `MAX_QTY` restates `FOOD_LIMITS.portion_qty.max` in `src/client/lib/numeric.ts`
+ *  and is **not** shared with it, the same way this function's 10000 and 1000
+ *  already restate the kcal and macro ceilings there. Two statements of one
+ *  number is #86's defect, and this is the deliberate case: FOOD_LIMITS is a
+ *  client module the Worker must not import, and moving the table to
+ *  `src/shared/` would relocate a #95/#96 decision this issue has no business
+ *  reopening. Carried, not derived — say so if either number moves. */
+const MAX_QTY = 100;
+
+function portion(value: unknown): AnalyzedItem["portion"] {
+  if (typeof value !== "object" || value === null) return null;
+  const p = value as Record<string, unknown>;
+  const unit = typeof p.unit === "string" ? p.unit.trim().slice(0, 24) : "";
+  if (!unit) return null;
+  if (typeof p.qty !== "number" || !Number.isFinite(p.qty)) return null;
+  // Rounded first, then tested. `0.04` is a positive number that becomes 0 at
+  // one decimal place, and a zero qty is a divide-by-zero in the sheet's
+  // rescale — the guard has to sit on the value that actually ships, not on
+  // the one that arrived.
+  const qty = round1(Math.min(p.qty, MAX_QTY));
+  if (qty <= 0) return null;
+  return { qty, unit };
 }
 
 function round1(n: number) {

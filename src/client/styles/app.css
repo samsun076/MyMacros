@@ -1793,11 +1793,29 @@ section {
   letter-spacing: 0.03em;
 }
 
+/* The portion, ahead of the confidence signal on the same line (#58). Full
+   ink against the muted line it leads, because it is the figure the person is
+   checking. The separator lives here rather than in the JSX so the two halves
+   stay two elements and only one of them takes the emphasis. */
+.item .portion .qty {
+  color: var(--ink);
+}
+
+.item .portion .qty::after {
+  content: " · ";
+}
+
 /* the uncertain row, open for editing */
 .item.check .portion {
   color: var(--accent);
   border-bottom: 1px dotted var(--accent-soft);
   padding-bottom: 2px;
+}
+
+/* …and in that row the whole line is the accent, portion included. An ink
+   figure inside an accent line reads as two states on one row. */
+.item.check .portion .qty {
+  color: inherit;
 }
 
 .badge {
@@ -1845,6 +1863,26 @@ section {
   font-family: var(--body-font);
   font-size: 16px; /* ≥16px: no iOS zoom */
   font-variant-numeric: tabular-nums;
+}
+
+/* #58 — the per-item portion, inside the open row's editor. Same three-column
+   idiom as the barcode `.portion-row`, minus its frame: this already sits
+   inside `.item-edit`'s bordered box, and a bordered box inside a bordered box
+   reads as two separate controls. The label is a grid cell rather than a block
+   above the field, so the row costs one line instead of two — at 375 that line
+   is the difference between the totals row being on screen with a row open and
+   being pushed off it. */
+.item-portion {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  align-items: center;
+  gap: 10px;
+}
+
+.item-portion input {
+  width: 88px;
+  margin-top: 0;
+  text-align: right;
 }
 
 .item-edit-nums {

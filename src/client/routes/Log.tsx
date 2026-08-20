@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import type {
   AnalyzeResponse,
@@ -18,6 +18,7 @@ import { deviceTimezone, localDay, mealSlotFor } from "../lib/day";
 import { fmtInt } from "../lib/format";
 import { FOOD_LIMITS, type NumericRule } from "../lib/numeric";
 import { type Pick, mergePicks } from "../lib/picks";
+import { type EditableItem, editable, portionLabel, setPortionQty } from "../lib/portion";
 
 /** The log flow: capture → editable confirm sheet → saved.
  *
@@ -34,8 +35,6 @@ import { type Pick, mergePicks } from "../lib/picks";
  *  `lib/camera.ts` for the length of one visit to this screen, and this screen
  *  ends it (#94). */
 
-type EditableItem = AnalyzedItem & { orig: AnalyzedItem };
-
 /** One reading, whatever produced it. `source`, `photoKey` and `barcode` are
  *  the only things the sheet carries forward about which mode it came from. */
 type Read = {
@@ -47,7 +46,14 @@ type Read = {
   /** Barcode reads only (#15): the grams the numbers are scaled to, plus the
    *  pristine figures at `baseGrams` that the grams field rescales from.
    *  Rescaling from the base rather than from the current values is what keeps
-   *  repeated adjustments from drifting. */
+   *  repeated adjustments from drifting.
+   *
+   *  **Not the same `base` as `EditableItem.base` (#58)**, and the shared name
+   *  is worth reading twice: this one is per *read* — one array of pristine
+   *  per-100g figures for the whole barcode product — where an item's is per
+   *  *row*, the as-read copy of that one food. Same technique at two scales,
+   *  which is why they ended up with the same word; renaming this one would
+   *  mean editing the shipped grams path to suit a new one. */
   grams?: number;
   base?: AnalyzedItem[];
   baseGrams?: number;
@@ -69,7 +75,7 @@ function manualRead(why: string, photoKey: string | undefined, ms: number): Read
     fat_g: 0,
     confidence: null,
   };
-  return { items: [{ ...blank, orig: blank }], readMs: ms, source: "photo", photoKey, manual: why };
+  return { items: [editable(blank)], readMs: ms, source: "photo", photoKey, manual: why };
 }
 
 const SLOTS: MealSlot[] = ["breakfast", "lunch", "dinner", "snack"];
@@ -110,12 +116,16 @@ function initialMode(): LogMode {
 function demoRead(): Read | null {
   if (!import.meta.env.DEV) return null;
   if (window.location.hash === "#confirm") {
+    // Portions are #58's subject, so the demo meal carries them — three items,
+    // three different units, one of them fractional, so the control is
+    // shootable and a drive can prove that scaling one leaves the other two
+    // alone. The macro figures are the sketch's and are unchanged.
     const items: AnalyzedItem[] = [
-      { name: "Grilled chicken breast", calories: 280, protein_g: 52, carbs_g: 0, fat_g: 6, confidence: 0.9 },
-      { name: "Jasmine rice", calories: 210, protein_g: 4, carbs_g: 45, fat_g: 0, confidence: 0.6 },
-      { name: "Steamed broccoli", calories: 55, protein_g: 4, carbs_g: 11, fat_g: 1, confidence: 0.85 },
+      { name: "Grilled chicken breast", calories: 280, protein_g: 52, carbs_g: 0, fat_g: 6, confidence: 0.9, portion: { qty: 1, unit: "breast" } },
+      { name: "Jasmine rice", calories: 210, protein_g: 4, carbs_g: 45, fat_g: 0, confidence: 0.6, portion: { qty: 1, unit: "cup" } },
+      { name: "Steamed broccoli", calories: 55, protein_g: 4, carbs_g: 11, fat_g: 1, confidence: 0.85, portion: { qty: 1.5, unit: "cups" } },
     ];
-    return { items: items.map((it) => ({ ...it, orig: it })), readMs: 1800, source: "text" };
+    return { items: items.map(editable), readMs: 1800, source: "text" };
   }
   if (window.location.hash === "#portion") {
     // per-100g figures, the way OpenFoodFacts returns them, scaled to 150g
@@ -130,7 +140,7 @@ function demoRead(): Read | null {
       fat_g: round1(it.fat_g * 1.5),
     }));
     return {
-      items: items.map((it) => ({ ...it, orig: it })),
+      items: items.map(editable),
       readMs: 400,
       source: "barcode",
       barcode: "5000112637922",
@@ -257,7 +267,7 @@ export function Log() {
         return;
       }
       setSlot(mealSlotFor());
-      setRead({ items: items.map((it) => ({ ...it, orig: it })), readMs: Date.now() - t0, source: "text" });
+      setRead({ items: items.map(editable), readMs: Date.now() - t0, source: "text" });
       setEditing(null);
     } catch (err) {
       // Text needs no manual-entry rescue: what the user typed is still in the
@@ -294,7 +304,7 @@ export function Log() {
         return;
       }
       setRead({
-        items: items.map((it) => ({ ...it, orig: it })),
+        items: items.map(editable),
         readMs: Date.now() - t0,
         source: "photo",
         photoKey: photo_key,
@@ -340,7 +350,7 @@ export function Log() {
       }
       setSlot(mealSlotFor());
       setRead({
-        items: items.map((it) => ({ ...it, orig: it })),
+        items: items.map(editable),
         readMs: Date.now() - t0,
         source: "barcode",
         barcode,
@@ -390,10 +400,24 @@ export function Log() {
             carbs_g: round1(it.carbs_g * scale),
             fat_g: round1(it.fat_g * scale),
           };
-          return { ...scaled, orig: scaled };
+          return editable(scaled);
         }),
       };
     });
+  }
+
+  /** #58's control: rescale ONE item from its own as-read copy.
+   *
+   *  Deliberately not folded into `setGrams`. That field is per *read* and
+   *  measured in grams for #15's reasons, it ships, and making the two
+   *  symmetrical would mean refactoring a working path to suit a new one. They
+   *  scale from different bases too — `r.base` is one array for the whole
+   *  barcode read, `it.base` is per row — which is the actual difference
+   *  between "how much of this product" and "how many of these four things". */
+  function setItemQty(index: number, qty: number) {
+    setRead((r) =>
+      r ? { ...r, items: r.items.map((it, i) => (i === index ? setPortionQty(it, qty) : it)) } : r,
+    );
   }
 
   /** Photo mode: drop the frozen frame. Barcode mode: clear the failure that
@@ -655,6 +679,7 @@ export function Log() {
                 editing={editing === i}
                 onToggle={() => setEditing(editing === i ? null : i)}
                 onChange={(patch) => update(i, patch)}
+                onPortion={(qty) => setItemQty(i, qty)}
               />
             ))}
 
@@ -695,6 +720,7 @@ function ItemRow({
   editing,
   onToggle,
   onChange,
+  onPortion,
 }: {
   item: EditableItem;
   /** #16's blank row — nothing read it, so there is nothing to report about it. */
@@ -702,11 +728,20 @@ function ItemRow({
   editing: boolean;
   onToggle: () => void;
   onChange: (patch: Partial<AnalyzedItem>) => void;
+  /** #58. Never fires for a row the reader gave no portion — that row draws
+   *  no control at all rather than one over an invented "1 serving". */
+  onPortion: (qty: number) => void;
 }) {
   // low confidence gets the sketch's CHECK treatment (accent badge + open row)
   const low = item.confidence !== null && item.confidence < 0.75;
   // null confidence means nothing estimated it — a barcode's exact match (#15)
   const exact = !manual && item.confidence === null;
+  const portion = manual ? null : portionLabel(item.portion);
+  // One id per rendered row, so the portion field's <label> points at its own
+  // input and not at the row above it. `useId` rather than the map index: the
+  // index is a render-order fact, and a11y wiring that depends on sibling
+  // order is the kind that breaks silently when the sheet grows a sort.
+  const qtyId = useId();
 
   return (
     <div className={low || editing ? "item check" : "item"}>
@@ -715,7 +750,14 @@ function ItemRow({
           {item.name || (manual ? "Untitled" : "")}
           {low && <span className="badge">CHECK</span>}
         </span>
+        {/* The portion leads and the confidence signal follows it (#58). Both,
+            not one: the amount is what people check first, and dropping
+            "BEST GUESS — TAP TO ADJUST" to make room would remove the only
+            thing on the collapsed row that says a number is uncertain. The
+            pair is what gets measured at 375 — the sheet's totals row and save
+            button must stay on screen with a row open. */}
         <span className="portion">
+          {portion && <span className="qty">{portion}</span>}
           {manual
             ? "TYPE WHAT YOU ATE"
             : exact
@@ -742,6 +784,27 @@ function ItemRow({
               onChange={(e) => onChange({ name: e.target.value })}
             />
           </label>
+          {/* #58's control, inside the open row rather than on the collapsed
+              one. The collapsed sheet has to stay compact at 375 — three rows,
+              a totals line and the save button — and a stepper per row is
+              three more controls competing with the one tap that opens a row.
+              Above the four macro fields on purpose: it is the thing that
+              *moves* them, so reading top-to-bottom is cause then effect.
+              `live`, like every other field on this sheet: the row's own kcal
+              and the footer total rescale as you type. */}
+          {item.portion && (
+            <div className="item-portion">
+              <label htmlFor={qtyId}>HOW MUCH</label>
+              <NumericField
+                id={qtyId}
+                value={item.portion.qty}
+                onCommit={onPortion}
+                live
+                {...FOOD_LIMITS.portion_qty}
+              />
+              <span className="mono">{item.portion.unit.toUpperCase()}</span>
+            </div>
+          )}
           {/* All four are `live`: the footer total and the row's own kcal read
               off them, and a sheet whose total only catches up when you tap
               away reads as broken. Bounds and decimals both come from
