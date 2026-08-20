@@ -2300,3 +2300,57 @@ with a correction note) are all still open and all substantial.
   and it worked; the question is whether it survives a session where nobody
   asks.
 - **#91** — the trash panel. Wants mockups.
+
+## Starter prompt (paste verbatim)
+
+```
+Working on MyMacros (~/Projects/MyMacros). Read CLAUDE.md, then the LAST
+section of NEXT-STEPS.md (Session U) — it has tomorrow's queue, the ordering
+trap in it, and what was left unverified.
+
+Live at a3c9a34, production D1 on 0009_portion.sql, 516 tests, tree clean.
+Five issues shipped and were UAT'd on device yesterday: #82, #58, #98, #104,
+#108.
+
+Start with #109. `200g of chicken` stores as 100 g — `normalize()` clamps
+every portion at MAX_QTY = 100, a ceiling derived for slices and applied to
+grams. It is live, and permanent for any row written since #104. The macros
+are right and only the amount is wrong, so nothing looks broken until someone
+reads a row. Confirmed on device yesterday: the field shows 100 G.
+
+Then #107, and NOT before #109 — #107 stores the barcode grams as portion_qty,
+straight into the ceiling #109 exists to fix. Done in the other order it ships
+a path that silently clamps most portions into a column that cannot be
+repaired.
+
+After those: #103, then #102 (spec already settled in the issue), then #106.
+
+Run each as an orchestration — one agent per issue, sequential where files
+collide, and #109/#107/#103 all touch the same family. Agents implement and
+prove; the main session writes every commit and agents never touch git. Agents
+return verification output verbatim, not summarised — this project's entire
+failure history is checks passing while the thing was wrong. Read every diff
+and open three or four PNGs where structure could break, not twenty and not
+zero. Before any migration reaches production, show it to me first, and
+remember the order: migrate remote, then push.
+
+Environment, if starting cold: kill any orphan dev server on 5173,
+npm run db:migrate, node tools/seed-demo.mjs --weeks 12, and mint a session
+cookie from the DEV-only email/password route (the Origin header is required
+and must match APP_URL, or better-auth answers 403).
+```
+
+## #108 was verified on device before the night ended
+
+`4oz grilled cheddar cheese burger` returns the name clean and `HOW MUCH 4 OZ`;
+`two eggs and a slice of toast` returns two rows with their own portions.
+**That check was the only one possible** — #108 is Worker-only, so the bundle
+hash is byte-identical and the rollout check structurally cannot see it.
+
+`200g of chicken` showing `100 G` was confirmed too, and it is #109 rather than
+a prompt failure. The two were separated *before* that round rather than during
+it, which is the only reason the reading is unambiguous: an instruction telling
+the model to return 200 changed nothing across seven samples, which is what
+pointed at the clamp. Without that, last night's `100 G` would have read as
+"the prompt fix didn't work" and the real defect would have gone back into
+hiding behind a prompt nobody could make behave.
