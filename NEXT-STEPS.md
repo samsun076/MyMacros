@@ -20,6 +20,14 @@ and left the header describing Session F. A summary that lives in two places is
 the defect #86 swept for; the fix is that it lives in one. Don't reintroduce a
 dated state line here.
 
+**Every session heading is `## Session <letter>` and ends with a status.** Not a
+style rule — the grep above is the only navigation this file has, and Q, R, S
+and T were appended as `#`, so for six days it returned Session P and reported
+2026-08-14 as the present. A pointer that silently points at the wrong thing is
+worse than the dated state line this header refuses to carry, because that one
+at least looked like a claim. Fixed 2026-08-20; match the existing headings when
+you append.
+
 ## Model guidance (Claude Code sessions)
 
 - **Opus 5 @ xhigh** — daily driver for building issues. Best fit for well-specified agentic
@@ -1607,7 +1615,7 @@ Model: Opus 5 @ xhigh.
 
 ---
 
-# Session Q — M11 built, nothing pushed
+## Session Q — M11 built, then pushed at the start of R — ✅ done 2026-08-14/15
 
 **Six issues built, four genuinely closed, nothing deployed.** Every commit is
 on local `main` and `origin` has not been touched — that was the call made at
@@ -1727,7 +1735,7 @@ CDP cannot emulate `display-mode` (measured: `matchMedia` stays false).
 
 ---
 
-# Session R — six defects from a day of real use
+## Session R — six defects from a day of real use — ✅ planned 2026-08-15, executed in S
 
 M11 shipped 2026-08-14 and Dave used Field Notes as his primary theme for a
 full day. Everything held. Six things came back, filed as #90–#95, and one of
@@ -1877,7 +1885,7 @@ Model: Opus 5 @ xhigh.
 
 ---
 
-# Session S — Session R's work, then a person used it — ✅ 2026-08-16/17
+## Session S — Session R's work, then a person used it — ✅ done 2026-08-16/17
 
 Two halves, and the second one is the point. The first ran R's queue as an
 orchestration and shipped it. The second was Dave working through `REVIEW.md`
@@ -2000,7 +2008,7 @@ negligence — same shape as rule 4b's recorded skip.
 
 ---
 
-# Session T — the UAT round, and three bugs it found — ✅ 2026-08-18
+## Session T — the UAT round, and three bugs it found — ✅ done 2026-08-18
 
 Session S shipped R's queue and then Dave used it. This is the second half of
 that: working `REVIEW.md` on a phone, item by item, and fixing what came back.
