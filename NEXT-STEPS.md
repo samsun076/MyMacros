@@ -2089,7 +2089,7 @@ five of the seven fixed defects were found by a thumb, not by a check.
 
 ---
 
-## Session U — the queue, reordered live, and four issues it produced — 2026-08-20
+## Session U — five shipped, and the checks kept finding the next bug — ✅ done 2026-08-20
 
 Nothing was built on the 19th. The session opened clean at `f3ea63e`.
 
@@ -2100,7 +2100,7 @@ through both of them while three new issues were filed off-plan, and it took
 Dave asking "are we following the next steps guide or willy nilly" to notice.
 **The plan document is not a record of intent, it is the thing the next session
 reads.** Same defect PLAN.md had, one file over. #98 went back on plan the
-moment it was named.
+moment it was named, and the queue below is written before anyone sleeps.
 
 ## What shipped
 
@@ -2108,9 +2108,23 @@ moment it was named.
 |---|---|
 | **#82** `57f4c05` | Favorites were built and invisible — the picks list rendered only inside `mode === "text"`, and PHOTO is the default mode. One `<Picks>` component, two placements: TEXT keeps it inline, PHOTO and BARCODE get a star-and-count in `.shutter-row`'s empty first column that pulls the same list up as a sheet. `/log#picks` is the shootable stage. |
 | **#58** `f2e738d` | Per-item portion scaling. `portion: { qty, unit }` on `ITEM_SCHEMA` and `AnalyzedItem`, both prompts told to put the count there and keep `name` a plain label, and a `HOW MUCH` control inside the open row that rescales one item from its own pristine `base`. The barcode grams field is untouched. |
+| **#98** `0ec96e2` | The whole item row opens the editor, not just its left half. The numbers moved *inside* `.item-hit` rather than growing a handler on `.item` — so the editor is a sibling of the button and never a descendant, and a tap on a field cannot reach the toggle. **The DOM is the hit-test predicate**, and there is nothing to maintain. Target went 247 × 38 → 333 × 62, clearing 44px for the first time. |
+| **#104** `c724ccb` | Migration `0009_portion.sql` — `portion_qty`, `portion_unit`, `ai_portion_qty` on `food_logs`, all nullable, NULL meaning *not recorded*. Applied to production **before** the push, because the reverse order 500s every save until the schema catches up. |
 
-Both were UAT'd on device the same day and both passed — #82 on 10 checks
-after two findings, #58 on 10 of 10.
+All four were UAT'd on device the same day and all four passed — #82 on 10
+checks after two findings, #58 on 10 of 10, #98 with one check mis-worded by
+its author and still open, #104 on 5 of 5.
+
+**#98 cost two self-inflicted bugs, both caught before shipping.** The enlarged
+target ran 2px into the open editor, and Chrome snaps a tap to the nearest
+*clickable* target — so tapping just inside the editor closed the row. iOS does
+the same fuzzy targeting, so this would have been a thumb hitting the wrong
+thing on the exact screen the issue was about. Separately, a `<button>` centres
+its own content and a grid cell does not, so the name rode 3.5px high against
+an unmoved kcal figure — found by pixel-diffing the shots, ~21,700 differing
+pixels, and confirmed on device by Dave answering "everything looks the same".
+That answer is the *only* evidence the 3.5px restoration holds in WebKit; the
+declaration compensates for a UA behaviour whose metrics are engine-defined.
 
 ## The design call on #82, and why it was worth asking
 
@@ -2123,16 +2137,23 @@ list loses on arithmetic**: four rows is ~184px and `.finder`'s 380px floor does
 not survive that on a 667pt screen. The panel costs one extra tap from the
 camera and costs the viewfinder nothing.
 
-## Four issues came out of a person using it
+## Seven issues came out of a person using it, and one of them closed on filing
 
 | | |
 |---|---|
 | **#102** | The picks panel wears `.grab` — the iOS handle idiom — and doesn't honour it. Dave's split is the spec: **the notch drags, the body scrolls**. The addition is that `.grab` is 36 × 4 px, so the handle needs a ~44px hit band, and the body drags too while the list is at `scrollTop === 0`. Scoped to this panel: the confirm sheet's dismiss throws away the read *and* #16's stored photo, and a cheap gesture for an expensive action needs its own decision. |
 | **#103** | A barcode read confirms cleanly and there is nothing on the sheet that says *keep this one*. What gets starred is already answered in the codebase — `foldMeals` joins item names with `", "`, which is where the picks list's recents get their names. |
-| **#104** | Persist the portion. **Queued directly behind #58 and this is not a preference.** |
-| **#98** | Not new — carried from Session T, and the one the plan named second. |
+| **#104** | Persist the portion. Filed and shipped the same evening — see below for why the ordering was not a preference. |
+| **#105** | The meal-slot chip is a control nobody knows is a control. *"I didnt realize pressing the type of meal actualy rotated options."* **Filed and closed in the same breath, on purpose** — no code changed, and the record exists so the next person finds a decision instead of rediscovering it. #44's reasoning holds, the sketch designs no picker, severity is low (nothing computes from the slot), and the adjacency worry to #98's enlarged target does not hold: a paragraph of copy sits between them. What would reopen it is written on the issue. |
+| **#106** | `npm run db:studio` opens whichever sqlite file `find` returns first, which on this machine was last written on **4 August** — it reports a coherent, plausible, wrong schema and exits 0. CLAUDE.md's `database_id` gotcha biting through a second door. Pre-existing; cost real minutes during #104. |
+| **#107** | The barcode read's grams are discarded at save, and always were. 0009's cannot-be-backfilled argument applies verbatim, and it is now storable at **zero schema cost** as `portion_qty` + `portion_unit = 'g'`. `priority: high`. |
+| **#108** | The quantity is back in the name when the user types it — `4oz Grilled Cheddar Cheese Burger (patty + bun + cheese)`, `portion` NULL, a real production row. #58's prompt rule is not landing on the commonest case. `priority: high`. |
 
-## #104 is 0006's argument, one field over
+**#105 through #108 are the interest #104 paid.** Three of the four were found
+by *reading stored rows*, which was impossible the day before — before #104
+there was nothing stored to read. #106 surfaced while trying to read them.
+
+## #104 was 0006's argument, one field over
 
 `portion` exists in the confirm sheet's memory for the seconds between the
 analyze response and the save, and then it is **gone** — not degraded, gone,
@@ -2144,13 +2165,22 @@ The work is small, which is the other half of the argument: **`food_logs` is
 one row per item**, not per meal — `foldMeals` groups at read time — so it is
 an `ALTER TABLE` in 0006's own shape, not a schema change.
 
-The issue also carries a hole worth reading before starting: after #58 a
-portion change is deliberately **not** an edit (`orig` moves, `isEdited` stays
-false), so nothing on the row records that the model said two and the user said
-four. `ai_kcal` exists for exactly that question about macros, and portion is
-the estimate most likely to be wrong. `ai_portion_qty` is recommended there.
+The hole it also had to close: after #58 a portion change is deliberately
+**not** an edit (`orig` moves, `isEdited` stays false), so nothing on the row
+recorded that the model said two and the user said four. `ai_portion_qty` is
+the `ai_*` family's missing member, and it is one line from silently inverting
+its own meaning — it must read `base`, never `orig`, because after a rescale
+`orig` holds the *user's* number. That is why `savedPortion` is an extracted
+function: so a test can reach the choice.
 
-## Three things this session learned about its own tests
+**And the reader nobody briefed: #52's undo.** It re-posts the row it is
+holding, so an undo that dropped the three columns would strip the portion
+permanently, one entry at a time, with nothing on screen to say so — this
+issue's own defect, retail. Found by enumerating every reader of `food_logs`.
+The lesson generalises: **a migration's blast radius includes every writer that
+round-trips a row it did not compose.**
+
+## Four things this session learned about its own tests
 
 - **The tests an issue asks for by name can be decorative against the exact
   defect they name.** #58's `2 → 4 → 2` and `2 → 3 → 7 → 2` round trips both
@@ -2168,7 +2198,23 @@ the estimate most likely to be wrong. `ai_portion_qty` is recommended there.
   non-string `unit` case. #82's agent hit the same thing in its own test file
   and restructured to one assertion per test, after which the never-ran count
   was 0 across all five mutations. **That restructuring is the practice worth
-  copying.**
+  copying**, and by #104 it was standard: nine mutations, never-ran 0 in all.
+- **A mutation that never applied looks exactly like a test that held.** #98's
+  second mutation came back 33/33 green because the edit was never made — its
+  script's anchor had moved, the `assert` fired, and nothing checked the exit
+  code. This is the one member of the family that reads as *good* news, which
+  is what makes it dangerous. Now a rule in CLAUDE.md: diff the source, or make
+  the mutation script fail loudly, before recording "the test held".
+  #104's harness does both, and deliberately reverts by inverse string replace
+  rather than `git checkout` — the tree is meant to be dirty and a checkout
+  would have destroyed the work under test.
+
+**The honest ceiling on all of it, stated on #104:** two of its nine mutations
+left the *entire* 516-test suite green. Nothing in this repo can see the
+client's save payload or #52's undo re-post, so the only guards there are two
+end-to-end drives that type into the real field, tap the real save button and
+read the row back out of D1. A test count is not coverage, and on that commit
+"516 passed" would have been decoration without that sentence beside it.
 
 ## Standing facts recorded this session
 
@@ -2186,26 +2232,71 @@ the estimate most likely to be wrong. `ai_portion_qty` is recommended there.
 
 ## Where it stands
 
-Live at **`f2e738d`** with #82 and #58 both closed and UAT'd. 476 tests.
-#98 was started next, back on the plan's own order.
+Live at **`7f260ab`**. 516 tests. Production D1 on `0009_portion.sql`.
 
-## The queue after #98
+Five issues closed and UAT'd on device the same day they shipped — #82, #58,
+#98, #104, #108 — plus #105 filed and closed as a record. Four filed and open:
+#102, #103, #106, #107, #109.
 
-1. **#104** — persist the portion. The clock is the reason.
-2. **#103** — star from the confirm sheet. Same file family as #98, so after it.
-3. **#102** — the panel's swipe-to-dismiss. Spec is settled in the issue.
+**The last one was found by the check that was verifying the one before it**,
+which is the shape of the whole evening: #104 made portions readable, reading
+them found #108, and probing #108 found #109. Nothing here came from a test
+suite.
 
-Still owed by Dave and none of it blocking: **#101** (how this project tests
-sequences — researched, written up with an argument against its own
-recommendation, deliberately unmade), the **UAT process** (checklist in the
-issue, `refs` instead of `closes`, only Dave's comment closes it), and **#91**
-(the trash panel — wants mockups).
+## Tomorrow — the queue, and the ordering is not arbitrary
 
-## Not covered by anyone
+| | | |
+|---|---|---|
+| 1 | **#109** | `200g of chicken` stores **100 g**. Live, and permanent since #104 began writing the column. The macros are right and only the amount is wrong, so nothing looks broken until someone reads a row. `bug`, `priority: high`. |
+| 2 | **#107** | The barcode grams are discarded at save. Zero schema cost — 0009's columns already fit. `priority: high`. |
+| 3 | **#103** | Star a meal from the confirm sheet. Same file family as #98/#58, so it waits for them to settle. |
+| 4 | **#102** | The picks panel's swipe-to-dismiss. Spec is settled in the issue: the notch drags with a ~44px hit band, the body drags only at `scrollTop === 0`. |
+| 5 | **#106** | `db:studio` opens the wrong database. Small, M6, and it costs somebody an hour the next time it lies. |
 
-- **#58's photo path end to end.** `PHOTO_SYSTEM` changed and no real plate has
-  been through `/api/analyze/photo` since. The text path proves the same
-  instruction lands and the schema is shared (#14) — an argument, not a check.
-- **Light packs.** Rule 4's theme QA is owed at M7 close; everything this
-  session added uses semantic tokens only, which is a reason to expect it ports
-  and not a render check.
+**#109 must land before #107, and this is the trap in the queue.** #107 stores
+the barcode grams as `portion_qty` + `portion_unit: "g"` — straight into the
+ceiling #109 exists to fix. Done in the other order, #107 ships a path that
+silently clamps every portion over 100 g, which is most of them, and it ships
+it into a column that cannot be repaired afterwards.
+
+## What tomorrow should check first, before writing anything
+
+**#108 is deployed and unverified on the live model.** It is a Worker-only
+change — prompt text, no client code — so the bundle hash is byte-identical and
+the rollout check structurally cannot see it, exactly as #99's fix could not be
+seen. The only confirmation is a real read: log something with a stated weight
+or count and see whether the amount lands in the portion rather than the name.
+
+Two more things it left open:
+
+- **`PHOTO_SYSTEM` got the parallel wording and no probe at all.** The photo
+  path needs a real JPEG and an R2 write, and #108's matrix covered only text.
+  Inferred correct, not verified.
+- **Bare food names now come back with larger, more varied portions** — pasta
+  1.5–2 cups against a flat 1, pizza 2–3 slices against 1. Nobody asked for
+  that; it looks like an improvement and it is a behaviour change that no test
+  guards.
+
+## Rule 4b is owed at M7 close, and M7 changed a computation
+
+#58 changed how a meal's macros are derived — a portion now rescales them — so
+the milestone owes a real reconciliation entry, not a skip. Budget 25–45
+minutes with `npm run reconcile`, and remember the rule's own warning: if it
+finishes much faster than that, step 4 was skipped, and step 4 is the part with
+no output until it finds something.
+
+M7 is not close. #81 (the basket), #60 (edit after save) and #59 (re-analyze
+with a correction note) are all still open and all substantial.
+
+## Still owed by Dave, none of it blocking
+
+- **#101** — how this project tests sequences and how much engine fidelity it
+  buys. Researched, written up with an argument against its own recommendation,
+  deliberately unmade. **The case for it grew tonight:** five of tonight's
+  findings came from a person or from reading production data, and none from
+  the suite.
+- **The UAT process** — checklist in the issue, `refs` instead of `closes`,
+  only Dave's comment closes it. Tonight ran the informal version five times
+  and it worked; the question is whether it survives a session where nobody
+  asks.
+- **#91** — the trash panel. Wants mockups.
