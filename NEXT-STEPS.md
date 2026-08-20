@@ -2354,3 +2354,39 @@ the model to return 200 changed nothing across seven samples, which is what
 pointed at the clamp. Without that, last night's `100 G` would have read as
 "the prompt fix didn't work" and the real defect would have gone back into
 hiding behind a prompt nobody could make behave.
+
+## The two-day target — M7 and M11, not M6
+
+Dave's aim is to close out the milestones in two days. 23 issues are open. The
+honest split, agreed 2026-08-20:
+
+| | | |
+|---|---|---|
+| **M7** | 6 | Target. #109/#107/#103 are small; #81, #60 and #59 are real features. |
+| **M11** | 4 | Target. #102's spec is settled, #24 is a bucket. |
+| **M6** | 12 | **Not in scope.** |
+| M8 | 1 | #67 is deliberately deferred until trends sum runs. |
+
+**M6 is not a two-day list, it is the next month.** At least five of its twelve
+are multi-day features on their own — #28 is labelled "v2 spike", plus #27
+(Suunto OAuth), #70 (Garmin sync into the Worker), #33 (account claiming) and
+#25 (BYOK). Attempting it costs M7 and M11 without finishing anything.
+
+**Two are blocked on Dave, and they are what will be left standing on day two
+if they are not done first:**
+
+- **#91** wants mockups. Nothing can start without them.
+- **#93** needs a device or the Simulator. It cannot be closed from a headless
+  Chrome, and `env(safe-area-inset-*)` reads 0 there.
+
+**Budget the closing costs, both of which are real:**
+
+- **M7 close owes a rule 4b reconciliation.** Not a skip — #58 changed how a
+  meal's macros are derived, so there is a genuine figure to check. 25–45
+  minutes with `npm run reconcile`, and if it finishes much faster, step 4 was
+  skipped.
+- **M11 close owes rule 4's theme QA** — the light-pack render check.
+
+**If two days gets tight, cut #81 and #60.** The basket reshapes the log flow
+and edit-after-save touches the timeline; both are larger than anything in
+Session U. And #24 will quietly expand to fill whatever time it is given.
