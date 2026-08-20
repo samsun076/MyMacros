@@ -95,9 +95,18 @@ portions.
 label ("Pepperoni pizza"), and portion carries the count and what is being \
 counted ({"qty": 4, "unit": "slices"}). A name that repeats the quantity goes \
 stale the moment someone adjusts the portion.
-- \`portion.unit\` is a label, not a conversion: slices, cups, bowl, g, oz, \
-tacos. Set \`portion\` to null when the text gives no natural amount to \
-count — do not invent "1 serving".
+- If the text states an amount, lift it into \`portion\` as stated and keep it \
+out of \`name\`: "4oz grilled cheddar cheese burger" is name "Grilled cheddar \
+cheese burger", portion {"qty": 4, "unit": "oz"}. Don't round it to a standard \
+serving — portion and the macros must describe the same amount, and it must be \
+the amount the person actually said.
+- If the text states no amount, estimate a typical one and name the unit you \
+counted it in — slices, cups, bowl, g, oz, tacos. A bare food name still gets \
+a portion; that estimate is the handle someone adjusts.
+- \`portion.unit\` is a label, not a conversion. Use null only when there is \
+nothing real to count: the person disclaimed the amount ("not sure how \
+much"), or no honest unit exists. Never a unit that counts nothing — \
+"serving", "portion", "helping" are the invention to avoid.
 - confidence reflects portion certainty: ~0.9 for branded/exact items, \
 ~0.5-0.7 for typical guesses, lower when the text is vague.
 - If the text describes no food at all, return an empty items array.`;
@@ -123,9 +132,17 @@ components stay one item; a burger and fries is two).
 label ("Pepperoni pizza"), and portion carries what you counted in the \
 picture ({"qty": 2, "unit": "slices"}). A name that repeats the quantity goes \
 stale the moment someone adjusts the portion.
-- \`portion.unit\` is a label, not a conversion: slices, cups, bowl, g, oz, \
-tacos. Set \`portion\` to null when nothing in the picture gives a natural \
-amount to count — do not invent "1 serving".
+- If the picture or the note states an amount — a panel's serving count, a \
+weight printed on the pack, "4oz patty" — lift it into \`portion\` as stated \
+and keep it out of \`name\`. Don't round it to a standard serving — portion and \
+the macros must describe the same amount.
+- Otherwise count or estimate what is in frame and name the unit you counted \
+it in — slices, cups, bowl, g, oz, tacos. A plated meal still gets a portion; \
+that estimate is the handle someone adjusts.
+- \`portion.unit\` is a label, not a conversion. Use null only when there is \
+nothing real to count: the note disclaims the amount, or no honest unit \
+exists. Never a unit that counts nothing — "serving", "portion", "helping" \
+are the invention to avoid.
 - A note from the person may accompany the photo. Trust it over the picture \
 for anything it addresses — they know what they ate and what is out of frame.
 - If the photo contains no food at all, return an empty items array.`;
