@@ -1,9 +1,10 @@
 import { env } from "cloudflare:test";
 import { Hono } from "hono";
 import { beforeEach, describe, expect, it } from "vitest";
-import type { FoodLogItemInput, FoodLogsCreated } from "../../shared/api";
+import type { DayResponse, FoodLogItemInput, FoodLogsCreated } from "../../shared/api";
 import { createDb } from "../db";
 import type { AppEnv } from "../types";
+import day from "./day";
 import foodLogs from "./food-logs";
 
 /** The save route's record of what the reader said (#76), against real D1.
@@ -27,6 +28,10 @@ app.use("*", async (c, next) => {
   await next();
 });
 app.route("/api/food-logs", foodLogs);
+// The day read is mounted here on purpose (#104): "NULL survives the read as
+// *not recorded*" is a claim about the reader, and asserting it against the
+// save route's own 201 body would only prove the row it just built.
+app.route("/api/day", day);
 
 const save = (body: unknown) =>
   app.fetch(
@@ -289,6 +294,290 @@ describe("POST /api/food-logs — restoring an entry's own instant (#52)", () =>
       expect(res.status, JSON.stringify(bad)).toBe(400);
     }
     expect(await rowCount()).toBe(0);
+  });
+});
+
+/* ── #104: the portion, which after #58 exists for four seconds ───────────── */
+
+/** A pizza read as two slices. `READ`'s macros are reused so the two families
+ *  of columns can't be confused for each other in an assertion. */
+const SLICES = { portion_qty: 2, portion_unit: "slices", ai_portion_qty: 2 };
+
+/** What the sheet sends after the user scales 2 slices to 4: the saved qty
+ *  moves, the reader's does not. `edited` stays FALSE — #58's rule, and the
+ *  reason `ai_portion_qty` had to exist at all. */
+const SCALED = { portion_qty: 4, portion_unit: "slices", ai_portion_qty: 2 };
+
+const dayRead = (date: string) =>
+  app.fetch(new Request(`https://fuel.debrief.run/api/day/${date}`), env);
+
+async function storedPortion(id: string) {
+  return await env.DB.prepare(
+    "SELECT portion_qty, portion_unit, ai_portion_qty FROM food_logs WHERE id = ?",
+  )
+    .bind(id)
+    .first<{ portion_qty: number | null; portion_unit: string | null; ai_portion_qty: number | null }>();
+}
+
+describe("POST /api/food-logs — the portion (#104)", () => {
+  it("round-trips the saved count through D1", async () => {
+    const saved = await (await save(meal({ items: [item(SLICES)] }))).json<FoodLogsCreated>();
+    expect((await storedPortion(saved.logs[0]!.id))?.portion_qty).toBe(2);
+  });
+
+  it("round-trips the unit as the label the reader chose", async () => {
+    const saved = await (await save(meal({ items: [item(SLICES)] }))).json<FoodLogsCreated>();
+    expect((await storedPortion(saved.logs[0]!.id))?.portion_unit).toBe("slices");
+  });
+
+  /** 0006's rule, applied to the column #58 made necessary: an unscaled save
+   *  writes them EQUAL, so "the reader counted right" cannot be mistaken for
+   *  "nothing recorded what it counted". */
+  it("writes ai_portion_qty EQUAL to portion_qty on an unscaled save", async () => {
+    const saved = await (await save(meal({ items: [item(SLICES)] }))).json<FoodLogsCreated>();
+    const row = await storedPortion(saved.logs[0]!.id);
+    expect(row?.ai_portion_qty).toBe(row?.portion_qty);
+  });
+
+  it("does not write NULL merely because the reader was right", async () => {
+    const saved = await (await save(meal({ items: [item(SLICES)] }))).json<FoodLogsCreated>();
+    expect((await storedPortion(saved.logs[0]!.id))?.ai_portion_qty).not.toBeNull();
+  });
+
+  /* The three below are the assertions this whole column exists for. */
+
+  it("stores the USER's count when the portion was scaled", async () => {
+    const saved = await (await save(meal({ items: [item(SCALED)] }))).json<FoodLogsCreated>();
+    expect((await storedPortion(saved.logs[0]!.id))?.portion_qty).toBe(4);
+  });
+
+  it("stores the AS-READ count beside it", async () => {
+    const saved = await (await save(meal({ items: [item(SCALED)] }))).json<FoodLogsCreated>();
+    expect((await storedPortion(saved.logs[0]!.id))?.ai_portion_qty).toBe(2);
+  });
+
+  /** The pair, asserted as a pair. Either value alone can be right while the
+   *  row still fails to answer "was this rescaled?" — which is the question. */
+  it("keeps the two counts DIFFERENT, which is the whole point of the column", async () => {
+    const saved = await (await save(meal({ items: [item(SCALED)] }))).json<FoodLogsCreated>();
+    const row = await storedPortion(saved.logs[0]!.id);
+    expect(row?.ai_portion_qty).not.toBe(row?.portion_qty);
+  });
+
+  /** #58 moves `orig` with a rescale so `edited` stays false. That is exactly
+   *  why the scaled save above is invisible to `edited` and needs its own
+   *  column — pinned here so nobody "fixes" one by breaking the other. */
+  it("records a scaled row as unedited, so `edited` cannot stand in for this", async () => {
+    const saved = await (await save(meal({ items: [item(SCALED)] }))).json<FoodLogsCreated>();
+    expect(saved.logs[0]!.edited).toBe(0);
+  });
+
+  it("carries the portion out on the day read, not just the save response", async () => {
+    await save(meal({ items: [item(SCALED)] }));
+    const body = await (await dayRead("2026-08-10")).json<DayResponse>();
+    expect(body.logs[0]).toMatchObject({ portion_qty: 4, portion_unit: "slices", ai_portion_qty: 2 });
+  });
+});
+
+describe("POST /api/food-logs — no portion is NOT a portion of one (#104)", () => {
+  it("writes NULL to all three when the read proposed no portion", async () => {
+    const saved = await (await save(meal())).json<FoodLogsCreated>();
+    expect(await storedPortion(saved.logs[0]!.id)).toEqual({
+      portion_qty: null,
+      portion_unit: null,
+      ai_portion_qty: null,
+    });
+  });
+
+  /** The read is where "not recorded" could quietly become 0 or 1 — JSON has
+   *  no NULL for a number that a `?? 1` wouldn't swallow. */
+  it("reads NULL back as null, never 0 and never 1", async () => {
+    await save(meal());
+    const body = await (await dayRead("2026-08-10")).json<DayResponse>();
+    expect(body.logs[0]).toMatchObject({
+      portion_qty: null,
+      portion_unit: null,
+      ai_portion_qty: null,
+    });
+  });
+
+  /** A favorite is a FOLDED meal — one row, one joined name — so there is no
+   *  per-item portion to send and none is invented from the sum. */
+  it("writes nothing for a favorite re-log", async () => {
+    const res = await save(
+      meal({
+        source: "favorite",
+        items: [
+          { name: "Black coffee", kcal: 2, protein_g: 0, carbs_g: 0, fat_g: 0, confidence: null, edited: false },
+        ],
+      }),
+    );
+    const saved = await res.json<FoodLogsCreated>();
+    expect(await storedPortion(saved.logs[0]!.id)).toEqual({
+      portion_qty: null,
+      portion_unit: null,
+      ai_portion_qty: null,
+    });
+  });
+
+  /** #16's blank recovery row: the read failed, so it proposed no portion.
+   *  A "1" here would claim the reader had counted one of something. */
+  it("writes nothing for #16's blank recovery row", async () => {
+    const res = await save(
+      meal({
+        items: [
+          { name: "Leftover chili", kcal: 430, protein_g: 28, carbs_g: 40, fat_g: 16, confidence: null, edited: false },
+        ],
+      }),
+    );
+    const saved = await res.json<FoodLogsCreated>();
+    expect(await storedPortion(saved.logs[0]!.id)).toEqual({
+      portion_qty: null,
+      portion_unit: null,
+      ai_portion_qty: null,
+    });
+  });
+
+  /** What #52's undo re-posts for a portionless row: the row's own stored
+   *  nulls, explicitly. Absent and explicitly-null must mean the same thing
+   *  here, or every undo of a vague meal 400s. */
+  it("treats three explicit nulls as absent, the way undo sends them", async () => {
+    const res = await save(
+      meal({ items: [item({ portion_qty: null, portion_unit: null, ai_portion_qty: null })] }),
+    );
+    expect(res.status).toBe(201);
+  });
+});
+
+describe("POST /api/food-logs — a partial portion is refused (#104)", () => {
+  /** A count with nothing to count is "1 of something unnamed" — the invented
+   *  portion #58 forbids. */
+  it("refuses a qty with no unit", async () => {
+    expect((await save(meal({ items: [item({ portion_qty: 2, ai_portion_qty: 2 })] }))).status).toBe(400);
+  });
+
+  it("names the refusal so it isn't confused with the ai_* set", async () => {
+    const res = await save(meal({ items: [item({ portion_qty: 2, ai_portion_qty: 2 })] }));
+    expect(await res.json()).toEqual({ error: "invalid_portion" });
+  });
+
+  /** The one that matters most: a saved qty with no reader's qty beside it
+   *  recreates 0006's forbidden ambiguity on a field that cannot be
+   *  backfilled. */
+  it("refuses a saved qty with no reader's qty beside it", async () => {
+    expect((await save(meal({ items: [item({ portion_qty: 2, portion_unit: "slices" })] }))).status).toBe(400);
+  });
+
+  it("refuses a reader's qty describing a portion that isn't on the row", async () => {
+    expect((await save(meal({ items: [item({ ai_portion_qty: 2 })] }))).status).toBe(400);
+  });
+
+  it("stores nothing at all when a portion is refused", async () => {
+    await save(meal({ items: [item({ portion_qty: 2, ai_portion_qty: 2 })] }));
+    expect(await rowCount()).toBe(0);
+  });
+
+  /** One save is one meal (#10): a bad portion on item two must not leave
+   *  item one on the timeline. */
+  it("refuses the whole meal when one item's portion is malformed", async () => {
+    await save({ ...meal(), items: [item(SLICES), item({ name: "Rice", portion_qty: 1 })] });
+    expect(await rowCount()).toBe(0);
+  });
+});
+
+describe("POST /api/food-logs — the portion's bounds (#104)", () => {
+  /* The route refuses out-of-range NUMBERS (as it does for kcal and grams)
+     and truncates over-long LABELS (as it does for `name`). MAX_QTY 100 and
+     the 24-char unit are carried from `normalize()` in analyze.ts. */
+  it("refuses a qty past the ceiling normalize() enforces", async () => {
+    expect((await save(meal({ items: [item({ ...SLICES, portion_qty: 101 })] }))).status).toBe(400);
+  });
+
+  it("refuses a reader's qty past the same ceiling", async () => {
+    expect((await save(meal({ items: [item({ ...SLICES, ai_portion_qty: 4321 })] }))).status).toBe(400);
+  });
+
+  it("accepts the ceiling itself", async () => {
+    expect((await save(meal({ items: [item({ ...SLICES, portion_qty: 100 })] }))).status).toBe(201);
+  });
+
+  /** A committed zero is a divide-by-zero for anything that rescales from it,
+   *  and `0.04` is a positive number that becomes zero at 1dp — so the guard
+   *  sits on the rounded value, not on the one that arrived. */
+  it("refuses a qty that rounds away to zero at one decimal place", async () => {
+    expect((await save(meal({ items: [item({ ...SLICES, portion_qty: 0.04 })] }))).status).toBe(400);
+  });
+
+  it("refuses a negative qty", async () => {
+    expect((await save(meal({ items: [item({ ...SLICES, portion_qty: -2 })] }))).status).toBe(400);
+  });
+
+  it("refuses a qty that isn't a number at all", async () => {
+    expect((await save(meal({ items: [item({ ...SLICES, portion_qty: "four" as never })] }))).status).toBe(400);
+  });
+
+  it("stores a fractional qty at one decimal place", async () => {
+    const saved = await (
+      await save(meal({ items: [item({ ...SLICES, portion_qty: 1.55, portion_unit: "cups" })] }))
+    ).json<FoodLogsCreated>();
+    expect((await storedPortion(saved.logs[0]!.id))?.portion_qty).toBe(1.6);
+  });
+
+  it("truncates an over-long unit to 24 characters rather than losing the meal", async () => {
+    const saved = await (
+      await save(meal({ items: [item({ ...SLICES, portion_unit: "s".repeat(80) })] }))
+    ).json<FoodLogsCreated>();
+    expect((await storedPortion(saved.logs[0]!.id))?.portion_unit).toBe("s".repeat(24));
+  });
+
+  it("refuses a unit that is only whitespace — a count of nothing named", async () => {
+    expect((await save(meal({ items: [item({ ...SLICES, portion_unit: "   " })] }))).status).toBe(400);
+  });
+});
+
+/** A row written before migration 0009 existed. `ALTER TABLE ADD COLUMN` with
+ *  no default leaves exactly this on disk — the columns present and NULL — so
+ *  an INSERT naming only 0001's columns is the real thing and not a mock of
+ *  it. Every meal logged before today is one of these, permanently. */
+describe("a row older than the portion columns (#104)", () => {
+  const OLD = "food-logs-pre-0009";
+
+  async function insertPreMigrationRow() {
+    await env.DB.prepare(
+      `INSERT INTO food_logs (id, user_id, logged_on, logged_at, meal_slot, name, kcal, protein_g, carbs_g, fat_g, source, confidence, edited)
+       VALUES (?, ?, '2026-08-10', '2026-08-10T09:00:00.000Z', 'breakfast', 'Porridge', 320, 11, 54, 6, 'text', 0.6, 0)`,
+    )
+      .bind(OLD, USER)
+      .run();
+  }
+
+  it("reads back as not-recorded rather than failing", async () => {
+    await insertPreMigrationRow();
+    const body = await (await dayRead("2026-08-10")).json<DayResponse>();
+    expect(body.logs[0]).toMatchObject({
+      portion_qty: null,
+      portion_unit: null,
+      ai_portion_qty: null,
+    });
+  });
+
+  it("still carries everything it always did", async () => {
+    await insertPreMigrationRow();
+    const body = await (await dayRead("2026-08-10")).json<DayResponse>();
+    expect(body.logs[0]).toMatchObject({ name: "Porridge", kcal: 320 });
+  });
+
+  it("sits beside a row that does have a portion without disturbing it", async () => {
+    await insertPreMigrationRow();
+    await save(meal({ items: [item(SCALED)] }));
+    const body = await (await dayRead("2026-08-10")).json<DayResponse>();
+    expect(body.logs.map((l) => l.portion_qty)).toEqual([null, 4]);
+  });
+
+  it("still totals the day, which is the only thing that reads it today", async () => {
+    await insertPreMigrationRow();
+    const body = await (await dayRead("2026-08-10")).json<DayResponse>();
+    expect(body.totals.kcal).toBe(320);
   });
 });
 

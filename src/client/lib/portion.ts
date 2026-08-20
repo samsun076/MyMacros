@@ -69,6 +69,32 @@ export function setPortionQty(item: EditableItem, qty: number): EditableItem {
   return { ...scaled, orig: scaled, base: item.base };
 }
 
+/** The three columns a save writes for this row's portion (#104), or `null`
+ *  when there is no portion to record.
+ *
+ *  **`ai_portion_qty` comes from `base`, never from `orig`**, and that one
+ *  line is the whole reason the column exists. `setPortionQty` above *moves*
+ *  `orig` with the scaled values so `isEdited` stays false — so after a
+ *  rescale `orig.portion.qty` is the number the **user** chose, and shipping
+ *  it would store "the reader said four" on the row where the reader said two.
+ *  `base` is the as-read item and nothing ever mutates it, which makes it the
+ *  only surviving copy of what the model actually counted.
+ *
+ *  **Here rather than inline in `Log.tsx`'s save()** for #100's reason: a
+ *  decision reachable only by rendering a component is a decision the unit
+ *  project cannot test, and this one is invisible to a screenshot — an
+ *  `orig`-based implementation produces a perfectly well-formed row that is
+ *  wrong about the only question it was written to answer.
+ *
+ *  Null when the read proposed no portion ("had lunch out"), which is also
+ *  every #16 blank row and every favorite re-log — nothing invents one. */
+export function savedPortion(item: EditableItem) {
+  const now = item.portion;
+  const read = item.base.portion;
+  if (!now || !read) return null;
+  return { portion_qty: now.qty, portion_unit: now.unit, ai_portion_qty: read.qty };
+}
+
 /** What the collapsed row says about the portion: `4 SLICES`, `1.5 CUPS`.
  *
  *  Pluralisation is the model's job, not this function's — `unit` arrives as a

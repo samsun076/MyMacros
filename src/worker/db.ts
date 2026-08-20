@@ -80,6 +80,17 @@ export type FoodLogTable = {
   ai_protein_g: number | null;
   ai_carbs_g: number | null;
   ai_fat_g: number | null;
+  /** How much of this food the row's numbers describe (migration 0009, #104)
+   *  — the count and the thing counted, "4" and "slices". `unit` is a label
+   *  and never a conversion. All three move together; null means "not
+   *  recorded", never "one serving". */
+  portion_qty: number | null;
+  portion_unit: string | null;
+  /** What the reader counted before the user scaled it. Part of the `ai_*`
+   *  family and written EQUAL to `portion_qty` on an unscaled save — a
+   *  portion change is not an `edited` correction (#58), so this column is
+   *  the only thing that records the reader was ever asked. */
+  ai_portion_qty: number | null;
   notes: string | null;
   created_at: Generated<Instant>;
   updated_at: Generated<Instant>;

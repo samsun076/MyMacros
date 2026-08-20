@@ -544,6 +544,16 @@ function useDeleteEntry(reload: () => void) {
           ai_protein_g: r.ai_protein_g,
           ai_carbs_g: r.ai_carbs_g,
           ai_fat_g: r.ai_fat_g,
+          // #104's three travel with the row for the same reason, and the
+          // failure they avoid is this issue's own defect retail: a restore
+          // that dropped them would put the meal back stripped of the portion
+          // it was logged with, permanently and one entry at a time. The read
+          // that produced them is long gone by now, so the row is the only
+          // copy. Nulls stay nulls — the route reads all-three-absent as "not
+          // recorded", which is what a portionless row was.
+          portion_qty: r.portion_qty,
+          portion_unit: r.portion_unit,
+          ai_portion_qty: r.ai_portion_qty,
         })),
       });
       reload();

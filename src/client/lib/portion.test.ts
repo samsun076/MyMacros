@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { AnalyzedItem } from "../../shared/api";
-import { type EditableItem, editable, portionLabel, setPortionQty } from "./portion";
+import { type EditableItem, editable, portionLabel, savedPortion, setPortionQty } from "./portion";
 
 /** #58. The property this file exists for is **drift**, and it is the one a
  *  screenshot and a single tap both miss: a rescale that starts from the
@@ -173,6 +173,58 @@ describe("setPortionQty", () => {
       portion: { qty: 1.5, unit: "cups" },
     });
     expect(setPortionQty(rice, 3)).toMatchObject({ calories: 420, carbs_g: 90 });
+  });
+});
+
+/** #104. The column exists to answer "the model said two and they ate four",
+ *  and there is exactly one way to get that wrong while producing a
+ *  well-formed row: read the AI's qty off `orig` instead of `base`. #58 moves
+ *  `orig` with a rescale on purpose, so after one tap `orig.portion.qty` IS
+ *  the user's number — the row would then say the reader counted four, which
+ *  is a lie that no later pass can detect, let alone correct. */
+describe("savedPortion", () => {
+  it("sends the count the user settled on", () => {
+    expect(savedPortion(setPortionQty(editable(PIZZA), 4))?.portion_qty).toBe(4);
+  });
+
+  it("sends the AS-READ count as the reader's, not the scaled one", () => {
+    // `orig.portion.qty` is 4 here. Reading it would be the whole defect.
+    expect(savedPortion(setPortionQty(editable(PIZZA), 4))?.ai_portion_qty).toBe(2);
+  });
+
+  it("keeps the reader's count through a long walk, not just one tap", () => {
+    const walked = [3, 7, 0.5].reduce(setPortionQty, editable(PIZZA));
+    expect(savedPortion(walked)?.ai_portion_qty).toBe(2);
+  });
+
+  it("carries the unit the reader chose, unchanged", () => {
+    expect(savedPortion(setPortionQty(editable(PIZZA), 4))?.portion_unit).toBe("slices");
+  });
+
+  /** An unscaled save writes them EQUAL, never null — 0006's rule, and the
+   *  reason "the reader agreed" is distinguishable from "nobody looked". */
+  it("writes both counts on an UNSCALED save rather than withholding them", () => {
+    expect(savedPortion(editable(PIZZA))).toEqual({
+      portion_qty: 2,
+      portion_unit: "slices",
+      ai_portion_qty: 2,
+    });
+  });
+
+  it("withholds everything for a read that proposed no portion", () => {
+    expect(savedPortion(editable({ ...PIZZA, portion: null }))).toBeNull();
+  });
+
+  it("withholds everything for #16's blank row, which has no portion key", () => {
+    const blank = editable({
+      name: "",
+      calories: 0,
+      protein_g: 0,
+      carbs_g: 0,
+      fat_g: 0,
+      confidence: null,
+    });
+    expect(savedPortion(blank)).toBeNull();
   });
 });
 

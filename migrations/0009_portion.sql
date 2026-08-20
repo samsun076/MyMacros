@@ -1,0 +1,53 @@
+-- How much of it, beside how much the reader said it was (#104).
+--
+-- #58 gave the confirm sheet a per-item portion: the read comes back "2
+-- slices", the sheet rescales every macro linearly from it, you say four, you
+-- save. Nothing persisted it. "Pizza" at 780 kcal does not tell you it was
+-- four slices, and no later pass can work it out from the row — which is
+-- 0006's argument moved one field over:
+--
+--   THIS IS THE ONLY THING ON THE BOARD THAT CANNOT BE BACKFILLED. The
+--   reader's numbers exist solely in the confirm sheet's memory, for the
+--   seconds between the analyze response and the save.
+--
+-- So the window between #58 deploying and this landing is a window of
+-- permanent loss, and it is measured in meals rather than in effort.
+--
+-- An ALTER TABLE and not a schema change, because `food_logs` is already one
+-- row per ITEM — there is no items table, and `foldMeals` (src/shared/meals.ts)
+-- does the grouping at read time. The portion belongs on the row it describes.
+--
+-- Nullable, and NULL means "not recorded" — never "one serving", never "the
+-- reader was right". The same distinction 0006 draws, and the same one #58
+-- draws on screen when it refuses to invent a portion to have something to
+-- show:
+--   * rows written before this migration — nothing was captured;
+--   * a read with no natural amount to count ("had lunch out"), where the
+--     model is instructed to answer null rather than guess "1 serving";
+--   * a `favorite` re-log — see below;
+--   * #16's blank recovery row — the read failed, so it proposed no portion.
+--
+-- `ai_portion_qty` is the `ai_*` family's missing member, and #58 is exactly
+-- why it was missing. A portion change is deliberately NOT a correction: the
+-- sheet moves `orig` with the scaled values so `edited` stays false, because
+-- `edited` answers "did the user override the AI's numbers?" and saying you
+-- ate four slices instead of two overrides nothing — the reader was right
+-- about a slice. Correct, and it leaves a hole: after #58 nothing on the row
+-- recorded that the model had counted two. `ai_kcal` exists for precisely
+-- that question about macros (#75/#76), and portion is the estimate most
+-- likely to be wrong, so it gets the family's rule verbatim: an UNSCALED save
+-- writes `ai_portion_qty` EQUAL to `portion_qty`, never null. "The reader
+-- agreed" and "we didn't record it" must not look the same.
+--
+-- `portion_unit` is a LABEL and never a conversion — "slices", "cups",
+-- "bowl", "g", "tacos". Nothing anywhere reads it to convert between units; a
+-- conversion table is a different feature and a worse one (#58).
+--
+-- `favorites` deliberately gets none of this. A favorite is a FOLDED meal —
+-- one row, one joined name, summed macros — so the fold destroys per-item
+-- portions by construction. A `portion_qty` there would be meaningful for a
+-- single-item favorite and quietly wrong for every other one, which is worse
+-- than storing nothing.
+ALTER TABLE food_logs ADD COLUMN portion_qty    REAL;
+ALTER TABLE food_logs ADD COLUMN portion_unit   TEXT;
+ALTER TABLE food_logs ADD COLUMN ai_portion_qty REAL;

@@ -18,7 +18,7 @@ import { deviceTimezone, localDay, mealSlotFor } from "../lib/day";
 import { fmtInt } from "../lib/format";
 import { FOOD_LIMITS, type NumericRule } from "../lib/numeric";
 import { type Pick, mergePicks } from "../lib/picks";
-import { type EditableItem, editable, portionLabel, setPortionQty } from "../lib/portion";
+import { type EditableItem, editable, portionLabel, savedPortion, setPortionQty } from "../lib/portion";
 
 /** The log flow: capture → editable confirm sheet → saved.
  *
@@ -485,6 +485,16 @@ export function Log() {
                 ai_protein_g: it.orig.protein_g,
                 ai_carbs_g: it.orig.carbs_g,
                 ai_fat_g: it.orig.fat_g,
+                // #104: how much of it, and how much the reader said it was.
+                // Same argument as the four above and the same window — the
+                // portion lives in this sheet's memory and nowhere else until
+                // the save. **`savedPortion` reads `base`, not `orig`**: a
+                // portion change deliberately moves `orig` (#58), so `orig`
+                // holds the user's number after a rescale and would record
+                // the reader as having said whatever the user said. Withheld
+                // whole for a read that proposed no portion, exactly as the
+                // `ai_*` set is withheld for #16's blank row.
+                ...savedPortion(it),
               }),
         })),
       });

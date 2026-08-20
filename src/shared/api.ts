@@ -122,6 +122,24 @@ export type FoodLog = {
   ai_protein_g: number | null;
   ai_carbs_g: number | null;
   ai_fat_g: number | null;
+  /** How much of this food the numbers above describe (#104, migration 0009)
+   *  — "4" and "slices". `portion_unit` is a label, never a conversion.
+   *
+   *  All three are null together and mean **"not recorded"**: a read with no
+   *  natural amount to count, a favorite re-log, #16's blank recovery row, or
+   *  a row older than the migration. Never "one serving".
+   *
+   *  **Carried on the wire, rendered nowhere yet.** #104 persists the number
+   *  and stops the loss; showing "Pizza · 4 slices" on the timeline is a
+   *  separate decision at the row. */
+  portion_qty: number | null;
+  portion_unit: string | null;
+  /** What the reader counted, before the user scaled it (#104). Equal to
+   *  `portion_qty` on an unscaled save, never null merely because the reader
+   *  was right — the `ai_*` family's rule, and this member exists because
+   *  #58 makes a portion change deliberately *not* an edit, so `edited` can
+   *  never answer "the model said two and they ate four". */
+  ai_portion_qty: number | null;
   notes: string | null;
   created_at: string;
   updated_at: string;
@@ -193,6 +211,18 @@ export type FoodLogItemInput = {
   ai_protein_g?: number | null;
   ai_carbs_g?: number | null;
   ai_fat_g?: number | null;
+  /** The portion this item's numbers describe, and the count the reader
+   *  proposed before it was scaled (#104). **All three or none** — the route
+   *  refuses a partial set for the same reason it refuses three of four
+   *  `ai_*` macros, one worse: a saved qty with no reader's qty beside it
+   *  recreates the exact ambiguity 0006 forbids ("the reader agreed" against
+   *  "we never recorded it"), and it cannot be backfilled.
+   *
+   *  Omit all three when the read proposed no portion, on a favorite re-log
+   *  (the fold has no per-item portion to send), and on #16's blank row. */
+  portion_qty?: number | null;
+  portion_unit?: string | null;
+  ai_portion_qty?: number | null;
 };
 
 /** POST /api/food-logs body. One save = one meal = one shared `logged_at`

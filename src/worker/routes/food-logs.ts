@@ -52,6 +52,45 @@ function round1(n: number) {
 const energy = (v: unknown) => (isNum(v) && v >= 0 && v <= 10000 ? Math.round(v) : null);
 const grams = (v: unknown) => (isNum(v) && v >= 0 && v <= 1000 ? Math.round(v * 10) / 10 : null);
 
+/** The portion's two shapes (#104) — the saved count and #58's as-read one,
+ *  same bounds on both, so a stored pair can be compared without one of them
+ *  having been quantised differently from the other.
+ *
+ *  **`MAX_QTY` and `MAX_UNIT` restate `normalize()`'s bounds in
+ *  `routes/analyze.ts`**, which themselves restate `FOOD_LIMITS.portion_qty`
+ *  in `src/client/lib/numeric.ts`. Carried, not derived — the same deliberate
+ *  case #86 records for the pair above them, and for the same reason
+ *  analyze.ts spells out: FOOD_LIMITS is a client module the Worker must not
+ *  import, and this file's own 10000/1000 already restate the kcal and macro
+ *  ceilings from there. Three statements of one number now. Say so if any of
+ *  them moves.
+ *
+ *  A bad qty is REFUSED and an over-long unit is TRUNCATED, which is not an
+ *  inconsistency but this route's existing split: every number here is
+ *  refused when out of range (`energy`, `grams`, and the 400 on `ai_kcal:
+ *  99_000`), and every free-text label the reader chose is trimmed to fit
+ *  (`name` at 120). `unit` is a label. */
+const MAX_QTY = 100;
+const MAX_UNIT = 24;
+
+const portionQty = (v: unknown) => {
+  if (!isNum(v) || v <= 0 || v > MAX_QTY) return null;
+  // Rounded first, then re-tested, for analyze.ts's reason exactly: `0.04` is
+  // a positive number that becomes 0 at one decimal place, and a zero qty is a
+  // divide-by-zero for anything that later rescales from it. The guard has to
+  // sit on the value that is actually stored.
+  const qty = Math.round(v * 10) / 10;
+  return qty > 0 ? qty : null;
+};
+
+const portionUnit = (v: unknown) => {
+  if (typeof v !== "string") return null;
+  const unit = v.trim().slice(0, MAX_UNIT);
+  // "1 of something unnamed" is the invented portion #58 forbids, so a count
+  // with nothing to count is not half a portion — it is no portion.
+  return unit ? unit : null;
+};
+
 const slotOf = oneOf(["breakfast", "lunch", "dinner", "snack"] as const);
 // the schema's four sources are all writable from M3 — the CHECK constraint
 // in migration 0001 already named photo and barcode, so nothing migrates
@@ -160,6 +199,33 @@ foodLogs.post("/", async (c) => {
     if (ai && Object.values(ai).some((v) => v === null)) {
       return c.json({ error: "invalid_ai_estimate" }, 400);
     }
+
+    /* How much of it, and how much the reader said it was (#104).
+     *
+     * All three together or none at all, the same all-or-nothing the `ai_*`
+     * macros above get, and here it is load-bearing twice over. A qty with no
+     * unit is "1 of something unnamed" — the invented portion #58 refuses to
+     * draw. A saved qty with no `ai_portion_qty` beside it recreates 0006's
+     * forbidden ambiguity exactly: "the reader agreed" and "we never recorded
+     * it" would both be null, on the one field that can never be recovered
+     * afterwards. And an `ai_portion_qty` with no portion on the row describes
+     * nothing that is there.
+     *
+     * The absent case is a real one and stays legal: a read with no natural
+     * amount to count ("had lunch out"), a favorite re-log — the fold has no
+     * per-item portion to send — and #16's blank recovery row. */
+    const rawPortion = [item?.portion_qty, item?.portion_unit, item?.ai_portion_qty];
+    const portion = rawPortion.every((v) => v === undefined || v === null)
+      ? null
+      : {
+          qty: portionQty(item?.portion_qty),
+          unit: portionUnit(item?.portion_unit),
+          ai_qty: portionQty(item?.ai_portion_qty),
+        };
+    if (portion && Object.values(portion).some((v) => v === null)) {
+      return c.json({ error: "invalid_portion" }, 400);
+    }
+
     rows.push({
       id: crypto.randomUUID(),
       user_id: c.var.user.id,
@@ -183,6 +249,9 @@ foodLogs.post("/", async (c) => {
       ai_protein_g: ai?.protein_g ?? null,
       ai_carbs_g: ai?.carbs_g ?? null,
       ai_fat_g: ai?.fat_g ?? null,
+      portion_qty: portion?.qty ?? null,
+      portion_unit: portion?.unit ?? null,
+      ai_portion_qty: portion?.ai_qty ?? null,
     });
   }
 
