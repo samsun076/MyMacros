@@ -92,6 +92,12 @@ include `src/`, so `npm run check` type-checks tests with no extra project.
   real barcode to reach. A green assertion inside a red run is decorative, and
   it is decorative in the most dangerous way, because it reads as coverage.
   Say which ones they were — the discipline is worth more than the label.
+  **And count what never ran at all.** An assertion inside a loop whose earlier
+  iteration threw is neither green nor red — it reports nothing, while the
+  test's name and its assertion count both suggest coverage. Three times in
+  three days a broken run left most of a table untested that way: #96's six
+  values, #99's four bodies, #100's second decimal case. If a check walks a
+  table, a red run has told you about its first row and nothing else.
   Mutation testing is the formal name for this and Stryker would mechanise it;
   considered and not adopted, since the cost is a permanent slow gate to
   replace a habit that is already working.

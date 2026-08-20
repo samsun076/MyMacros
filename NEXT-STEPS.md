@@ -2086,3 +2086,52 @@ green nor red. That is not in the rule as written and probably should be.
 
 Live at **`7102387`**. 432 tests. Six issues closed this session across S and T;
 five of the seven fixed defects were found by a thumb, not by a check.
+
+---
+
+## Session U — next up, planned 2026-08-20
+
+Nothing was built on the 19th. Repo is clean at `f3ea63e`; everything through
+Session T is deployed and verified.
+
+### The queue, in order, and the reason for it
+
+| # | What | Why it's first |
+|---|---|---|
+| **#82** | Favorites are built and invisible — reachable from one of three log modes | Finished work sitting unused. The table, route, star/unstar, `use_count` ordering and one-tap re-log all shipped with #12 and are live. Nothing needs inventing. |
+| **#98** | "Tap anything to change it" is false — the calorie figure and macro line aren't tappable | Small, and it came out of Dave's own use on the 17th. The constraint is that the open editor's fields live *inside* the row, so a naive whole-row handler closes it when you tap a field. |
+| **#58** | Scale the portion without hand-editing four macros | The feature answer to the pain behind #95/#96/#100. `setGrams` already rescales linearly from a pristine copy; only the barcode path reaches it. |
+
+**All three touch `Log.tsx`**, so agents run sequentially, not in parallel.
+
+**#82 and #58 are the same defect shape** — machinery built, reachable from one
+place — which is worth noticing as a class rather than fixing twice by accident.
+
+### Still owed by Dave, none of it blocking
+
+- **Type 160 into goal weight.** The one confirmation outstanding from
+  `7102387`. The fix is worker-side only, so the client bundle is byte-identical
+  and the usual rollout check structurally cannot see it.
+- **#101** — how this project tests sequences, and how much engine fidelity it
+  buys. Researched and written up with an argument against its own
+  recommendation. Deliberately unmade.
+- **The UAT process** — checklist in the issue, `refs` instead of `closes`, only
+  Dave's comment closes it. #97 closed itself on merge two days before he tested
+  it, which is the concrete version of the problem.
+- **#91** — the trash panel. Carries the clipping finding and the agreed
+  direction (slide the panel over the row rather than pushing the row left).
+  Wants mockups.
+
+### How these sessions have been running
+
+Orchestrated: one agent per issue, sequential where files collide. Agents
+implement and prove; **the main session writes every commit and never lets an
+agent touch git.** Agents return verification output verbatim, not summarised —
+this project's entire failure history is checks passing while the thing was
+wrong. The orchestrator reads every diff and opens three or four PNGs where
+structure could break, not twenty and not zero.
+
+Environment, if starting cold: kill any orphan dev server on 5173, `npm run
+db:migrate`, `node tools/seed-demo.mjs --weeks 12`, and mint a session cookie
+from the DEV-only email/password route (the `Origin` header is required and must
+match `APP_URL`, or better-auth answers 403).
