@@ -3,21 +3,21 @@ import { useNavigate } from "react-router";
 import type {
   AnalyzeResponse,
   AnalyzedItem,
-  Favorite,
   FavoritesResponse,
   FoodSource,
   MealSlot,
-  RecentMeal,
   RecentsResponse,
 } from "../../shared/api";
 import { CameraStage } from "../components/CameraStage";
 import { LogModes, type LogMode } from "../components/LogModes";
 import { NumericField } from "../components/NumericField";
+import { Picks } from "../components/Picks";
 import { ApiError, api, useApi } from "../lib/api";
 import { releaseCamera } from "../lib/camera";
 import { deviceTimezone, localDay, mealSlotFor } from "../lib/day";
 import { fmtInt } from "../lib/format";
 import { FOOD_LIMITS, type NumericRule } from "../lib/numeric";
+import { type Pick, mergePicks } from "../lib/picks";
 
 /** The log flow: capture → editable confirm sheet → saved.
  *
@@ -74,10 +74,11 @@ function manualRead(why: string, photoKey: string | undefined, ms: number): Read
 
 const SLOTS: MealSlot[] = ["breakfast", "lunch", "dinner", "snack"];
 
-/** `/log#photo`, `/log#barcode` and `/log#text` name a mode so
- *  tools/shot-matrix.mjs can shoot each stage deterministically, the way the
+/** `/log#photo`, `/log#barcode`, `/log#text` and `/log#picks` name a stage so
+ *  tools/shot-matrix.mjs can shoot each one deterministically, the way the
  *  frozen sketch addresses its own stages. Unlike `#confirm` these inject no
- *  demo data, so they aren't DEV-gated.
+ *  demo data, so they aren't DEV-gated — `#picks` opens the panel over the
+ *  live viewfinder and the rows in it are the signed-in user's real ones.
  *
  *  The default is PHOTO — the sketch's flow is "+ → straight to the
  *  viewfinder", and `#confirm` keeps landing on TEXT so M2's existing shot of
@@ -152,6 +153,10 @@ export function Log() {
   const [still, setStill] = useState<string | null>(null);
   const [slot, setSlot] = useState<MealSlot>(() => mealSlotFor());
   const [editing, setEditing] = useState<number | null>(null);
+  // #82's panel. PHOTO and BARCODE have no room for the list inline — the
+  // viewfinder is the screen — so the deck button pulls it up over them.
+  // `/log#picks` is the shootable stage; it injects nothing, it just opens.
+  const [picksOpen, setPicksOpen] = useState(() => window.location.hash === "#picks");
   const openedAt = useRef(Date.now());
   const { data: favData, reload: reloadFavs } = useApi<FavoritesResponse>("/api/favorites");
   const { data: recentData } = useApi<RecentsResponse>("/api/food-logs/recent");
@@ -173,17 +178,28 @@ export function Log() {
   // would buy nothing and cost a prompt on the way back.
   useEffect(() => releaseCamera, []);
 
-  // favorites first (most-used), then recents that aren't already starred
-  const picks = useMemo(() => {
-    const favs = (favData?.favorites ?? []).map((f) => ({ meal: f as RecentMeal, favorite: f as Favorite | null }));
-    const starred = new Set(favs.map((p) => p.meal.name.toLowerCase()));
-    const recents = (recentData?.meals ?? [])
-      .filter((m) => !starred.has(m.name.toLowerCase()))
-      .map((meal) => ({ meal, favorite: null as Favorite | null }));
-    return [...favs, ...recents].slice(0, 8);
-  }, [favData, recentData]);
+  // favorites first (most-used), then recents that aren't already starred.
+  // The join itself lives in lib/picks.ts and is tested there — this screen
+  // renders it in two places now (#82) and neither may re-derive it.
+  const picks = useMemo(
+    () => mergePicks(favData?.favorites, recentData?.meals),
+    [favData, recentData],
+  );
 
-  async function toggleStar(pick: { meal: RecentMeal; favorite: Favorite | null }) {
+  /** Escape closes the panel, the way it closes any dialog. The confirm sheet
+   *  has no such key handler and doesn't grow one here: it is a *destructive*
+   *  dismiss (the read is thrown away, #16's photo included) and giving that
+   *  a keystroke is a separate decision from giving one to a list. */
+  useEffect(() => {
+    if (!picksOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setPicksOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [picksOpen]);
+
+  async function toggleStar(pick: Pick) {
     try {
       if (pick.favorite) await api.del(`/api/favorites/${pick.favorite.id}`);
       else await api.post("/api/favorites", pick.meal);
@@ -194,7 +210,7 @@ export function Log() {
   }
 
   /** #12's one tap: re-log at the slot the clock says it is right now. */
-  async function relog(pick: { meal: RecentMeal; favorite: Favorite | null }) {
+  async function relog(pick: Pick) {
     if (saving) return;
     setSaving(true);
     setError(null);
@@ -394,6 +410,9 @@ export function Log() {
     setRead(null);
     setStill(null);
     setError(null);
+    // #82: the panel is hidden rather than closed while a read is up, so
+    // without this the sheet's backdrop tap would reveal it again.
+    setPicksOpen(false);
   }
 
   function update(index: number, patch: Partial<AnalyzedItem>) {
@@ -520,37 +539,12 @@ export function Log() {
           </section>
 
           {picks.length > 0 && (
-            <section className="picks">
-              <div className="sec-head">
-                <span className="eyebrow">One tap</span>
-                <span className="mono">LOGS AS {mealSlotFor().toUpperCase()}</span>
-              </div>
-              {picks.map((pick) => (
-                <div className="pick" key={pick.favorite?.id ?? pick.meal.name}>
-                  <button
-                    className={pick.favorite ? "pick-star on" : "pick-star"}
-                    aria-pressed={pick.favorite !== null}
-                    aria-label={pick.favorite ? `Unstar ${pick.meal.name}` : `Star ${pick.meal.name}`}
-                    onClick={() => void toggleStar(pick)}
-                  >
-                    <svg width="16" height="16" viewBox="0 0 16 16" strokeWidth="1.4" strokeLinejoin="round">
-                      <path d="M8 1.8l1.9 3.9 4.3.6-3.1 3 .7 4.2L8 11.5l-3.8 2 .7-4.2-3.1-3 4.3-.6z" />
-                    </svg>
-                  </button>
-                  <button className="pick-main" disabled={saving} onClick={() => void relog(pick)}>
-                    <span className="pick-name">{pick.meal.name}</span>
-                    <span className="macros-mini">
-                      {Math.round(pick.meal.protein_g)}P · {Math.round(pick.meal.carbs_g)}C ·{" "}
-                      {Math.round(pick.meal.fat_g)}F
-                    </span>
-                  </button>
-                  <span className="pick-kcal">
-                    {fmtInt(pick.meal.kcal)}
-                    <small>kcal</small>
-                  </span>
-                </div>
-              ))}
-            </section>
+            <Picks
+              picks={picks}
+              saving={saving}
+              onStar={(pick) => void toggleStar(pick)}
+              onRelog={(pick) => void relog(pick)}
+            />
           )}
         </main>
       ) : (
@@ -565,7 +559,35 @@ export function Log() {
           onCapture={(photo) => void readPhoto(photo)}
           onRetake={retake}
           onScan={onScan}
+          picksCount={picks.length}
+          onPicks={() => setPicksOpen(true)}
         />
+      )}
+
+      {/* #82's panel: the same list, over the viewfinder. It is never rendered
+          while a read is open — a barcode can decode while the panel is up,
+          and two bottom sheets stacked is not a state worth designing — and
+          `dismiss` closes it too, so throwing a read away lands you back on
+          the camera rather than on a panel you had forgotten was open. The
+          stream keeps running behind it; nothing here touches the camera. */}
+      {picksOpen && !read && picks.length > 0 && (
+        <div
+          className="sheet-wrap"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setPicksOpen(false);
+          }}
+        >
+          <div className="sheet picks-sheet" role="dialog" aria-label="Favorites and recents">
+            <div className="grab" aria-hidden="true" />
+            <Picks
+              picks={picks}
+              saving={saving}
+              onStar={(pick) => void toggleStar(pick)}
+              onRelog={(pick) => void relog(pick)}
+              className="picks in-sheet"
+            />
+          </div>
+        </div>
       )}
 
       {read && (

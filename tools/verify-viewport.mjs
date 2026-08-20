@@ -64,6 +64,11 @@ if (!routes) {
         "/log",
         "/log#barcode",
         "/log#text",
+        // #82's panel. The picks list has always been checked here through
+        // /log#text, but the panel is the placement with the pressure on it —
+        // a bottom sheet over a live viewfinder, holding rows whose names are
+        // long enough to have needed an ellipsis since #92.
+        "/log#picks",
         "/log#confirm",
         // #95's stage. The portion row only renders for a barcode read, so
         // this is the only route that draws the three-column grid — and the

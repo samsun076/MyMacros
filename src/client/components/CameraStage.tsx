@@ -60,6 +60,8 @@ export function CameraStage({
   onCapture,
   onRetake,
   onScan,
+  picksCount,
+  onPicks,
 }: {
   mode: LogMode;
   onMode: (mode: LogMode) => void;
@@ -76,6 +78,14 @@ export function CameraStage({
   onRetake: () => void;
   /** A decoded barcode. Memoise it — it gates the scan loop's effect. */
   onScan: (code: string) => void;
+  /** How many favourites/recents are waiting behind the deck button (#82).
+   *  Zero renders no button at all, matching TEXT's `picks.length > 0` guard —
+   *  an empty state for a list nobody has filled yet is #24's job. */
+  picksCount: number;
+  /** Open Log's picks panel. Deliberately not a piece of camera state: the
+   *  panel is a DOM overlay over a stream that keeps running, and nothing
+   *  about it may reach the effects below (#94). */
+  onPicks: () => void;
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -351,6 +361,28 @@ export function CameraStage({
       <div className="cam-deck">
         <LogModes mode={mode} onMode={onMode} barcodeReady />
         <div className="shutter-row">
+          {/* #82: the fastest path in the app used to be reachable only from
+              TEXT, which is the one mode nobody lands on. `.shutter-row` is
+              `1fr auto 1fr` with the shutter pinned to column 2 and the
+              barcode glyph justified into column 3 — column 1 was empty, and
+              a star there is symmetric with that glyph rather than a new row
+              competing with the viewfinder for height. The count is the label:
+              a word wide enough to say "favorites" unbalances the deck. */}
+          {picksCount > 0 && (
+            <button
+              className="deck-picks"
+              aria-haspopup="dialog"
+              aria-label={`Favorites and recents (${picksCount})`}
+              onClick={onPicks}
+            >
+              <svg width="22" height="22" viewBox="0 0 16 16" strokeWidth="1.4" strokeLinejoin="round">
+                <path d="M8 1.8l1.9 3.9 4.3.6-3.1 3 .7 4.2L8 11.5l-3.8 2 .7-4.2-3.1-3 4.3-.6z" />
+              </svg>
+              <span className="mono" aria-hidden="true">
+                {picksCount}
+              </span>
+            </button>
+          )}
           {scan ? (
             // Scanning is continuous — there is nothing to press. The ring
             // keeps the deck's geometry so switching modes doesn't jump, but

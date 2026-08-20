@@ -126,7 +126,8 @@ node tools/shot-matrix.mjs --camera --settle 1200 --cookie <name>=<token> \
 npm run verify:viewport -- --camera --cookie <name>=<token>
 ```
 
-The log flow's modes are addressable: `/log#photo`, `/log#barcode`, `/log#text`. Unlike
+The log flow's modes are addressable: `/log#photo`, `/log#barcode`, `/log#text`, plus
+`/log#picks` (#82 — PHOTO with the favourites/recents panel pulled up). Unlike
 `#confirm` they inject no demo data, so they aren't DEV-gated. Trends adds `/trends#empty`
 and `/trends#sparse` (#22), both DEV-gated — they build a real `TrendsResponse` by running
 `buildTrends` over fabricated inputs, so a stage can't drift into a shape the route would
