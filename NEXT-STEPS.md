@@ -2089,49 +2089,123 @@ five of the seven fixed defects were found by a thumb, not by a check.
 
 ---
 
-## Session U — next up, planned 2026-08-20
+## Session U — the queue, reordered live, and four issues it produced — 2026-08-20
 
-Nothing was built on the 19th. Repo is clean at `f3ea63e`; everything through
-Session T is deployed and verified.
+Nothing was built on the 19th. The session opened clean at `f3ea63e`.
 
-### The queue, in order, and the reason for it
+**The plan was #82 → #98 → #58.** #82 went first as written. Then Dave said
+"lets hit 58", so #98 was skipped and #58 ran second — a deliberate reorder,
+not drift. What *was* drift is that this file went on saying "next up, planned"
+through both of them while three new issues were filed off-plan, and it took
+Dave asking "are we following the next steps guide or willy nilly" to notice.
+**The plan document is not a record of intent, it is the thing the next session
+reads.** Same defect PLAN.md had, one file over. #98 went back on plan the
+moment it was named.
 
-| # | What | Why it's first |
-|---|---|---|
-| **#82** | Favorites are built and invisible — reachable from one of three log modes | Finished work sitting unused. The table, route, star/unstar, `use_count` ordering and one-tap re-log all shipped with #12 and are live. Nothing needs inventing. |
-| **#98** | "Tap anything to change it" is false — the calorie figure and macro line aren't tappable | Small, and it came out of Dave's own use on the 17th. The constraint is that the open editor's fields live *inside* the row, so a naive whole-row handler closes it when you tap a field. |
-| **#58** | Scale the portion without hand-editing four macros | The feature answer to the pain behind #95/#96/#100. `setGrams` already rescales linearly from a pristine copy; only the barcode path reaches it. |
+## What shipped
 
-**All three touch `Log.tsx`**, so agents run sequentially, not in parallel.
+| | |
+|---|---|
+| **#82** `57f4c05` | Favorites were built and invisible — the picks list rendered only inside `mode === "text"`, and PHOTO is the default mode. One `<Picks>` component, two placements: TEXT keeps it inline, PHOTO and BARCODE get a star-and-count in `.shutter-row`'s empty first column that pulls the same list up as a sheet. `/log#picks` is the shootable stage. |
+| **#58** `f2e738d` | Per-item portion scaling. `portion: { qty, unit }` on `ITEM_SCHEMA` and `AnalyzedItem`, both prompts told to put the count there and keep `name` a plain label, and a `HOW MUCH` control inside the open row that rescales one item from its own pristine `base`. The barcode grams field is untouched. |
 
-**#82 and #58 are the same defect shape** — machinery built, reachable from one
-place — which is worth noticing as a class rather than fixing twice by accident.
+Both were UAT'd on device the same day and both passed — #82 on 10 checks
+after two findings, #58 on 10 of 10.
 
-### Still owed by Dave, none of it blocking
+## The design call on #82, and why it was worth asking
 
-- **Type 160 into goal weight.** The one confirmation outstanding from
-  `7102387`. The fix is worker-side only, so the client bundle is byte-identical
-  and the usual rollout check structurally cannot see it.
-- **#101** — how this project tests sequences, and how much engine fidelity it
-  buys. Researched and written up with an argument against its own
-  recommendation. Deliberately unmade.
-- **The UAT process** — checklist in the issue, `refs` instead of `closes`, only
-  Dave's comment closes it. #97 closed itself on merge two days before he tested
-  it, which is the concrete version of the problem.
-- **#91** — the trash panel. Carries the clipping finding and the agreed
-  direction (slide the panel over the row rather than pushing the row left).
-  Wants mockups.
+The issue deliberately left the layout open. Three shapes were costed and put
+to Dave with drawings: a pull-up panel, a horizontal chip strip in the deck, an
+inline list under the finder. **The chip strip loses because a chip has no room
+for the star, the macro line or the kcal block** — it becomes a second, reduced
+rendering of the same list, which is the register's own defect. **The inline
+list loses on arithmetic**: four rows is ~184px and `.finder`'s 380px floor does
+not survive that on a 667pt screen. The panel costs one extra tap from the
+camera and costs the viewfinder nothing.
 
-### How these sessions have been running
+## Four issues came out of a person using it
 
-Orchestrated: one agent per issue, sequential where files collide. Agents
-implement and prove; **the main session writes every commit and never lets an
-agent touch git.** Agents return verification output verbatim, not summarised —
-this project's entire failure history is checks passing while the thing was
-wrong. The orchestrator reads every diff and opens three or four PNGs where
-structure could break, not twenty and not zero.
+| | |
+|---|---|
+| **#102** | The picks panel wears `.grab` — the iOS handle idiom — and doesn't honour it. Dave's split is the spec: **the notch drags, the body scrolls**. The addition is that `.grab` is 36 × 4 px, so the handle needs a ~44px hit band, and the body drags too while the list is at `scrollTop === 0`. Scoped to this panel: the confirm sheet's dismiss throws away the read *and* #16's stored photo, and a cheap gesture for an expensive action needs its own decision. |
+| **#103** | A barcode read confirms cleanly and there is nothing on the sheet that says *keep this one*. What gets starred is already answered in the codebase — `foldMeals` joins item names with `", "`, which is where the picks list's recents get their names. |
+| **#104** | Persist the portion. **Queued directly behind #58 and this is not a preference.** |
+| **#98** | Not new — carried from Session T, and the one the plan named second. |
 
-Environment, if starting cold: kill any orphan dev server on 5173, `npm run
-db:migrate`, `node tools/seed-demo.mjs --weeks 12`, and mint a session cookie
-from the DEV-only email/password route (the `Origin` header is required and must
-match `APP_URL`, or better-auth answers 403).
+## #104 is 0006's argument, one field over
+
+`portion` exists in the confirm sheet's memory for the seconds between the
+analyze response and the save, and then it is **gone** — not degraded, gone,
+with nothing in the saved row to reconstruct it from. `"Pizza"` at 780 kcal
+does not tell you it was four slices. Migration 0006 already wrote this down
+about `ai_kcal`: *"the cost of waiting is measured in rows, not in effort."*
+
+The work is small, which is the other half of the argument: **`food_logs` is
+one row per item**, not per meal — `foldMeals` groups at read time — so it is
+an `ALTER TABLE` in 0006's own shape, not a schema change.
+
+The issue also carries a hole worth reading before starting: after #58 a
+portion change is deliberately **not** an edit (`orig` moves, `isEdited` stays
+false), so nothing on the row records that the model said two and the user said
+four. `ai_kcal` exists for exactly that question about macros, and portion is
+the estimate most likely to be wrong. `ai_portion_qty` is recommended there.
+
+## Three things this session learned about its own tests
+
+- **The tests an issue asks for by name can be decorative against the exact
+  defect they name.** #58's `2 → 4 → 2` and `2 → 3 → 7 → 2` round trips both
+  stayed green against a compounding implementation, because every step in
+  those walks is a whole or half multiple of the demo row's figures. Found by
+  running the mutation, not by reading. `2 → 0.5 → 2` separates them.
+- **The same trap lives in browser drives.** #58's first drive walked only the
+  one demo row whose numbers divide cleanly and passed under a real bug with 15
+  green and 0 red. Walking the row that actually drifts — chosen by computing
+  which one does — turns it red.
+- **The never-ran count is now routine and it is not small.** 11 assertions
+  across #58's six mutation runs reported nothing, sitting behind an earlier
+  failure in the same test. Two mattered: the only coverage of
+  `round1(0.04) === 0` (a divide-by-zero in the rescale) and the only
+  non-string `unit` case. #82's agent hit the same thing in its own test file
+  and restructured to one assertion per test, after which the never-ran count
+  was 0 across all five mutations. **That restructuring is the practice worth
+  copying.**
+
+## Standing facts recorded this session
+
+- **Dave's UAT device is an iPhone 13 mini on iOS 26.6.** Assume it; do not ask
+  every round. Still ask Safari vs installed — he switches, and #94 turned
+  entirely on that. Convenient: the 13 mini is 375pt, the reference width, so
+  his screen and the first shot-matrix PNG are the same geometry.
+- **`env(safe-area-inset-*)` is 0 in headless Chrome**, so nothing in this repo
+  can check the bottom edge of a sheet in standalone. #82's panel was settled by
+  an uncropped device screenshot and no other way.
+- **`3 CUP` ships and is knowingly accepted.** Scaling `1 CUP` to three prints
+  `3 CUP`; four slices down to one prints `1 SLICES`. Dave's call, dated on #58.
+  A correct pluraliser needs an English table that leaves `g` and `oz` alone and
+  does not produce `slicess`. Pinned by a test that says it is deliberate.
+
+## Where it stands
+
+Live at **`f2e738d`** with #82 and #58 both closed and UAT'd. 476 tests.
+#98 was started next, back on the plan's own order.
+
+## The queue after #98
+
+1. **#104** — persist the portion. The clock is the reason.
+2. **#103** — star from the confirm sheet. Same file family as #98, so after it.
+3. **#102** — the panel's swipe-to-dismiss. Spec is settled in the issue.
+
+Still owed by Dave and none of it blocking: **#101** (how this project tests
+sequences — researched, written up with an argument against its own
+recommendation, deliberately unmade), the **UAT process** (checklist in the
+issue, `refs` instead of `closes`, only Dave's comment closes it), and **#91**
+(the trash panel — wants mockups).
+
+## Not covered by anyone
+
+- **#58's photo path end to end.** `PHOTO_SYSTEM` changed and no real plate has
+  been through `/api/analyze/photo` since. The text path proves the same
+  instruction lands and the schema is shared (#14) — an argument, not a check.
+- **Light packs.** Rule 4's theme QA is owed at M7 close; everything this
+  session added uses semantic tokens only, which is a reason to expect it ports
+  and not a render check.
