@@ -1735,24 +1735,62 @@ section {
   font-variant-numeric: tabular-nums;
 }
 
+/* One column now, not two (#98): the row's two halves both live inside
+   `.item-hit`, so the only things this grid places are the button and — when
+   the row is open — the editor under it. The 4px row gap between them is
+   unchanged, and so is everything the row measures at 375. */
 .item {
   display: grid;
-  grid-template-columns: 1fr auto;
-  gap: 4px 12px;
+  row-gap: 4px;
   padding: 12px 0;
   border-bottom: 1px solid var(--line-soft);
 }
 
+/* The whole collapsed row is the target. The two-column split that used to be
+   `.item`'s is the button's own now, which is what puts the kcal figure and
+   the macro line inside the thing that opens the editor.
+
+   **The negative margins are load-bearing, not slack.** They let the button's
+   box bleed out through `.item`'s 12px padding, so the row's breathing room is
+   part of the target — 62px tall against the 44px minimum, where the text
+   alone is 38. The margin box stays the height of the text, so the grid row
+   the button occupies does not grow and the open row's editor sits exactly
+   where it always did: #58's 375px budget (totals row and save button on
+   screen with a row open) is untouched. Padding on `.item-hit` *instead of*
+   `.item` would have pushed the editor 12px down every time a row opened. */
 .item-hit {
-  grid-row: span 2;
-  display: block;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  column-gap: 12px;
+  /* Both cells centre on the row. Not tidiness — `align-items` is *restoring*
+     a pixel: a `<button>` vertically centres its own content, so the name and
+     its label used to sit 3.5px below the top of a 38px button. Laid out as a
+     grid cell they would top-align instead, and the pair would ride 3.5px
+     higher against a kcal figure that had not moved. Measured before and
+     after, and this is what makes the two screenshots differ by nothing but
+     the clock. */
+  align-items: center;
+  margin: -12px 0;
+  padding: 12px 0;
   background: none;
   border: none;
-  padding: 0;
   text-align: left;
   cursor: pointer;
   font: inherit;
   color: inherit;
+}
+
+/* …and the downward bleed stops the moment the editor is on screen. Measured,
+   not assumed: with the bleed on, the button's box ran 2px into `.item-edit`,
+   and a tap 2px inside the editor *closed the row* — Chrome's touch adjustment
+   snaps a tap to the nearest clickable target, and the editor's padding isn't
+   one. iOS does the same fuzzy targeting, so this would have been a thumb
+   hitting the wrong thing on the very screen #98 is about. Without the bottom
+   padding the button ends at the text, 10px clear of the editor; its margin
+   box is 38px either way, so nothing moves. */
+.item-hit[aria-expanded="true"] {
+  margin-bottom: 0;
+  padding-bottom: 0;
 }
 
 .item .name {
@@ -1772,9 +1810,11 @@ section {
   margin-top: 3px;
 }
 
+/* The right-hand cell of `.item-hit` (#98) — one row, not two, because the
+   name and its label are one cell now. Its `align-self: center` is gone with
+   the second row: `.item-hit` centres both cells, and a cell restating what
+   its container already says is the thing that drifts. */
 .item .kcal {
-  grid-row: span 2;
-  align-self: center;
   text-align: right;
   font-family: var(--numeral-font);
   font-size: 20px;

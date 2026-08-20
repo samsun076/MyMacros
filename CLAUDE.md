@@ -101,6 +101,13 @@ include `src/`, so `npm run check` type-checks tests with no extra project.
   Mutation testing is the formal name for this and Stryker would mechanise it;
   considered and not adopted, since the cost is a permanent slow gate to
   replace a habit that is already working.
+  **And confirm the mutation actually landed before believing a green run.**
+  #98's second mutation came back 33/33 green because the edit was never
+  applied — the anchor its script searched for had moved, the `assert` fired,
+  and nothing checked the exit code. A green mutation run and a mutation that
+  did not happen are the same output, which makes this the one failure in the
+  family that reads as *good* news. Diff the source, or have the mutation
+  script fail loudly, before recording "the test held".
 - **A literal carried through a rewrite is a decision, not an inheritance.**
   #95 lifted five numeric fields onto one component and kept the portion
   field's `1…5000` verbatim so that the fix stayed a fix — defensible, and the

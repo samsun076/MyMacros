@@ -745,34 +745,58 @@ function ItemRow({
 
   return (
     <div className={low || editing ? "item check" : "item"}>
+      {/* **The numbers are inside the button** (#98). They used to be a
+          *sibling* of it, so the calorie figure and the macro line — the one
+          region a person reaches for when they want to change a number — did
+          nothing at all, while the sheet's own copy two lines above said "tap
+          anything to change it".
+
+          Structure rather than a handler on `.item`, because the constraint
+          here is that `.item-edit` lives in the same container: a container
+          click handler has to *guard* against every tap inside the open
+          editor, and that guard is a rule someone can get wrong later. Moving
+          the numbers in instead leaves the editor a **sibling of the button,
+          never a descendant**, so a tap on a field cannot reach this onClick
+          in the first place — there is nothing to guard. Same reason
+          `.item-hit` is still one real `<button>` with `aria-expanded`: the
+          pointer target grew, the control did not change.
+
+          `.item-text` exists so the button's grid is two cells and not four:
+          the name and the label under it are one block in the left cell, the
+          way they were when the button was the left cell. Without it the kcal
+          figure spans two rows and grid hands its spare height to both of
+          them, which moves the label. */}
       <button className="item-hit" onClick={onToggle} aria-expanded={editing}>
-        <span className="name">
-          {item.name || (manual ? "Untitled" : "")}
-          {low && <span className="badge">CHECK</span>}
+        <span className="item-text">
+          <span className="name">
+            {item.name || (manual ? "Untitled" : "")}
+            {low && <span className="badge">CHECK</span>}
+          </span>
+          {/* The portion leads and the confidence signal follows it (#58).
+              Both, not one: the amount is what people check first, and
+              dropping "BEST GUESS — TAP TO ADJUST" to make room would remove
+              the only thing on the collapsed row that says a number is
+              uncertain. The pair is what gets measured at 375 — the sheet's
+              totals row and save button must stay on screen with a row
+              open. */}
+          <span className="portion">
+            {portion && <span className="qty">{portion}</span>}
+            {manual
+              ? "TYPE WHAT YOU ATE"
+              : exact
+                ? "FROM THE BARCODE"
+                : low
+                  ? "BEST GUESS — TAP TO ADJUST"
+                  : `CONFIDENCE ${Math.round((item.confidence ?? 0) * 100)}%`}
+          </span>
         </span>
-        {/* The portion leads and the confidence signal follows it (#58). Both,
-            not one: the amount is what people check first, and dropping
-            "BEST GUESS — TAP TO ADJUST" to make room would remove the only
-            thing on the collapsed row that says a number is uncertain. The
-            pair is what gets measured at 375 — the sheet's totals row and save
-            button must stay on screen with a row open. */}
-        <span className="portion">
-          {portion && <span className="qty">{portion}</span>}
-          {manual
-            ? "TYPE WHAT YOU ATE"
-            : exact
-              ? "FROM THE BARCODE"
-              : low
-                ? "BEST GUESS — TAP TO ADJUST"
-                : `CONFIDENCE ${Math.round((item.confidence ?? 0) * 100)}%`}
+        <span className="kcal">
+          {fmtInt(item.calories)}
+          <small>
+            {Math.round(item.protein_g)}P · {Math.round(item.carbs_g)}C · {Math.round(item.fat_g)}F
+          </small>
         </span>
       </button>
-      <span className="kcal">
-        {fmtInt(item.calories)}
-        <small>
-          {Math.round(item.protein_g)}P · {Math.round(item.carbs_g)}C · {Math.round(item.fat_g)}F
-        </small>
-      </span>
 
       {editing && (
         <div className="item-edit">
