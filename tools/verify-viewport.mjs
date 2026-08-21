@@ -76,9 +76,12 @@ if (!routes) {
         "/log#portion",
         "/#saved",
         // #52's revealed row. The only state in the app deliberately parked
-        // past the right edge — the panel sits outside `.swipe` and is clipped
-        // by its overflow — so it is the one screen where the clipping probe
-        // is checking a real risk rather than a hypothetical one.
+        // past the right edge — the delete control sits outside `.swipe` and
+        // is clipped by its overflow — so it is the one screen where the
+        // clipping probe is checking a real risk rather than a hypothetical
+        // one. Still true after #91 shrank the control to 32px: closed, it is
+        // one own-width past the row's right edge, which at 375 is 10px past
+        // the viewport.
         "/#swiped",
         "/trends",
         // #22's staged empty states. They aren't cosmetic variants — each
@@ -116,10 +119,10 @@ const PROBE = `(() => {
   };
   /* An element parked past the edge INSIDE a clipping ancestor is not an
      overflow — it cannot be seen, scrolled to, or tapped. #52's swipe panel
-     lives exactly there: the row and the panel ride one track, and the panel
-     sits just beyond the right edge until the track slides it in, held back by
-     an overflow-hidden .swipe. Six screens failed this check the day that
-     landed, all of them correct.
+     lives exactly there: it is parked one own-width beyond the row's right
+     edge and slides in over the row when the gesture opens it (#91 — the row
+     itself no longer moves), held back by an overflow-hidden .swipe. Six
+     screens failed this check the day that landed, all of them correct.
      (No backticks in this comment — it lives inside a template literal.)
 
      The clip has to actually contain the element, so the ancestor's own right

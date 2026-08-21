@@ -18,6 +18,10 @@ import { useCallback, useEffect, useRef, useState } from "react";
  *  Right-swipes are ignored on purpose. There is nothing revealed on that side,
  *  and rubber-banding a row toward an empty gutter suggests there is.
  *
+ *  **The row does not move; the panel slides in over its right edge** (#91).
+ *  What this hook produces is therefore a *distance the finger has travelled*,
+ *  not a distance the row has moved — see `REVEAL_PX` and `revealProgress`.
+ *
  *  **Whether a row is open is NOT stored here.** "One row open at a time" is a
  *  statement about the list, and a row cannot enforce it from inside itself —
  *  so `open` arrives as a prop and every change is reported back through
@@ -32,12 +36,40 @@ import { useCallback, useEffect, useRef, useState } from "react";
  *  reads as sluggish on a 375px screen where a row is only ~110px tall. */
 const INTENT_PX = 8;
 
-/** How far the row travels, and therefore how wide the revealed panel is. */
+/** **How far the finger travels, and nothing else** (#91).
+ *
+ *  It used to be three quantities wearing one name: the travel, the width of
+ *  the revealed panel, and the width of the hit area. That is #86's defect in
+ *  miniature and it had already half-rotted — the hit area read this constant
+ *  while `app.css` read a `88px` literal, so moving either one would have slid
+ *  the tappable strip off the visible one with nothing to fail. The panel and
+ *  the hit area are now sized entirely in CSS (`--swipe-panel-w`,
+ *  `--swipe-hit-w` on `.swipe`), where the shape of the control belongs, and
+ *  **no CSS length restates this number** — `tools/swipe-panel.test.mjs` fails
+ *  if one appears.
+ *
+ *  It stays 88 even though the control it reveals is 32px wide. Travel is
+ *  gesture feel: `COMMIT_PX` is 0.4 of it, and shortening the travel to the
+ *  capsule's width would put the commit threshold at 12.8px against an intent
+ *  threshold of 8 — two decisions inside five pixels of each other, which only
+ *  a thumb could tell you is wrong, and by then it ships. */
 export const REVEAL_PX = 88;
 
 /** Past this, letting go opens rather than snapping back. Deliberately less
  *  than half: the gesture is a flick, not a drag to a target. */
 const COMMIT_PX = REVEAL_PX * 0.4;
+
+/** How far *in* the panel is, 0 (off-stage) … 1 (at rest), for a given offset.
+ *
+ *  **The one place the travel and the panel's entry are tied together.** The
+ *  panel is positioned and sized in CSS and slides by a percentage of its own
+ *  width, so this is the whole of what JavaScript knows about it: at the end
+ *  of the gesture the control is exactly home, whatever either number is. Move
+ *  `REVEAL_PX` and the entry follows; write the division against a literal 88
+ *  instead and `swipe.test.ts` goes red. */
+export function revealProgress(offset: number): number {
+  return Math.min(1, Math.max(0, -offset / REVEAL_PX));
+}
 
 /** Marks the controls that delete the row this hook is attached to, so the
  *  outside-tap listener below can tell "cancel" from "yes, that one".
@@ -48,12 +80,14 @@ const COMMIT_PX = REVEAL_PX * 0.4;
 export const DELETE_CONTROL_ATTR = "data-swipe-delete";
 
 export type SwipeState = {
-  /** Current x offset, 0…-REVEAL_PX. Drives the transform. */
-  offset: number;
+  /** How far in the panel is, 0…1. What the component actually renders — the
+   *  raw offset is not exposed, because a consumer that divided it by a travel
+   *  distance of its own would be the second statement all over again. */
+  progress: number;
   /** Settled open. The panel is only interactive here. */
   open: boolean;
   /** True while a finger is down and horizontal has won — used to drop the
-   *  transition so the row tracks the finger instead of easing after it. */
+   *  transition so the panel tracks the finger instead of easing after it. */
   dragging: boolean;
 };
 
@@ -125,7 +159,7 @@ export function useSwipeToReveal(open: boolean, onOpenChange: (open: boolean) =>
   );
 
   const state: SwipeState = {
-    offset: drag ?? (open ? -REVEAL_PX : 0),
+    progress: revealProgress(drag ?? (open ? -REVEAL_PX : 0)),
     open,
     dragging: drag !== null,
   };
@@ -217,7 +251,7 @@ export function tapWhileOpen(tap: { onDeleteControl: boolean }): { close: boolea
  *  they opened; the gesture already stands down when vertical wins, so a
  *  scroll started on a row means "I'm not swiping", which is not the same as
  *  "I've changed my mind"; and an open row costs nothing but a glance, since
- *  the only thing it can do needs a deliberate tap on an 88px strip.
+ *  the only thing it can do needs a deliberate tap on the revealed control.
  */
 export function useCloseOnOutsideTap(
   open: boolean,

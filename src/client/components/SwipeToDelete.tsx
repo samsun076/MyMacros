@@ -1,5 +1,5 @@
 import { useRef, type ReactNode } from "react";
-import { DELETE_CONTROL_ATTR, REVEAL_PX, useCloseOnOutsideTap, useSwipeToReveal } from "../lib/swipe";
+import { DELETE_CONTROL_ATTR, useCloseOnOutsideTap, useSwipeToReveal } from "../lib/swipe";
 
 /** A timeline row you can swipe left to reveal delete (#52).
  *
@@ -18,8 +18,8 @@ import { DELETE_CONTROL_ATTR, REVEAL_PX, useCloseOnOutsideTap, useSwipeToReveal 
  *  **The keyboard and screen-reader path is a real button, not a fallback.**
  *  It is visually hidden and reachable by tab, and it does the same thing the
  *  gesture does — because a gesture is not an interface on its own, and the
- *  panel behind the row cannot be reached by a pointer that has no way to
- *  drag. Its label names the meal, since "Delete" repeated down a list of
+ *  control the gesture reveals cannot be reached by a pointer that has no
+ *  way to drag. Its label names the meal, since "Delete" repeated down a list of
  *  three tells a screen-reader user nothing about which one. It carries
  *  `DELETE_CONTROL_ATTR` for the same reason the revealed strip does: the
  *  outside-tap rule must not close the row out from under the delete that is
@@ -47,44 +47,56 @@ export function SwipeToDelete({
 
   return (
     <div className="swipe" ref={row} data-open={open || undefined}>
-      {/* Row and panel travel together on one track, with the panel parked
-          just past the right edge and clipped by `.swipe`'s overflow.
+      {/* **The row does not move** (#91). It used to: row and panel rode one
+          flex track that translated left, which slid the row's own first five
+          or six characters out under the clip edge — the name of the meal you
+          were about to destroy, unreadable at exactly the moment you needed
+          it. Now the body is static and the panel slides in over its right
+          edge, so the name never moves and never has to move back.
 
-          The first cut laid the panel *behind* the row and gave the row an
-          opaque background to hide it. That put a card behind every timeline
-          entry, which the list had never had; removing the background then
-          showed the trash can on all three rows at once. Neither is a paint
-          problem — the panel simply should not be under the row in the first
-          place. Off-stage and sliding in needs no background and no z-index. */}
-      <div
-        className="swipe-track"
-        style={{
-          transform: `translate3d(${swipe.state.offset}px,0,0)`,
-          // No easing while a finger is down, or the row lags behind it.
-          transition: swipe.state.dragging ? "none" : undefined,
-        }}
-        {...swipe.handlers}
-      >
-        <div className="swipe-body">{children}</div>
-        {/* `aria-hidden` because the visually-hidden button below is this
-            action's accessible form — exposing both would put two "delete this
-            meal" controls in the tree for one action. */}
-        <div className="swipe-panel" aria-hidden="true">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" strokeWidth="1.8" strokeLinecap="round">
-            <path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3" />
-          </svg>
-        </div>
+          Two earlier shapes were both wrong and both looked plausible: a panel
+          laid *behind* the row needed an opaque row (a card appeared behind
+          every timeline entry), and removing that background showed the trash
+          can on all three rows at once. Off-stage and sliding in over the top
+          needs neither a background nor a z-index — an absolutely positioned
+          sibling already paints above static content. */}
+      <div className="swipe-body" {...swipe.handlers}>
+        {children}
       </div>
 
-      {/* Tapping the revealed panel is what actually deletes. It sits above the
-          panel rather than inside it so the hit area is the whole revealed
-          strip, and it only exists while open — an invisible button under a
-          closed row is a mis-tap waiting to happen. */}
+      {/* `aria-hidden` because the visually-hidden button below is this
+          action's accessible form — exposing both would put two "delete this
+          meal" controls in the tree for one action.
+
+          A percentage of its OWN width, so the component never learns how wide
+          the capsule is: 100% is fully off-stage past `.swipe`'s clip edge, 0
+          is home. The only number crossing this boundary is how far in the
+          gesture is. */}
+      <div
+        className="swipe-panel"
+        aria-hidden="true"
+        style={{
+          transform: `translate3d(${(1 - swipe.state.progress) * 100}%,0,0)`,
+          // No easing while a finger is down, or the panel lags behind it.
+          transition: swipe.state.dragging ? "none" : undefined,
+        }}
+      >
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" strokeWidth="1.8" strokeLinecap="round">
+          <path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3" />
+        </svg>
+      </div>
+
+      {/* Tapping the revealed control is what actually deletes. It sits above
+          the panel rather than inside it, and is **deliberately larger than
+          the thing it deletes**: the capsule is 32px wide, which is well under
+          44pt, so the hit area covers it plus the gutter the row hands back.
+          It only exists while open — an invisible button under a closed row is
+          a mis-tap waiting to happen. Its size is `.swipe-hit`'s, in CSS, next
+          to the capsule's own, so the two cannot drift apart. */}
       {open && (
         <button
           type="button"
           className="swipe-hit"
-          style={{ width: REVEAL_PX }}
           aria-label={`Delete ${label}`}
           onClick={onDelete}
           {...{ [DELETE_CONTROL_ATTR]: "" }}

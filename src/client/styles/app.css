@@ -2338,57 +2338,131 @@ section {
   gap: 8px;
 }
 
-/* ── swipe a timeline entry to reveal delete (#52) ──
-   The gesture is in the shared layer; only the panel's surface is theme
-   material, and it is drawn from `--danger`/`--on-danger` (build rule 9 —
+/* ── swipe a timeline entry to reveal delete (#52, reshaped by #91) ──
+   The gesture is in the shared layer; only the panel's surface and shape are
+   theme material, and its colour is `--danger`/`--on-danger` (build rule 9 —
    never `--accent`, which rule 8 spends on the focus macro and which Night
    Athletic switches live, so a delete affordance built on it would change
-   colour when you pick gold). */
+   colour when you pick gold). Colour cannot carry this on its own in any case:
+   TOKENS.md records that under deuteranopia `--danger` separates from none of
+   the three accents, so the trash glyph is doing real work and the control is
+   never a bare swatch.
+
+   **The three numbers below were one number until #91.** `REVEAL_PX` in
+   `lib/swipe.ts` was the finger's travel, the panel's width and the hit area's
+   width at once, and the panel's copy of it was a `88px` literal here kept in
+   step by hand. Only the travel is gesture feel and it stays 88, in that file,
+   once; the other two are the shape of a control and live here, once each.
+   `tools/swipe-panel.test.mjs` fails if any length here restates the travel.
+
+   Declared on `.swipe` itself, in the manner of `--desc-lines` above — so a
+   pack that wants a different control overrides
+   `:root[data-theme="…"] .swipe`, NOT a `:root` token, which is the first
+   thing anyone will try and which an own-rule declaration silently beats. */
 .swipe {
+  /* 32 × 56. **Fixed, and the fixed height is the whole of #91.** The panel
+     used to be a flex child of the row's track, so it stretched to the row —
+     57.55px on a one-line meal, 75.09px on a clamped barcode name, 110.19px on
+     the same name unclamped. Three of those stacked read as an error state
+     rather than as an affordance, which is how the issue was reported.
+
+     Width derived rather than picked: the kcal column is 28.5px at three
+     digits and the row's grid gap is 13px, so 41.5px is the whole budget
+     before the control starts covering the meal's name. 32 covers the figure
+     with 3.5px to spare and hands the other 9.5px back to the row as a gutter
+     — the gap belongs to the row, not to the panel, which is complaint 2 in
+     the issue. */
+  --swipe-panel-w: 32px;
+  --swipe-panel-h: 56px;
+  /* The target, which is deliberately NOT the capsule. 32 + 9.5px of gutter is
+     41.5 — under 44pt however you round it — so the hit area is wider than the
+     thing it deletes and swallows the gutter, which is dead space while a row
+     is open anyway. Vertically it is exactly the capsule (`--swipe-panel-h`,
+     56 ≥ 44): a target that overhung a 110px row by 27px above and below the
+     only visible control would be the mis-tap this file's own comments keep
+     warning about. */
+  --swipe-hit-w: 56px;
   position: relative;
   overflow: hidden;
   border-radius: var(--radius-thumb);
 }
 
-/* One track carrying the row and, parked just past the right edge, the panel.
-   `.swipe`'s overflow clips it until the track moves — so nothing sits behind
-   the row, the row needs no background of its own, and a closed row looks
-   exactly as it did before this feature existed. Two earlier shapes were both
-   wrong and both looked plausible: a panel behind the row needed an opaque row
-   (a card appeared behind every entry), and removing that background showed the
-   trash can on all three rows at once. */
-.swipe-track {
-  display: flex;
-  transition: transform 0.18s cubic-bezier(0.2, 0.7, 0.2, 1);
+/* The row's own content, and it does not move (#91). Everything that travels
+   is absolutely positioned over the top of it. */
+.swipe-body {
   /* Vertical panning stays the browser's; horizontal is ours. Without this,
-     iOS starts a scroll on the first horizontal pixel and the row never moves. */
+     iOS starts a scroll on the first horizontal pixel and nothing reveals. */
   touch-action: pan-y;
 }
 
-.swipe-body {
-  flex: 0 0 100%;
-}
+/* The capsule. Parked one own-width past the right edge and clipped by
+   `.swipe`'s overflow until the gesture brings it in, so nothing sits behind
+   the row, the row needs no background of its own, and a closed row looks
+   exactly as it did before this feature existed.
 
+   `top`/`bottom`/`height` with auto block margins is the centring: with all
+   three set and the margins auto, CSS splits the leftover equally. Delete the
+   height and it stretches to the row again — which is the regression this
+   whole issue is about, and `tools/swipe-panel.test.mjs` is watching that one
+   line. */
 .swipe-panel {
-  flex: 0 0 88px;
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: 0;
+  margin-block: auto;
+  width: var(--swipe-panel-w);
+  height: var(--swipe-panel-h);
   display: flex;
   align-items: center;
   justify-content: center;
   background: var(--danger);
   color: var(--on-danger);
   border-radius: var(--radius-thumb);
+  transition: transform 0.18s cubic-bezier(0.2, 0.7, 0.2, 1);
 }
 
 .swipe-panel svg {
   stroke: currentColor;
 }
 
-/* The revealed strip is the hit area, not the small glyph inside it. */
+/* **The kcal figure steps aside rather than being covered** (#91).
+
+   The decision that produced this control says the kcal figure is the right
+   thing to lose — it is the one number already restated in the day total
+   above, where the meal's name is what identifies what you are about to
+   destroy. But "lose" and "cover" are not the same claim, and the mockup's
+   32px was measured against a three-digit figure. A four-digit one is 41.98px
+   wide (measured, at 375, on a real 1,011 kcal dinner), so a capsule flush to
+   the right edge leaves the leading digit standing beside it — a lone "1" next
+   to a red pill, which reads as a rendering fault rather than as a covered
+   number. Sizing the control to the widest figure it might ever have to cover
+   is how you get a slab back.
+
+   Opacity rather than `visibility`, so the figure keeps its box (no reflow
+   under the panel) and stays in the accessibility tree. It fades on the same
+   curve the capsule arrives on, and only once the row has settled open — a
+   half-swiped row still shows the number, partly covered, which is what a
+   swipe looks like. */
+.swipe[data-open] .kcal {
+  opacity: 0;
+}
+
+.swipe .kcal {
+  transition: opacity 0.18s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+
+/* Larger than the capsule and aligned to it, never drifting from it: both are
+   flush right and both take their height from the same custom property, so
+   there is no second statement to keep in step. */
 .swipe-hit {
   position: absolute;
   top: 0;
-  right: 0;
   bottom: 0;
+  right: 0;
+  margin-block: auto;
+  width: var(--swipe-hit-w);
+  height: var(--swipe-panel-h);
   background: none;
   border: 0;
   padding: 0;
