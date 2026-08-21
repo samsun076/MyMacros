@@ -498,6 +498,34 @@ storable and the same code became a data-loss bug overnight, with no edit to it.
 which is the argument for enumerating readers and writers when a migration lands
 (#104's own lesson) and for re-reading the ones you didn't change.
 
+**A bound that has never been reached has never been tested, and its stated reason
+may simply be false.** Three of these turned up in the picks list in one day
+(2026-08-21) and they are one shape wearing three costumes:
+
+- **#82's `max-height: 80dvh` never applied at all.** `.picks-sheet` sat above `.sheet`
+  at equal specificity and lost the cascade. The declaration was present, spelled
+  correctly, beside a comment explaining why the number mattered — in a rule that never
+  won. **A declaration test cannot see this**; only a rendered measurement can.
+- **`PICKS_MAX = 8` read as a layout decision and was a data cliff.** Ten favourites in
+  production, two rendered nowhere, unreachable *and* unremovable, and the recents half
+  silently gone. It looked like "as many as the screen is worth" and was "discard the
+  user's instructions past the eighth".
+- **TEXT's constraint did not exist.** The cap was justified as filling the inline list
+  "without pushing the text box off the top". The list is a block *after* the textarea in
+  ordinary flow. Measured: the box sits 146px down with 3 rows below it and 146px with
+  21. The justification for the number, in the placement supposed to need it most, was
+  never true.
+
+The tell they share is that **nothing had ever reached the limit**, so nothing had ever
+exercised it — and the comment beside it went on sounding authoritative because comments
+are not executed. So: when a bound's justification matters, **check whether it has ever
+bound anything**, and prefer a rendered measurement over reading the source. A limit
+doing invisible work and a limit doing its job look identical from the file.
+
+**The corollary that actually bites:** removing one of these does not create the bug it
+reveals. #115 did not break the header in #116, it removed the cap that had been hiding
+it for months. Expect the fix for an invisible limit to surface the next thing down.
+
 **The trap that keeps producing these: a literal that restates a column default.** Every
 `?? <literal>` in Onboarding's form seeding is a second statement of a `DEFAULT` in
 `migrations/`, correct only while someone keeps them in step by hand. One had already
