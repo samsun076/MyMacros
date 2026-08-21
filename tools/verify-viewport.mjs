@@ -81,6 +81,13 @@ if (!routes) {
         // only sheet whose rows carry mixed provenance, so each one draws its
         // own label under the name.
         "/log#basket",
+        // #59's correction, open with a note typed into it. The one state in
+        // the app where a textarea and two buttons sit *inside* the item list
+        // rather than in a footer, so it is the sheet at its tallest with a
+        // field in the middle of it — and `.correct-acts` is a second `auto 1fr`
+        // row whose primary label ("Reading it again…") is longer than the
+        // control it shares the row with.
+        "/log#correct",
         "/#saved",
         // #52's revealed row. The only state in the app deliberately parked
         // past the right edge — the delete control sits outside `.swipe` and

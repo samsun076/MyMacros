@@ -2327,6 +2327,145 @@ section {
   font-variant-numeric: tabular-nums;
 }
 
+/* Telling the reader it got the food wrong (#59) — under the last row of the
+   photo capture it belongs to, inside the item list rather than in the footer.
+   The footer holds decisions about the whole basket; this one is about one
+   capture's reading, and putting it there would read as a claim about the
+   sheet. Sits in the gap `.item`'s bottom border already leaves, the same slot
+   #60's "add a row" uses on the other sheet. */
+.correct {
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* The note that produced the rows above, echoed back. A re-read that changes
+   nothing is indistinguishable from a dead button, and the model is entitled
+   to hold its answer — this is the only thing on screen that says the note
+   was heard. Data type, because it is a record rather than a sentence. */
+.correct-sent {
+  font-family: var(--data-font);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  color: var(--ink-muted);
+}
+
+/* Collapsed, this is one line of quiet text — the sheet's own idiom for a
+   control that is not the point of the screen. `align-self: start` keeps the
+   hit area to the words rather than the sheet's full width, so a tap near the
+   totals is not this button. */
+.correct-open {
+  align-self: start;
+  text-transform: none;
+  font-size: 12px;
+  letter-spacing: 0.02em;
+  color: var(--accent);
+}
+
+/* ≥16px or iOS Safari zooms the field on focus, the same reason `.log-ask`'s
+   textarea carries it. Two rows: a correction is a sentence ("no ham — it's
+   just cheese"), not a paragraph, and a taller box on a sheet that is already
+   tall at 375 pushes the save off the screen. */
+.correct-note {
+  width: 100%;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-thumb);
+  padding: 10px 12px;
+  color: var(--ink);
+  font-family: var(--body-font);
+  font-size: 16px;
+  line-height: 1.45;
+  resize: none;
+}
+
+.correct-note::placeholder {
+  color: var(--ink-muted);
+}
+
+.correct-note:disabled {
+  opacity: 0.6;
+}
+
+/* Wraps rather than squeezes, the same shape `.sheet-confirm-acts` uses and
+   for the same reason: at 375 the action's busy label ("Reading it again…") is
+   the widest either control ever carries, and a way out that is clipped is
+   worse than one that costs a second line. */
+.correct-acts {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 14px;
+}
+
+/* Sentence case at 13px rather than `.btn`'s uppercase eyebrow type — the
+   measurement `.sheet-add-another` records: 0.14em tracking on a label this
+   long is what pushes a footer row past 375. Still a real 44px target; the
+   padding is what gets it there. */
+.correct-acts .btn {
+  /* `.btn` is `width: 100%` — it is normally the only thing on its row. Here
+     it shares one with a text control, and a flex item whose basis is the
+     whole container shrinks to a proportion of the overflow rather than to its
+     own label, which at 375 wrapped Cancel onto a second line. Measured, not
+     reasoned: the first cut shipped that way and the screenshot is what
+     caught it. */
+  flex: 0 1 auto;
+  width: auto;
+  padding: 12px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  font-stretch: normal;
+  letter-spacing: 0.02em;
+  text-transform: none;
+  border-radius: var(--radius-card);
+  min-width: 0;
+}
+
+.correct-acts .btn-text {
+  text-transform: none;
+  font-size: 13px;
+  letter-spacing: 0.02em;
+}
+
+/* A note before the shutter (#59), between the finder and the deck. One row,
+   and it inherits the camera stage's 20px inset the way `.held-bar` does —
+   `.finder` gives up the height, which is the right trade here for the same
+   reason it was there. */
+.cam-note {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 20px 8px;
+}
+
+.cam-note .btn-text {
+  flex: none;
+  text-transform: none;
+  font-size: 12px;
+  letter-spacing: 0.02em;
+  color: var(--accent);
+}
+
+/* ≥16px, as everywhere else a finger types into this app. Solid `--surface`
+   rather than the finder's scrim: it sits outside the viewfinder and a
+   translucent field over a moving preview is unreadable. */
+.cam-note-field {
+  flex: 1 1 auto;
+  min-width: 0;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-thumb);
+  padding: 10px 12px;
+  color: var(--ink);
+  font-family: var(--body-font);
+  font-size: 16px;
+}
+
+.cam-note-field::placeholder {
+  color: var(--ink-muted);
+}
+
 /* The dismiss guard (#81) — the only confirmation in the app, and it replaces
    the subtitle rather than stacking under it, so the sheet is asking one thing
    at a time. `--danger` on the destructive verb and nothing else: build rule 9

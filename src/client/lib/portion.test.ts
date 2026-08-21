@@ -2,10 +2,10 @@ import { describe, expect, it } from "vitest";
 import type { AnalyzedItem, FoodLog } from "../../shared/api";
 import { FOOD_LIMITS, isMeasuredPortionUnit, portionQtyRule } from "./numeric";
 import {
-  type EditableItem,
   blankItem,
   editable,
   editableFromLog,
+  isEdited,
   portionLabel,
   savedGrams,
   savedPortion,
@@ -31,15 +31,12 @@ const PIZZA: AnalyzedItem = {
   portion: { qty: 2, unit: "slices" },
 };
 
-/** `isEdited`'s rule, restated here rather than imported: it lives inside
- *  `Log.tsx` beside the component, and the point of these assertions is that a
- *  portion change leaves the item indistinguishable from an untouched read. */
-const edited = (it: EditableItem) =>
-  it.name !== it.orig.name ||
-  it.calories !== it.orig.calories ||
-  it.protein_g !== it.orig.protein_g ||
-  it.carbs_g !== it.orig.carbs_g ||
-  it.fat_g !== it.orig.fat_g;
+/** `isEdited` itself since #59, where it was a local restatement of the rule
+ *  while it lived inside `Log.tsx`. The point of these assertions is unchanged
+ *  — a portion change leaves the item indistinguishable from an untouched read
+ *  — but they are now made against the function the save actually calls, and a
+ *  copy of a rule beside its own tests is the register's defect in miniature. */
+const edited = isEdited;
 
 describe("setPortionQty", () => {
   it("scales every number up, and the portion with them", () => {

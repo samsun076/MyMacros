@@ -37,6 +37,32 @@ export function editable(item: AnalyzedItem): EditableItem {
   return { ...item, orig: item, base: item };
 }
 
+/** Did the user override the reader's numbers? — the definition of the
+ *  `edited` column, in one place (#59).
+ *
+ *  It lived inside `Log.tsx` until this issue, which was fine while the only
+ *  question was "did somebody type over a field". #59 adds a second way for an
+ *  item's numbers to change without anybody overriding anything — a re-read of
+ *  the same photo, where the AI is correcting *itself* at the user's request —
+ *  so the claim "a re-read does not set `edited`" is now a property of
+ *  `reread` in `lib/basket.ts` and needs an oracle that is not the component.
+ *  `portion.test.ts` restated the rule locally rather than import it across
+ *  that boundary; it imports it now.
+ *
+ *  Deliberately about the five fields a person can type over and nothing else:
+ *  `portion` is absent because a portion change is not a correction (#58) and
+ *  `setPortionQty` moves `orig` with it, and `confidence` is absent because it
+ *  is the reader's own claim and no control writes it. */
+export function isEdited(item: EditableItem): boolean {
+  return (
+    item.name !== item.orig.name ||
+    item.calories !== item.orig.calories ||
+    item.protein_g !== item.orig.protein_g ||
+    item.carbs_g !== item.orig.carbs_g ||
+    item.fat_g !== item.orig.fat_g
+  );
+}
+
 /** Turn a SAVED row back into a sheet row (#60).
  *
  *  The edit sheet opens on rows that are already in D1, so the same

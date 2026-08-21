@@ -119,6 +119,17 @@ include `src/`, so `npm run check` type-checks tests with no extra project.
   did not happen are the same output, which makes this the one failure in the
   family that reads as *good* news. Diff the source, or have the mutation
   script fail loudly, before recording "the test held".
+  **And check that the check could ever have failed — a mutation's own oracle
+  can be decorative.** #59's M10 broke the client so a typed note was never
+  spent, and the check written to catch it asked "is the note field gone after
+  a capture?" — which is **true either way**, because the whole row unmounts
+  behind the frozen still. It stayed green under the mutation it existed to
+  detect. Rewritten to go back to the viewfinder and ask whether the note
+  survived to the *next* photo, it went red. This is one turn tighter than the
+  green-while-broken rule above: there the decorative assertions were
+  bystanders, here it was **the oracle itself**. When a mutation comes back
+  green, the first question is not "is the code fine?" but "does my check
+  distinguish the two implementations at all?"
 - **A literal carried through a rewrite is a decision, not an inheritance.**
   #95 lifted five numeric fields onto one component and kept the portion
   field's `1…5000` verbatim so that the fix stayed a fix — defensible, and the
@@ -153,6 +164,10 @@ way to reach a mixed basket unattended: doing it for real needs two barcodes in 
 camera headless Chrome does not have. Deliberately the tall case — four rows, a per-row
 provenance line each, a footer holding two controls side by side — because a stage that
 shoots the easy case produces a PNG that looks like evidence. It is in `verify:viewport`'s
+route list. `/log#correct` (#59) is DEV-gated and opens the correction form **with a note
+already typed**, so the tall case is what gets measured; its capture's `photoKey` belongs
+to nobody, so "Read it again" from the stage drives the *refusal* path deterministically —
+which is the state #16 owns and the one worth a screenshot. Also in `verify:viewport`'s
 route list. Trends adds `/trends#empty`
 and `/trends#sparse` (#22), both DEV-gated — they build a real `TrendsResponse` by running
 `buildTrends` over fabricated inputs, so a stage can't drift into a shape the route would
@@ -825,9 +840,12 @@ result about the *inputs* and says nothing about this register.
   items.** It was one food short, for seventeen days, and a 500 here discards a
   confirm sheet that exists in browser memory and nowhere else.
 - **Nothing in this repo executes `Log.tsx`, and the mutation results prove
-  it** (#81). `stow` was mutated to *replace* the basket instead of appending —
-  #81's original bug, restored verbatim — and `npm test` came back **988/988
-  green**. Same shape as #102's corrupted `sheet-drag.ts` passing 817 tests. The
+  it — three times in one day** (#81, #59). `stow` was mutated to *replace* the
+  basket instead of appending — #81's original bug, restored verbatim — and
+  `npm test` came back **988/988 green**. Hours later #59 mutated the same file
+  to stop sending a correction's `previous` context, and again to never spend
+  the typed note; both returned **1036/1036 green**. Same shape as #102's
+  corrupted `sheet-drag.ts` passing 817 tests. The
   sheet's own logic (basket assembly, the save body, the confirm/discard wiring,
   the flat-index→capture translation) has **no unit oracle at all**: what is
   tested is `lib/basket.ts` beneath it and the route above it, and the layer

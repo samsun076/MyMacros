@@ -5,12 +5,15 @@ import {
   MAX_MEAL_ITEMS,
   basketItemCount,
   basketRows,
+  correctable,
   needsDismissConfirm,
+  reread,
   roomFor,
+  roomForReread,
   sheetOpen,
   showsGrams,
 } from "./basket";
-import { editable } from "./portion";
+import { type EditableItem, editable, isEdited } from "./portion";
 
 /** #81's rules, away from the screen that renders them.
  *
@@ -202,4 +205,152 @@ test("a lone capture with no grams draws no field", () => {
 
 test("an empty basket draws no field", () => {
   expect(showsGrams([])).toBe(false);
+});
+
+// ── #59: telling the reader it got the food wrong ────
+// Every claim here is invisible to a screenshot. A re-read that quietly filed
+// itself as a user edit renders identically to one that did not; a re-read
+// that emptied a capture on a failed read looks like a sheet with nothing on
+// it, which is exactly the blank manual row #16 says never to drop somebody
+// into. That is #100's argument, and #81's finding — nothing in this repo
+// executes `Log.tsx`, so a rule left in the component has no oracle at all.
+
+/** The failed read #16 opens a sheet on: the photo is in R2, the row is
+ *  blank, and the person types what they ate. */
+const failed: Capture = {
+  items: [editable(food("", 0))],
+  readMs: 20000,
+  source: "photo",
+  photoKey: "user/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee.jpg",
+  manual: "The read took too long and was stopped.",
+};
+
+/** What a corrected read comes back with. */
+const hamless = [food("Cheese toastie", 340), food("Side salad", 45)];
+
+test("a photographed capture can be corrected", () => {
+  expect(correctable(photographed)).toBe(true);
+});
+
+test("a barcode capture cannot — the numbers came from a database, not a judgement", () => {
+  expect(correctable(patty)).toBe(false);
+});
+
+test("a typed capture cannot — the text already is the person's own words", () => {
+  expect(correctable(typed)).toBe(false);
+});
+
+test("a photo whose R2 write failed cannot — there are no bytes to re-read", () => {
+  // `photo_store_failed`: the one shape that reaches the sheet as a photo
+  // capture with no key at all, and the one where the manual path is all
+  // there is.
+  expect(correctable({ ...photographed, photoKey: undefined })).toBe(false);
+});
+
+test("#16's blank recovery row CAN be corrected — a second attempt at a read that never landed", () => {
+  expect(correctable(failed)).toBe(true);
+});
+
+// ── the cap, asked the way a REPLACEMENT has to ask it ──
+
+test("a two-for-two swap fits on a basket that is already full", () => {
+  // The distinction `roomFor` cannot make: a re-read replaces, so the basket
+  // it has to fit into is the one WITHOUT the capture being re-read. Asking
+  // `roomFor(all, 2)` here would refuse a swap that changes nothing.
+  const full: Capture[] = [
+    { ...photographed, items: [editable(food("a")), editable(food("b"))] },
+    { ...typed, items: Array.from({ length: MAX_MEAL_ITEMS - 2 }, (_, i) => editable(food(`x${i}`))) },
+  ];
+  expect(roomForReread(full, 0, 2)).toBe(true);
+});
+
+test("a re-read that would push the basket past the cap does not fit", () => {
+  const full: Capture[] = [
+    { ...photographed, items: [editable(food("a")), editable(food("b"))] },
+    { ...typed, items: Array.from({ length: MAX_MEAL_ITEMS - 2 }, (_, i) => editable(food(`x${i}`))) },
+  ];
+  expect(roomForReread(full, 0, 3)).toBe(false);
+});
+
+// ── the replacement itself ───────────────────────────
+
+test("replaces that capture's foods with the fresh read", () => {
+  const after = reread([photographed], 0, hamless, 3900, "no ham");
+  expect(after[0]?.items.map((i) => i.name)).toEqual(["Cheese toastie", "Side salad"]);
+});
+
+test("leaves every other capture alone", () => {
+  const after = reread([patty, photographed, typed], 1, hamless, 3900, "no ham");
+  expect([after[0], after[2]]).toEqual([patty, typed]);
+});
+
+/** **The claim this issue turns on.** A re-read produces fresh AI numbers, so
+ *  it resets `orig` and must not set `edited` — the AI is correcting *itself*
+ *  at the user's request, where `edited` answers "did the user override the
+ *  AI?" (#58/#76). The fixture is deliberately a capture whose items HAD been
+ *  hand-edited: seeded from a pristine read, both implementations agree, and
+ *  the test would pass against code that carried the old `orig` through. */
+const handEdited: EditableItem = {
+  ...editable(food("Ham and cheese toastie", 430)),
+  calories: 300,
+  name: "Toastie",
+};
+const corrected: Capture = { ...photographed, items: [handEdited] };
+
+/** Split from the test below rather than asserted inside it. A fixture check
+ *  that throws leaves the assertion after it neither green nor red — it simply
+ *  never runs, while the test's name goes on claiming coverage (CLAUDE.md). */
+test("the fixture for the test below is genuinely a hand edit", () => {
+  expect(isEdited(handEdited)).toBe(true);
+});
+
+test("a re-read resets orig, so nothing in it counts as edited", () => {
+  expect(reread([corrected], 0, hamless, 3900, "no ham")[0]?.items.some(isEdited)).toBe(false);
+});
+
+test("keeps the photo it re-read — same source, same key", () => {
+  const after = reread([photographed], 0, hamless, 3900, "no ham");
+  expect(after[0]).toMatchObject({ source: "photo", photoKey: photographed.photoKey });
+});
+
+test("clears #16's couldn't-read-it line once the read has succeeded", () => {
+  const after = reread([failed], 0, hamless, 3900, "two slices of pizza");
+  expect(after[0]?.manual).toBeUndefined();
+});
+
+test("records the note, so a re-read that changed nothing still shows it was heard", () => {
+  const after = reread([photographed], 0, hamless, 3900, "no ham");
+  expect(after[0]?.note).toBe("no ham");
+});
+
+test("stamps the new read time", () => {
+  const after = reread([photographed], 0, hamless, 3900, "no ham");
+  expect(after[0]?.readMs).toBe(3900);
+});
+
+// ── the refusals, which are all #16's rule ───────────
+
+test("a re-read that found nothing leaves every item on screen", () => {
+  // The failure #16 owns: never drop somebody into the blank manual row they
+  // had already escaped. Emptying the capture would do exactly that.
+  expect(reread([photographed], 0, [], 3900, "no ham")).toEqual([photographed]);
+});
+
+test("a re-read that would overflow the cap changes nothing", () => {
+  const full: Capture[] = [
+    { ...photographed, items: [editable(food("a"))] },
+    { ...typed, items: Array.from({ length: MAX_MEAL_ITEMS - 1 }, (_, i) => editable(food(`x${i}`))) },
+  ];
+  expect(reread(full, 0, hamless, 3900, "no ham")).toEqual(full);
+});
+
+test("an index that names no capture changes nothing", () => {
+  expect(reread([photographed], 4, hamless, 3900, "no ham")).toEqual([photographed]);
+});
+
+test("a capture that cannot be corrected is refused here too", () => {
+  // The caller checks `correctable` before it draws the control; this guard is
+  // the one that cannot be forgotten by a fourth caller added later — the same
+  // split `stow` has between a refusal that can speak and one that cannot.
+  expect(reread([patty], 0, hamless, 3900, "no ham")).toEqual([patty]);
 });

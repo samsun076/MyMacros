@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import type {
   AnalyzeResponse,
@@ -13,6 +13,7 @@ import { HeldBar } from "../components/HeldBar";
 import { ItemRow } from "../components/ItemRow";
 import { LogModes, type LogMode } from "../components/LogModes";
 import { NumericField } from "../components/NumericField";
+import { type Correction, PhotoCorrection } from "../components/PhotoCorrection";
 import { Picks } from "../components/Picks";
 import { StarGlyph } from "../components/StarGlyph";
 import { ApiError, api, useApi } from "../lib/api";
@@ -21,8 +22,11 @@ import {
   MAX_MEAL_ITEMS,
   basketItemCount,
   basketRows,
+  correctable,
   needsDismissConfirm,
+  reread,
   roomFor,
+  roomForReread,
   sheetOpen,
   showsGrams,
 } from "../lib/basket";
@@ -31,7 +35,14 @@ import { deviceTimezone, localDay, mealSlotFor } from "../lib/day";
 import { fmtInt } from "../lib/format";
 import { FOOD_LIMITS } from "../lib/numeric";
 import { type Pick, favoriteDraft, favoriteNamed, mergePicks } from "../lib/picks";
-import { type EditableItem, editable, savedGrams, savedPortion, setPortionQty } from "../lib/portion";
+import {
+  type EditableItem,
+  editable,
+  isEdited,
+  savedGrams,
+  savedPortion,
+  setPortionQty,
+} from "../lib/portion";
 import { SHEET_HANDLE_ATTR, useDragToDismiss } from "../lib/sheet-drag";
 
 /** The log flow: capture → editable confirm sheet → saved.
@@ -52,7 +63,7 @@ import { SHEET_HANDLE_ATTR, useDragToDismiss } from "../lib/sheet-drag";
 /** The sheet the failure path opens (#16). One empty row, the photo attached,
  *  and the save route unchanged — the recovery is the surface the happy path
  *  already uses, not a new screen. */
-function manualRead(why: string, photoKey: string | undefined, ms: number): Capture {
+function manualRead(why: string, photoKey: string | undefined, ms: number, note: string): Capture {
   const blank: AnalyzedItem = {
     name: "",
     calories: 0,
@@ -61,7 +72,7 @@ function manualRead(why: string, photoKey: string | undefined, ms: number): Capt
     fat_g: 0,
     confidence: null,
   };
-  return { items: [editable(blank)], readMs: ms, source: "photo", photoKey, manual: why };
+  return { items: [editable(blank)], readMs: ms, source: "photo", photoKey, manual: why, note: note || undefined };
 }
 
 const SLOTS: MealSlot[] = ["breakfast", "lunch", "dinner", "snack"];
@@ -81,6 +92,7 @@ function initialMode(): LogMode {
     case "#confirm":
     case "#portion":
     case "#basket":
+    case "#correct":
       return "text";
     case "#barcode":
       return "barcode";
@@ -88,6 +100,19 @@ function initialMode(): LogMode {
       return "photo";
   }
 }
+
+/** A syntactically valid key that belongs to nobody (#59's stage).
+ *
+ *  `ownedPhotoKey` compares the prefix against the signed-in user's id, and
+ *  this one never matches — which is deliberate rather than a shortcut. The
+ *  stage's job is to render the correction UI at three widths, and the client
+ *  has no way to *hold* a real R2 key at mount: the only honest one comes back
+ *  from a read that needs a camera headless Chrome does not have. So "Read it
+ *  again" here drives the **refusal** path — 404, the sentence, and #16's
+ *  requirement that a failed re-read leaves every item and the photo where they
+ *  were. That is the half a screenshot can check; the happy path needs a real
+ *  photo and is driven for real instead. */
+const DEMO_PHOTO_KEY = "demo-user/00000000-0000-4000-8000-000000000000.jpg";
 
 /** DEV-only: `/log#confirm` opens the sheet pre-filled with the sketch's
  *  demo meal, mirroring e-log-flow.html's hash-navigable stages so
@@ -117,9 +142,26 @@ function initialMode(): LogMode {
  *  no `photoKey` is a shape no reader produces — the Worker writes R2 before it
  *  calls Claude — so faking one would put a state on screen the app cannot
  *  reach. The mixed-source save including a photographed row is covered where
- *  it can be honest, in `food-logs.route.test.ts`. */
+ *  it can be honest, in `food-logs.route.test.ts`.
+ *
+ *  `/log#correct` is #59's, and it is the one stage that DOES carry a photo
+ *  capture — it has to, because the affordance it draws exists only on one
+ *  (`correctable`). Its `photoKey` is `DEMO_PHOTO_KEY` above, which is why the
+ *  paragraph above still holds: the shape on screen is one a reader produces,
+ *  and the key's own unreachability is the point rather than a compromise. */
 function demoBasket(): Capture[] {
   if (!import.meta.env.DEV) return [];
+  if (window.location.hash === "#correct") {
+    // #59's own complaint, from 2026-08-07: a photo came back "ham and cheese"
+    // when there was no ham in it. Two items rather than one because the note
+    // is about *which* food is wrong, and a one-row sheet cannot show that a
+    // correction is aimed at one row and not the other.
+    const items: AnalyzedItem[] = [
+      { name: "Ham and cheese toastie", calories: 430, protein_g: 22, carbs_g: 38, fat_g: 21, confidence: 0.55, portion: { qty: 1, unit: "toastie" } },
+      { name: "Side salad", calories: 45, protein_g: 2, carbs_g: 6, fat_g: 1.5, confidence: 0.6, portion: { qty: 1, unit: "bowl" } },
+    ];
+    return [{ items: items.map(editable), readMs: 4300, source: "photo", photoKey: DEMO_PHOTO_KEY }];
+  }
   if (window.location.hash === "#basket") {
     // The patty and the bun are barcode captures — each one product, each with
     // its own code — and the mustard was typed. Two of them carry `grams`, and
@@ -184,6 +226,17 @@ function demoBasket(): Capture[] {
   return [];
 }
 
+/** DEV-only: `/log#correct` opens with the form already up and a note typed
+ *  into it, because the state worth measuring is the tall one — a textarea, a
+ *  hint, and two controls under two item rows, at 375. A stage that shot the
+ *  collapsed one-line button would produce a PNG that looks like evidence and
+ *  measures nothing, which is the objection `/#editing` and `/log#basket`
+ *  already record. */
+function demoCorrection(): Correction | null {
+  if (!import.meta.env.DEV || window.location.hash !== "#correct") return null;
+  return { capture: 0, note: "there's no ham in it — just cheese", busy: false, error: null };
+}
+
 export function Log() {
   const navigate = useNavigate();
   const [mode, setMode] = useState<LogMode>(initialMode);
@@ -211,6 +264,25 @@ export function Log() {
    *  by either answer, and by a successful append — see `needsDismissConfirm`
    *  for why this exists at all when #52 argues against confirmations. */
   const [confirmDismiss, setConfirmDismiss] = useState(false);
+  /** #59's correction, and it is **one** piece of state on purpose.
+   *
+   *  Which capture is being corrected, what is being said about it, whether
+   *  the re-read is in flight and what came back if it failed are four facts
+   *  about one thing — held apart they are four ways to end up with a spinner
+   *  on a form that is closed, or an error about a capture that has been
+   *  discarded. `null` is the whole answer to "is anybody correcting
+   *  anything?", which is #112's rule about a condition and its dependencies
+   *  being one statement rather than a list. */
+  const [correction, setCorrection] = useState<Correction | null>(demoCorrection);
+  /** The note that will accompany the NEXT photo (#59), or `null` for "no note
+   *  field is open".
+   *
+   *  **One value, not a boolean beside a string.** The camera's note field is
+   *  drawn when this is non-null, so there is no state where a note exists and
+   *  nothing on screen says so — which is the trap the obvious two-value
+   *  version has: type a note, switch to TEXT and back (the stage unmounts),
+   *  and a collapsed field would silently attach it to the next photo. */
+  const [note, setNote] = useState<string | null>(null);
   const [still, setStill] = useState<string | null>(null);
   const [slot, setSlot] = useState<MealSlot>(() => mealSlotFor());
   const [editing, setEditing] = useState<number | null>(null);
@@ -280,6 +352,10 @@ export function Log() {
    *  has to keep running through. */
   const open = sheetOpen({ basket, adding });
   const held = basketItemCount(basket);
+  /** A re-read is in flight (#59). Read by the two footer controls and by the
+     backdrop tap, so "the sheet is waiting for the reader" is one statement
+     rather than three `correction?.busy` checks that can drift apart. */
+  const rereading = correction?.busy === true;
   /** The capture the sheet's *whole-read* chrome speaks for: the read time,
    *  #16's "couldn't read it" line, #15's grams field. All three were
    *  properties of the one read a sheet used to hold; with a basket they are
@@ -456,6 +532,7 @@ export function Log() {
     setAdding(false);
     setEditing(null);
     setConfirmDismiss(false);
+    setCorrection(null);
   }, []);
 
   async function readText() {
@@ -490,7 +567,21 @@ export function Log() {
   /** One POST carries the photo (settled on #13): the Worker writes R2 first,
    *  then reads the bytes it already holds. The frame is frozen on screen
    *  before the request goes out, so a slow or failed read never leaves the
-   *  user wondering whether the shutter fired. */
+   *  user wondering whether the shutter fired.
+   *
+   *  **The note goes with it (#59), and it is spent the moment the shutter
+   *  fires.** `PHOTO_SYSTEM` has said "trust the note over the picture" since
+   *  #13 and nothing ever sent one — a prompt contract built and unreachable.
+   *  A note before the capture ("wife's plate, no ham") prevents the bad read
+   *  rather than repairing it, which is the cheaper half of this issue by a
+   *  long way.
+   *
+   *  Cleared here rather than on success because a note describes *this*
+   *  frame: keeping it would silently attach "wife's plate" to the next
+   *  photograph, which is the failure the single `note` value is shaped to
+   *  avoid. What that costs is retyping after a read the cap refuses — rare,
+   *  and the alternative is a note nobody can see applying to a plate it was
+   *  never about. */
   async function readPhoto(photo: Blob) {
     setStill(URL.createObjectURL(photo));
     setBusy(true);
@@ -498,6 +589,9 @@ export function Log() {
     const t0 = Date.now();
     const form = new FormData();
     form.append("photo", photo, "meal.jpg");
+    const said = note?.trim() ?? "";
+    if (said) form.append("note", said);
+    setNote(null);
     try {
       const { items, photo_key } = await api.postForm<AnalyzeResponse>("/api/analyze/photo", form);
       // The one read that can overflow the cap in a single step: a plate can
@@ -514,7 +608,7 @@ export function Log() {
       if (!items.length) {
         // #16: no food found is a failure of the read, not of the user. The
         // photo is stored; open the sheet so it can still be logged.
-        stow(manualRead("No food found in that photo.", photo_key, Date.now() - t0));
+        stow(manualRead("No food found in that photo.", photo_key, Date.now() - t0, said));
         setEditing(held);
         return;
       }
@@ -523,6 +617,7 @@ export function Log() {
         readMs: Date.now() - t0,
         source: "photo",
         photoKey: photo_key,
+        note: said || undefined,
       });
     } catch (err) {
       // The photo survives an analysis failure by construction — the Worker
@@ -540,6 +635,7 @@ export function Log() {
               : "The reader couldn't handle that photo.",
           detail?.photo_key,
           Date.now() - t0,
+          said,
         ),
       );
       // The blank row is the LAST one now, not the zeroth: a recovery row
@@ -548,6 +644,75 @@ export function Log() {
       setEditing(held);
     } finally {
       setBusy(false);
+    }
+  }
+
+  /** Tell the reader it got the food wrong, and have it try again (#59).
+   *
+   *  **It re-reads the stored photo; it never re-uploads.** The key is on the
+   *  capture, the bytes are in R2, and the Worker reads them back — which is
+   *  why the client can do this at all from a sheet whose only copy of the
+   *  frame is an object URL. Re-uploading would write a second R2 object per
+   *  attempt and orphan the first, on the one path a frustrated user hits
+   *  twice.
+   *
+   *  **The previous answer goes with the note, because a correction is a
+   *  diff.** "No ham" has no antecedent on its own — the route folds the names
+   *  back into the prompt so the model knows what it is being corrected about,
+   *  and bounds them there (untrusted text reaching a prompt is bounded on the
+   *  server, never on the client that sent it).
+   *
+   *  **Failure changes nothing on screen** (#16). No item is touched, the
+   *  photo is untouched, and nobody is dropped into the blank manual row they
+   *  had already escaped — the sentence lands inside the correction block and
+   *  the sheet stays exactly where it was. That is also why every refusal here
+   *  is a `setCorrection`, never a `setBasket`. */
+  async function reanalyze(index: number) {
+    const capture = basket[index];
+    if (!capture?.photoKey || correction?.busy) return;
+    const said = correction?.note.trim() ?? "";
+    if (!said) return;
+
+    setCorrection({ capture: index, note: said, busy: true, error: null });
+    const t0 = Date.now();
+    const form = new FormData();
+    form.append("photo_key", capture.photoKey);
+    form.append("note", said);
+    // What the reader previously said about THIS capture, in its order. #16's
+    // blank row contributes an empty string, which the route drops — so a
+    // failed first read asks for a first read with a note on it, which is
+    // exactly what it is.
+    for (const it of capture.items) form.append("previous", it.name);
+
+    const fail = (why: string) =>
+      setCorrection((c) => (c ? { ...c, busy: false, error: why } : c));
+
+    try {
+      const { items } = await api.postForm<AnalyzeResponse>("/api/analyze/photo", form);
+      if (!items.length) {
+        fail("It read the photo again and still found no food in it. Your items are untouched.");
+        return;
+      }
+      if (!roomForReread(basket, index, items.length)) {
+        fail(
+          `It came back with ${items.length} foods, which is more than one meal holds. Log what's here first.`,
+        );
+        return;
+      }
+      setBasket((b) => reread(b, index, items, Date.now() - t0, said));
+      // The rows underneath have just been replaced, so an open editor is
+      // pointing at a food that no longer exists at that index.
+      setEditing(null);
+      setCorrection(null);
+    } catch (err) {
+      const code = err instanceof ApiError ? err.code : "network";
+      fail(
+        code === "analyze_timeout"
+          ? "That took too long to read again. Your items are untouched — try once more, or edit them by hand."
+          : code === "photo_not_found"
+            ? "That photo isn't available any more, so it can't be read again. Your items are untouched."
+            : "The AI reader is unreachable right now. Your items are untouched — try again in a moment.",
+      );
     }
   }
 
@@ -690,6 +855,8 @@ export function Log() {
     setBasket([]);
     setAdding(false);
     setConfirmDismiss(false);
+    setCorrection(null);
+    setNote(null);
     setStill(null);
     setError(null);
     // #82: the panel is hidden rather than closed while a read is up, so
@@ -702,6 +869,12 @@ export function Log() {
    *  this is the one place in the app that gets a confirmation instead of an
    *  undo, and why the count is of captures rather than of foods. */
   function dismiss() {
+    // A re-read is in flight (#59). A backdrop tap here would throw the basket
+    // away *while the user is waiting for the thing they asked for*, which is
+    // the one moment a stray tap is likeliest — the sheet has been sitting
+    // still for five seconds. It is refused rather than confirmed: there is
+    // nothing to decide, the request is about to land.
+    if (rereading) return;
     if (needsDismissConfirm(basket)) {
       setConfirmDismiss(true);
       return;
@@ -720,6 +893,7 @@ export function Log() {
     setAdding(true);
     setEditing(null);
     setConfirmDismiss(false);
+    setCorrection(null);
     setStill(null);
     setError(null);
   }
@@ -954,6 +1128,8 @@ export function Log() {
           onCapture={(photo) => void readPhoto(photo)}
           onRetake={retake}
           onScan={onScan}
+          note={note}
+          onNote={setNote}
           picksCount={picks.length}
           onPicks={() => setPicksOpen(true)}
         />
@@ -1201,21 +1377,44 @@ export function Log() {
               </div>
             )}
 
-            {rows.map(({ item, from }, i) => (
-              <ItemRow
-                key={`${i}`}
-                item={item}
-                manual={from.manual !== undefined}
-                // Per row, not per sheet (#81). A basket mixes provenance by
-                // design, and FROM THE BARCODE has to sit on the row that was
-                // actually scanned — the same reason #60's edit sheet reads
-                // `source` off the stored row rather than off the entry.
-                source={from.source}
-                editing={editing === i}
-                onToggle={() => setEditing(editing === i ? null : i)}
-                onChange={(patch) => update(i, patch)}
-                onPortion={(qty) => setItemQty(i, qty)}
-              />
+            {rows.map(({ item, from, capture, index }, i) => (
+              <Fragment key={`${i}`}>
+                <ItemRow
+                  item={item}
+                  manual={from.manual !== undefined}
+                  // Per row, not per sheet (#81). A basket mixes provenance by
+                  // design, and FROM THE BARCODE has to sit on the row that was
+                  // actually scanned — the same reason #60's edit sheet reads
+                  // `source` off the stored row rather than off the entry.
+                  source={from.source}
+                  editing={editing === i}
+                  onToggle={() => setEditing(editing === i ? null : i)}
+                  onChange={(patch) => update(i, patch)}
+                  onPortion={(qty) => setItemQty(i, qty)}
+                />
+                {/* #59, under the LAST row of each photo capture. The rows are
+                    addressed by one flat index (#81) and this control is not —
+                    it belongs to the capture, so it is drawn once per capture
+                    rather than once per row, at the boundary `basketRows`
+                    already knows about. Which captures get one is
+                    `correctable`'s decision and not a condition spelled out
+                    here: a barcode is a database lookup and a typed line is
+                    already the person's own words, and neither has anything
+                    for a note to overrule. */}
+                {index === from.items.length - 1 && correctable(from) && (
+                  <PhotoCorrection
+                    manual={from.manual !== undefined}
+                    sent={from.note}
+                    state={correction?.capture === capture ? correction : null}
+                    onOpen={() =>
+                      setCorrection({ capture, note: "", busy: false, error: null })
+                    }
+                    onNote={(note) => setCorrection((c) => (c ? { ...c, note } : c))}
+                    onCancel={() => setCorrection(null)}
+                    onSubmit={() => void reanalyze(capture)}
+                  />
+                )}
+              </Fragment>
             ))}
 
             <div className="sheet-foot">
@@ -1244,7 +1443,13 @@ export function Log() {
                 <button
                   type="button"
                   className="btn btn-quiet sheet-add-another"
-                  disabled={saving || held >= MAX_MEAL_ITEMS}
+                  // Both footer controls are held while a re-read is in flight
+                  // (#59), and for the same reason rather than for symmetry:
+                  // each would act on rows that are about to be replaced. Add
+                  // another leaves the sheet with a request still running
+                  // against it, and a save would write the numbers the user
+                  // has just said are wrong.
+                  disabled={saving || rereading || held >= MAX_MEAL_ITEMS}
                   onClick={addAnother}
                 >
                   + Add another
@@ -1253,7 +1458,7 @@ export function Log() {
                     route rejects an empty name, so the button says so first */}
                 <button
                   className="save"
-                  disabled={saving || rows.every(({ item }) => !item.name.trim())}
+                  disabled={saving || rereading || rows.every(({ item }) => !item.name.trim())}
                   onClick={() => void save()}
                 >
                   {saving ? "Logging…" : `Log ${fmtInt(totals.kcal)} kcal`}
@@ -1286,16 +1491,6 @@ export function Log() {
  *  indistinguishable from a broken scanner. */
 function overfull(held: number, incoming: number) {
   return `That would put ${held + incoming} foods in one meal, and ${MAX_MEAL_ITEMS} is the most one save holds. Log what's here first.`;
-}
-
-function isEdited(item: EditableItem) {
-  return (
-    item.name !== item.orig.name ||
-    item.calories !== item.orig.calories ||
-    item.protein_g !== item.orig.protein_g ||
-    item.carbs_g !== item.orig.carbs_g ||
-    item.fat_g !== item.orig.fat_g
-  );
 }
 
 /** "breakfast" → "Breakfast" */

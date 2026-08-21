@@ -1,5 +1,5 @@
 import type { AnalyzedItem, FoodSource } from "../../shared/api";
-import type { EditableItem } from "./portion";
+import { type EditableItem, editable } from "./portion";
 
 /** One meal built out of several captures (#81).
  *
@@ -66,6 +66,20 @@ export type Capture = {
    *  for the user to fill in. The photo is already stored — `photoKey` is set
    *  even here, which is the whole point of writing R2 before calling Claude. */
   manual?: string;
+  /** What the person told the reader when they last corrected it (#59), shown
+   *  back to them under the rows it produced.
+   *
+   *  **It exists because a re-read that changes nothing is indistinguishable
+   *  from a dead button.** The model can hold its answer — "no ham" on a photo
+   *  that really does contain ham comes back the same — and with the note
+   *  cleared and the rows unchanged, the user has no evidence anything
+   *  happened. Echoing the note is what separates "it heard you and disagreed"
+   *  from "the button did nothing".
+   *
+   *  Client-side only, and does not cross the wire: `food_logs` has no column
+   *  for it, adding one is a migration this issue does not need, and the note's
+   *  *effect* is already recorded — it is the numbers in the row. */
+  note?: string;
 };
 
 /** How many foods one meal may hold.
@@ -147,6 +161,88 @@ export function basketItemCount(basket: readonly Capture[]): number {
  *  into it. */
 export function roomFor(held: number, incoming: number): boolean {
   return held + incoming <= MAX_MEAL_ITEMS;
+}
+
+/** Can this capture's read be corrected? (#59)
+ *
+ *  Two conditions and both are structural rather than policy. It has to be a
+ *  **photo**, because a re-read reads a picture — a barcode is a database
+ *  lookup and a typed line is already the person's own words, and neither has
+ *  anything for a note to overrule. And it has to have a **`photoKey`**,
+ *  because that key is the only handle on the bytes: the client's blob is gone
+ *  once the sheet is up (the frozen still is an object URL, not a JPEG source),
+ *  which is why the re-read reads R2 rather than uploading again.
+ *
+ *  **#16's blank recovery row qualifies, and that is the point rather than an
+ *  accident.** A capture whose read failed is `source: "photo"` with a
+ *  `photoKey` and one empty item — so the same affordance is a second attempt
+ *  at a read that never landed, with the person's own description as the note.
+ *  The one shape excluded is the capture whose R2 write itself failed
+ *  (`photo_store_failed`): no key, no bytes, nothing to re-read, and the manual
+ *  path is all there is. */
+export function correctable(capture: Capture): boolean {
+  return capture.source === "photo" && capture.photoKey !== undefined;
+}
+
+/** Whether a re-read of `capture` returning `incoming` foods still fits.
+ *
+ *  It **replaces** rather than appends, so what the cap has to be asked about
+ *  is the rest of the basket plus the new read — not the whole basket plus the
+ *  new read, which is `roomFor`'s question and would refuse a two-for-two swap
+ *  on a full basket. A re-read is the one operation here that can make a basket
+ *  smaller. */
+export function roomForReread(
+  basket: readonly Capture[],
+  capture: number,
+  incoming: number,
+): boolean {
+  return roomFor(basketItemCount(basket) - (basket[capture]?.items.length ?? 0), incoming);
+}
+
+/** Replace one capture's items with a fresh read of the same photo (#59).
+ *
+ *  **A re-read is not an edit, and this function is where that is decided.**
+ *  Every item is rebuilt with `editable`, so `orig` and `base` are the *new*
+ *  numbers — which means `isEdited` is false, `edited` goes to the wire as 0,
+ *  and `ai_*` records what the reader said *this* time. That is the correct
+ *  claim: the AI is overriding itself at the user's request, and `edited`
+ *  answers "did the user override the AI?" (#58/#76). Carrying the old `orig`
+ *  through would file every correction as a user edit and quietly poison the
+ *  one column #75's estimate-quality analysis reads.
+ *
+ *  **ONE capture, never the basket** (#81). A basket is a list of captures and
+ *  a note is about the photo one of them came from; a re-read that replaced the
+ *  sheet would throw away a scanned bun because the plate was misread. With a
+ *  single capture that is the whole sheet, which is today's common case and is
+ *  why the distinction is easy to lose.
+ *
+ *  **Everything that is not the reading survives**: `source` and `photoKey`,
+ *  because the photo did not change, and the capture's position, so the rows
+ *  come back where they were. `manual` is cleared — a read that has now
+ *  succeeded is no longer #16's failure, and leaving it would keep "couldn't
+ *  read it" on a sheet full of foods.
+ *
+ *  Refusals return the basket **unchanged**, and every one of them is also
+ *  checked by the caller with a sentence to say — same split as `stow`: this
+ *  guard cannot speak, so on its own it would be a silent discard. An empty
+ *  read is refused here rather than emptying the capture, which is #16's rule
+ *  exactly: a failed re-read leaves what is on screen on screen. */
+export function reread(
+  basket: readonly Capture[],
+  capture: number,
+  items: readonly AnalyzedItem[],
+  readMs: number,
+  note: string,
+): Capture[] {
+  const target = basket[capture];
+  if (!target || !correctable(target)) return [...basket];
+  if (!items.length) return [...basket];
+  if (!roomForReread(basket, capture, items.length)) return [...basket];
+  return basket.map((c, i) => {
+    if (i !== capture) return c;
+    const { manual: _cleared, ...kept } = c;
+    return { ...kept, items: items.map(editable), readMs, note };
+  });
 }
 
 /** The confirm sheet is up — **the one boolean, and the reason it is a

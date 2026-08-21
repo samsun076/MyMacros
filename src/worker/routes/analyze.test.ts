@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { normalize } from "./analyze";
+import { normalize, photoTurn } from "./analyze";
 
 /** Structured outputs guarantee the *shape* of what Claude returns and
  *  silently drop `minimum`/`maximum` from the schema that is sent (#45). So
@@ -191,5 +191,79 @@ describe("normalize", () => {
       expect(p({ qty: 1, unit: "x".repeat(500) })?.unit).toHaveLength(24);
       expect(p({ qty: 1, unit: "  slices  " })?.unit).toBe("slices");
     });
+  });
+});
+
+/** #59's prompt fold. Two bounds and one preservation, and the preservation is
+ *  the one that matters most: the first read is the app's most-used path and
+ *  this issue is about the *second* one, so the shipped prompt is a thing to
+ *  leave exactly alone.
+ *
+ *  The bounds are here rather than only in the route test because a bound
+ *  reachable only by driving a route that calls a paid API is a bound nobody
+ *  will exercise. `analyze.route.test.ts` drives the same two facts through
+ *  real workerd and reads them off the wire — that one proves the route calls
+ *  this, these prove it is right. */
+describe("photoTurn", () => {
+  it("is byte-identical to the shipped first-read sentence when there is nothing to add", () => {
+    expect(photoTurn({ note: "", previous: [] })).toBe("Log what is in this photo.");
+  });
+
+  it("is byte-identical to the shipped note sentence when only a note is given", () => {
+    expect(photoTurn({ note: "wife's plate", previous: [] })).toBe(
+      "Log what is in this photo. The person added a note: wife's plate",
+    );
+  });
+
+  it("trims a note to 300 characters", () => {
+    const turn = photoTurn({ note: "x".repeat(500), previous: [] });
+    expect(turn).toBe(`Log what is in this photo. The person added a note: ${"x".repeat(300)}`);
+  });
+
+  it("trims a note on the re-read path too", () => {
+    const turn = photoTurn({ note: "x".repeat(500), previous: ["Toastie"] });
+    expect(turn).toContain(`wrong: ${"x".repeat(300)}\n`);
+  });
+
+  it("tells the model what it previously said, so the correction has an antecedent", () => {
+    expect(photoTurn({ note: "no ham", previous: ["Ham and cheese toastie", "Side salad"] })).toContain(
+      "answered: Ham and cheese toastie; Side salad.",
+    );
+  });
+
+  it("caps the previous answer at twenty foods", () => {
+    const names = Array.from({ length: 40 }, (_, i) => `Food ${i}`);
+    const turn = photoTurn({ note: "no ham", previous: names });
+    expect(turn).toContain("answered: Food 0; Food 1;");
+    // and the twenty-first is absent — asserted separately below, because an
+    // assertion after a failed one never runs and reports nothing.
+  });
+
+  it("drops the twenty-first food rather than growing the prompt", () => {
+    const names = Array.from({ length: 40 }, (_, i) => `Food ${i}`);
+    expect(photoTurn({ note: "no ham", previous: names })).not.toContain("Food 20");
+  });
+
+  it("truncates one absurd name rather than storing an essay in the prompt", () => {
+    const turn = photoTurn({ note: "no ham", previous: ["x".repeat(500)] });
+    expect(turn).toContain(`answered: ${"x".repeat(120)}.`);
+  });
+
+  it("drops #16's blank row rather than telling the model it answered nothing", () => {
+    // A failed read's capture holds one empty item. Sending it would make the
+    // re-read a correction of a claim nobody made; dropping it makes the same
+    // request a FIRST read with a note on it, which is what it is.
+    expect(photoTurn({ note: "two slices of pizza", previous: [""] })).toBe(
+      "Log what is in this photo. The person added a note: two slices of pizza",
+    );
+  });
+
+  it("still names the previous answer when the note is empty", () => {
+    // No client sends this — the button is disabled on an empty note — but a
+    // re-read with no note is still a re-read, and the prompt must not silently
+    // become a fresh first read of the same photo.
+    expect(photoTurn({ note: "   ", previous: ["Toastie"] })).toContain(
+      "The person says that answer was wrong.",
+    );
   });
 });

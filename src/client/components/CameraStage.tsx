@@ -123,6 +123,8 @@ export function CameraStage({
   onCapture,
   onRetake,
   onScan,
+  note,
+  onNote,
   picksCount,
   onPicks,
 }: {
@@ -161,6 +163,21 @@ export function CameraStage({
   onRetake: () => void;
   /** A decoded barcode. Memoise it — it gates the scan loop's effect. */
   onScan: (code: string) => void;
+  /** The note that will go with the next photo, or `null` for "no field is
+   *  open" (#59).
+   *
+   *  **One value rather than a flag beside a string**, and the reason is this
+   *  component: it unmounts every time somebody picks TEXT, so a `noteOpen`
+   *  boolean living here would reset while the note itself lived on in Log —
+   *  a note nobody can see, silently attached to the next plate. Null is the
+   *  collapsed state, `""` is an open empty field, and there is no third thing
+   *  to keep in step.
+   *
+   *  It is PHOTO's affordance only. A barcode read has nothing for a note to
+   *  overrule (the numbers come from a database, not a judgement) and TEXT's
+   *  whole input already *is* the note. */
+  note: string | null;
+  onNote: (note: string | null) => void;
   /** How many favourites/recents are waiting behind the deck button (#82).
    *  Zero renders no button at all, matching TEXT's `picks.length > 0` guard —
    *  an empty state for a list nobody has filled yet is #24's job. */
@@ -462,6 +479,45 @@ export function CameraStage({
 
         {hint && <span className="cam-hint">{hint}</span>}
       </div>
+
+      {/* #59's cheaper half: a note BEFORE the shutter ("wife's plate, no
+          ham") prevents the bad read instead of repairing it, and
+          `PHOTO_SYSTEM` has promised to trust it over the picture since #13
+          while nothing ever sent one. Deliberately small — one text button
+          that becomes one field — because redesigning the camera screen is
+          not what this issue is for, and the deck is already three controls
+          wide at 375. In ordinary flow rather than over the finder, like
+          `HeldBar` above: `.finder` is the one element here that can give up
+          the height. Gone while a frame is frozen or a read is running, both
+          of which are past the moment this can affect. */}
+      {!scan && !still && !busy && (
+        <div className="cam-note">
+          {note === null ? (
+            <button type="button" className="btn-text" onClick={() => onNote("")}>
+              + Add a note
+            </button>
+          ) : (
+            <>
+              <input
+                type="text"
+                className="cam-note-field"
+                value={note}
+                onChange={(e) => onNote(e.target.value)}
+                placeholder="wife's plate, no ham"
+                aria-label="A note to send with the photo"
+                maxLength={300}
+                autoFocus
+              />
+              {/* Removing it clears it, which is the same rule the null state
+                  states: there is no way to leave a note behind that nothing
+                  on screen mentions. */}
+              <button type="button" className="btn-text" onClick={() => onNote(null)}>
+                Remove
+              </button>
+            </>
+          )}
+        </div>
+      )}
 
       <div className="cam-deck">
         <LogModes mode={mode} onMode={onMode} barcodeReady />

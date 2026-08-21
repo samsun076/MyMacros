@@ -1,7 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { Hono } from "hono";
 import type { AnalyzeResponse, AnalyzedItem } from "../../shared/api";
-import { newPhotoKey } from "../photos";
+import { newPhotoKey, ownedPhotoKey } from "../photos";
 import type { AppEnv } from "../types";
 
 const analyze = new Hono<AppEnv>();
@@ -215,45 +215,166 @@ analyze.post("/text", async (c) => {
  *  still refuses a full-resolution original before it costs an R2 write. */
 const MAX_PHOTO_BYTES = 6 * 1024 * 1024;
 
-/** POST /api/analyze/photo (#13/#14): the photo arrives in the same request
+/** The most of a person's note that reaches the prompt.
+ *
+ *  300 has been the trim since #13 and is unchanged; it is a named constant
+ *  now only because #59 gave it a second reader. Nothing re-derived it. */
+const NOTE_MAX = 300;
+
+/** #59's bounds on the *previous answer* — the half of a correction that is
+ *  not the note.
+ *
+ *  A correction is a diff ("no ham") and a diff has no antecedent on its own,
+ *  so the re-read carries what the reader previously said. That list arrives
+ *  **from the client**, which makes it untrusted text going into a prompt on
+ *  exactly the path a frustrated user hits twice — so it is bounded here the
+ *  way `note` is, and for the same reason.
+ *
+ *  Both numbers are **carried rather than derived**, and saying so is the
+ *  point (CLAUDE.md: a literal kept through a rewrite is a decision):
+ *
+ *  - 20 is `MAX_ITEMS` in `routes/food-logs.ts` and `MAX_MEAL_ITEMS` in
+ *    `lib/basket.ts`, and it is a *different rule* landing on the same figure:
+ *    those bound a meal, this bounds a prompt. It is defensible because the
+ *    list can never honestly be longer than the meal it describes, and it has
+ *    never bound anything — a photo read returns a handful of foods.
+ *  - 120 is `normalize`'s own name truncation. Restated rather than shared, and
+ *    deliberately: `normalize` bounds what the *model* said on the way in, this
+ *    bounds what a *client* claims the model said. Same shape as `FOOD_LIMITS`
+ *    against `normalize`'s ceilings — each side enforces independently, so
+ *    neither may assume the other ran. */
+const MAX_PREVIOUS_ITEMS = 20;
+const PREVIOUS_NAME_MAX = 120;
+
+/** The text turn that accompanies the photo — one function for both reads
+ *  (#59), exported for its tests.
+ *
+ *  **The no-note, no-previous sentence is byte-identical to what shipped**, and
+ *  so is the note-only one. That is not tidiness: the first read is the app's
+ *  most-used path and this issue is about the *second* one, so the shipped
+ *  prompt is a thing to leave alone. A test pins both strings.
+ *
+ *  **The previous answer goes in as NAMES ONLY.** The complaint the issue is
+ *  built on is "it said ham and there was no ham" — an identity claim, and the
+ *  names are its antecedent. Sending the old macros back would give the model
+ *  numbers to anchor on when the whole point of a re-read is that it derives
+ *  them again from the picture; a hamless toastie does not weigh what a ham one
+ *  weighs, which is the sentence in the issue that rules the cheap fix out.
+ *
+ *  Here rather than inline in the handler for #100's reason: the bounds are the
+ *  part worth testing, and a bound reachable only by driving a route that calls
+ *  a paid API is a bound nobody will exercise. */
+export function photoTurn({
+  note,
+  previous,
+}: {
+  note: string;
+  previous: readonly string[];
+}): string {
+  const said = previous
+    .map((n) => n.trim().slice(0, PREVIOUS_NAME_MAX))
+    .filter(Boolean)
+    .slice(0, MAX_PREVIOUS_ITEMS);
+  const trimmed = note.trim().slice(0, NOTE_MAX);
+
+  if (!said.length) {
+    return trimmed
+      ? `Log what is in this photo. The person added a note: ${trimmed}`
+      : "Log what is in this photo.";
+  }
+
+  return [
+    "Log what is in this photo.",
+    `You have read this photo before and answered: ${said.join("; ")}.`,
+    trimmed
+      ? `The person says that answer was wrong: ${trimmed}`
+      : "The person says that answer was wrong.",
+    "Read the picture again and answer from scratch. Their correction is about your previous answer and overrides the picture wherever the two disagree — do not list a food they have told you is not there, and re-estimate the amounts for what is actually left.",
+  ].join("\n");
+}
+
+/** POST /api/analyze/photo (#13/#14/#59): the photo arrives in the same request
  *  that persists it — settled on #13, because at 214 KB there is nothing for
  *  a presigned direct-to-R2 upload to save, and one request is one place for
  *  #16's failure UX rather than two.
  *
  *  Order matters: **R2 is written before Claude is called.** #16 requires
  *  "never lose the photo the user took", and doing it in this order makes
- *  that structural instead of something the error path has to remember. */
+ *  that structural instead of something the error path has to remember.
+ *
+ *  **Since #59 the bytes may come from R2 instead of the wire.** A correction
+ *  ("no ham") re-reads a photo this route already stored, and it is the *same*
+ *  route rather than a second endpoint: same schema, same `normalize`, same
+ *  `DEADLINE_MS` abort. Re-uploading was the alternative and it is worse in
+ *  three ways the issue names — a second R2 object per attempt, orphaning the
+ *  first, on the one path a frustrated user hits twice; and the client no
+ *  longer holds the blob once the sheet is up, only an object URL.
+ *
+ *  **The arriving key goes through `ownedPhotoKey`, and that is the whole
+ *  authorization decision.** R2 keys are `<userId>/<uuid>.jpg` and the prefix
+ *  IS the check (`src/worker/photos.ts`) — the same check a key gets when it
+ *  arrives on a save, not a new trust decision. A key that fails it answers
+ *  **404, never 403**, exactly as `GET /api/photos/:owner/:name` does: a 403
+ *  would confirm the object exists. */
 analyze.post("/photo", async (c) => {
   const t0 = performance.now();
 
   const form = await c.req.formData().catch(() => null);
-  const photo = form?.get("photo");
-  if (!(photo instanceof File) || photo.size === 0) return c.json({ error: "photo_required" }, 400);
-  if (photo.size > MAX_PHOTO_BYTES) return c.json({ error: "photo_too_large" }, 413);
-  // Both capture paths — the live viewfinder and the <input capture> fallback
-  // — encode through the same canvas helper, so JPEG is a contract the client
-  // always meets and not a guess about what a device might hand us.
-  if (photo.type !== "image/jpeg") return c.json({ error: "photo_not_jpeg" }, 415);
+  const photo = form?.get("photo") ?? null;
+  const claimed = form?.get("photo_key") ?? null;
 
-  const bytes = new Uint8Array(await photo.arrayBuffer());
+  // A request stating both is a client that does not know which read it is
+  // making. No client produces it, which is exactly why the contract should
+  // not permit it — #81's provenance rule, one route over.
+  if (photo !== null && claimed !== null) return c.json({ error: "photo_ambiguous" }, 400);
 
-  const key = newPhotoKey(c.var.user.id);
-  try {
-    await c.env.PHOTOS.put(key, bytes, {
-      httpMetadata: { contentType: "image/jpeg" },
-      customMetadata: { userId: c.var.user.id },
-    });
-  } catch (err) {
-    // Nothing to fall back to: the whole point of this ordering is that the
-    // photo is safe before anything expensive runs, so a failed write is the
-    // one case where there is genuinely no photo to keep.
-    console.error("analyze/photo r2 write failed", err);
-    console.log("analyze/photo timing", {
-      outcome: "store_failed",
-      bytes: photo.size,
-      total_ms: Math.round(performance.now() - t0),
-    });
-    return c.json({ error: "photo_store_failed" }, 502);
+  let key: string;
+  let bytes: Uint8Array;
+  /** Which read this is, said once. Both branches below and the timing line
+   *  read it, so "is this a correction?" cannot be answered two ways. */
+  const reread = claimed !== null;
+
+  if (reread) {
+    const owned = ownedPhotoKey(claimed, c.var.user.id);
+    // Malformed, someone else's, or simply gone — one answer for all three,
+    // deliberately. Separating them would let this route enumerate another
+    // user's photo keys by status code.
+    if (!owned) return c.json({ error: "photo_not_found" }, 404);
+    const object = await c.env.PHOTOS.get(owned);
+    if (!object) return c.json({ error: "photo_not_found" }, 404);
+    key = owned;
+    // No size ceiling on this branch: MAX_PHOTO_BYTES refuses a
+    // full-resolution original *before it costs an R2 write*, and this object
+    // is one we wrote and already paid for.
+    bytes = new Uint8Array(await object.arrayBuffer());
+  } else {
+    if (!(photo instanceof File) || photo.size === 0) return c.json({ error: "photo_required" }, 400);
+    if (photo.size > MAX_PHOTO_BYTES) return c.json({ error: "photo_too_large" }, 413);
+    // Both capture paths — the live viewfinder and the <input capture> fallback
+    // — encode through the same canvas helper, so JPEG is a contract the client
+    // always meets and not a guess about what a device might hand us.
+    if (photo.type !== "image/jpeg") return c.json({ error: "photo_not_jpeg" }, 415);
+
+    bytes = new Uint8Array(await photo.arrayBuffer());
+
+    key = newPhotoKey(c.var.user.id);
+    try {
+      await c.env.PHOTOS.put(key, bytes, {
+        httpMetadata: { contentType: "image/jpeg" },
+        customMetadata: { userId: c.var.user.id },
+      });
+    } catch (err) {
+      // Nothing to fall back to: the whole point of this ordering is that the
+      // photo is safe before anything expensive runs, so a failed write is the
+      // one case where there is genuinely no photo to keep.
+      console.error("analyze/photo r2 write failed", err);
+      console.log("analyze/photo timing", {
+        outcome: "store_failed",
+        bytes: photo.size,
+        total_ms: Math.round(performance.now() - t0),
+      });
+      return c.json({ error: "photo_store_failed" }, 502);
+    }
   }
 
   // Base64, not a URL source: R2 objects here are private and served through
@@ -262,7 +383,12 @@ analyze.post("/photo", async (c) => {
   // Worker already holds the bytes, so there is nothing to re-fetch either.
   const run = instrument(c.env, "analyze/photo", t0);
   const noteRaw = form?.get("note");
-  const note = typeof noteRaw === "string" ? noteRaw.trim().slice(0, 300) : "";
+  const note = typeof noteRaw === "string" ? noteRaw : "";
+  // Repeated fields rather than a JSON string: a list of names is what this
+  // is, `getAll` already returns one, and a JSON parse here would be a second
+  // failure mode on a request whose whole job is to recover from a failure.
+  const previous = (form?.getAll("previous") ?? []).filter((v) => typeof v === "string");
+  const stat = { photo_bytes: bytes.length, reread };
 
   let raw: string;
   try {
@@ -280,12 +406,7 @@ analyze.post("/photo", async (c) => {
           role: "user",
           content: [
             { type: "image", source: { type: "base64", media_type: "image/jpeg", data: toBase64(bytes) } },
-            {
-              type: "text",
-              text: note
-                ? `Log what is in this photo. The person added a note: ${note}`
-                : "Log what is in this photo.",
-            },
+            { type: "text", text: photoTurn({ note, previous }) },
           ],
         },
       ],
@@ -294,12 +415,12 @@ analyze.post("/photo", async (c) => {
 
     if (response.stop_reason === "max_tokens" || response.stop_reason === "refusal") {
       console.error("analyze/photo stopped early", response.stop_reason);
-      run.done("stopped_early", { photo_bytes: photo.size });
+      run.done("stopped_early", stat);
       return c.json<AnalyzeResponse>({ items: [], photo_key: key }, 200);
     }
     const block = response.content.find((b) => b.type === "text");
     if (!block) {
-      run.done("no_text_block", { photo_bytes: photo.size });
+      run.done("no_text_block", stat);
       return c.json<AnalyzeResponse>({ items: [], photo_key: key }, 200);
     }
     raw = block.text;
@@ -307,7 +428,7 @@ analyze.post("/photo", async (c) => {
     run.apiDone();
     const timedOut = err instanceof Error && err.name === "TimeoutError";
     console.error("analyze/photo api error", err);
-    run.done(timedOut ? "deadline" : "api_error", { photo_bytes: photo.size });
+    run.done(timedOut ? "deadline" : "api_error", stat);
     // 502 with the key attached: the read failed, the photo did not. The
     // client keeps the key so the manual save path stays open (#16).
     return c.json({ error: timedOut ? "analyze_timeout" : "analyze_unavailable", photo_key: key }, 502);
@@ -318,12 +439,12 @@ analyze.post("/photo", async (c) => {
     parsed = JSON.parse(raw) as { items?: unknown };
   } catch {
     console.error("analyze/photo unparseable output", raw.slice(0, 200));
-    run.done("unparseable", { photo_bytes: photo.size });
+    run.done("unparseable", stat);
     return c.json({ error: "analyze_failed", photo_key: key }, 502);
   }
 
   const items = Array.isArray(parsed.items) ? parsed.items.map(normalize).filter(Boolean) : [];
-  run.done("ok", { photo_bytes: photo.size, items: items.length });
+  run.done("ok", { ...stat, items: items.length });
   return c.json<AnalyzeResponse>({ items: items as AnalyzedItem[], photo_key: key });
 });
 
