@@ -594,6 +594,30 @@ result about the *inputs* and says nothing about this register.
   did what it said and the complaint is with a decision it made — #97 came out
   of #52 that way. The issue carries the milestone, so a milestone view already
   answers "which of this work has someone actually used".
+- **A finding enters the active milestone only if it blocks that milestone's
+  own definition, or it loses data.** Everything else is filed with **no
+  milestone** and waits for triage. The failure this prevents is a milestone
+  that recedes while you close it: on 2026-08-21 three defects found *while
+  shipping* M7 were filed into M7 because they lived in log-flow files, and
+  M7 went 6 open to 9 in the same session that closed two of them. **The test
+  is the milestone's sentence, not the file the bug lives in** — "multi-item
+  meals and corrections" is not "everything under `routes/analyze.ts`". Of
+  those three, one stayed (#112 destroys the grams #107 had just made
+  storable, on the screen the milestone is about) and two left.
+  **And the corollary, which is the part that is easy to get wrong:** filing
+  with no milestone is not deprioritising. #110 and #113 are real defects that
+  will be fixed; what they are not is a reason M7 cannot close. Conflating
+  "this matters" with "this belongs in the work in front of us" is how a
+  two-day target becomes a four-day one without anybody deciding to spend the
+  extra two days.
+- **Count found-versus-created before accepting that the bug rate is rising.**
+  Same date, the four issues filed read as a bad day until each was dated:
+  three were 5, 15 and 17 days old and the fourth was a documented refactor.
+  Zero regressions, three issues shipped. A rising *discovery* rate on a
+  codebase that just started reading its own stored rows is the tool working,
+  and the two feel identical from inside the session. `git log -S` on the
+  offending line answers it in seconds and should be run before anyone changes
+  how the work is done.
 - Push to `main` deploys via Workers Builds (wired in M1 #7).
 - **Read the build result off GitHub, not by polling the asset hash:**
   ```bash
