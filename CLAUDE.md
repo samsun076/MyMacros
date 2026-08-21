@@ -455,6 +455,26 @@ recomputes history. The single exception is `day.ts`'s un-onboarded fallback, wh
 deliberately showing the deployment default rather than a number computed for nobody.
 Verified by enumeration, 2026-08-11.
 
+**And the same defect one level down, in the framework: a React effect whose
+enable-condition is a *list* is a dependency array waiting to drift.** #112 is the
+worked example. `CameraStage`'s scan loop named its six inputs separately in
+`[mode, finder, busy, still, error, onScan]`, so adding a seventh condition to the
+rule required remembering to add it by hand in a second place — and `read` was added
+to the screen without ever reaching the array. The loop went on decoding behind the
+confirm sheet, rebuilding it every few hundred milliseconds and discarding whatever
+had been typed into it. **Fold the rule into one derived boolean and depend on that**
+(`scanEnabled`), and the two statements become one: a condition added to the rule
+cannot fail to be a dependency, because it *is* the dependency. The lint rule for
+exhaustive deps cannot catch this — the array was exhaustive over the values the
+effect *read*, and the bug was a value it should have read and didn't.
+
+**#112 also shows the timing this class has.** It sat harmless for fifteen days
+because the number it destroyed was thrown away at save anyway; #107 made that number
+storable and the same code became a data-loss bug overnight, with no edit to it. So
+*a defect's severity is a property of the code around it, not of the code itself* —
+which is the argument for enumerating readers and writers when a migration lands
+(#104's own lesson) and for re-reading the ones you didn't change.
+
 **The trap that keeps producing these: a literal that restates a column default.** Every
 `?? <literal>` in Onboarding's form seeding is a second statement of a `DEFAULT` in
 `migrations/`, correct only while someone keeps them in step by hand. One had already
