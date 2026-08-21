@@ -675,6 +675,15 @@ export function Log() {
           still={still}
           busy={busy}
           error={read ? null : error}
+          // #112: the sheet renders *over* this stage rather than replacing it,
+          // so the stage has to be told a read is up. Without it the scan loop
+          // went on decoding behind the sheet and every re-read rebuilt it,
+          // discarding the grams the user had typed — a wipe that, since #107
+          // stores that number, lands in the row as the reader's default.
+          // `read !== null` and nothing else: the picks panel deliberately
+          // stays out of the camera's effects (#94), and `still`/`busy` are
+          // about the capture, not about what is on screen.
+          reviewing={read !== null}
           onCapture={(photo) => void readPhoto(photo)}
           onRetake={retake}
           onScan={onScan}

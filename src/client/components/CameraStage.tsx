@@ -50,6 +50,64 @@ const SCAN_INTERVAL_MS = 300;
 
 type Finder = "starting" | "live" | "denied" | "unsupported";
 
+/** When the scan loop may run — the whole rule, in one place, and the effect's
+ *  only state dependency (#112).
+ *
+ *  It reads as six conditions and it is really one: *nothing else on this
+ *  screen is asking for attention*. Barcode mode, a finder actually producing
+ *  frames, no lookup in flight, no frozen frame, no failure still showing —
+ *  and, since #112, no read already open on the confirm sheet.
+ *
+ *  **`reviewing` is the condition that was missing, and the old shape of this
+ *  effect is why.** The confirm sheet renders *over* a live viewfinder rather
+ *  than replacing it, so a pack left in front of the camera was re-detected
+ *  every few hundred milliseconds and each detection rebuilt the sheet from
+ *  scratch — discarding whatever had been typed into HOW MUCH. Once #107 made
+ *  that number storable, the wipe stopped being cosmetic: it writes the
+ *  reader's default into the row as the user's stated amount, which is
+ *  indistinguishable afterwards from an untouched save.
+ *
+ *  The condition was easy to forget because the effect used to name its six
+ *  inputs *separately* in its dependency array: adding a condition meant
+ *  remembering to add a dependency, by hand, in a second place, and `read` was
+ *  added to the screen without ever reaching the array. Folding the rule into
+ *  one boolean and depending on **that** makes the two the same statement —
+ *  a condition added here cannot fail to be a dependency there, because it is
+ *  the dependency. That is the part of this fix that isn't about barcodes.
+ *
+ *  Two things deliberately absent. **The panel** (#82/#94): `picksOpen` is a
+ *  DOM overlay and nothing about it may reach these effects — a decode behind
+ *  it is meant to replace it with the sheet. **The code itself**: no same-code
+ *  check, because any barcode seen while a sheet is up is either the one
+ *  already on screen or one the user cannot act on without dismissing first.
+ *  Stopping outright is the smaller rule and it is the correct one; a same-code
+ *  no-op would still let a neighbouring pack blow the sheet away, which is this
+ *  bug with a rarer trigger. */
+export function scanEnabled({
+  mode,
+  finder,
+  busy,
+  still,
+  error,
+  reviewing,
+}: {
+  mode: LogMode;
+  finder: Finder;
+  /** A lookup or a read is in flight. */
+  busy: boolean;
+  /** A frame is frozen on screen. */
+  still: boolean;
+  /** A failure is showing. Load-bearing: without it the next frame re-reads
+   *  the same code and the failure repeats forever. */
+  error: boolean;
+  /** A read is open on the confirm sheet (#112). Not the same thing as `still`
+   *  or `busy` — those describe the *capture*, and a barcode read has no
+   *  frozen frame and nothing in flight while it is being reviewed. */
+  reviewing: boolean;
+}): boolean {
+  return mode === "barcode" && finder === "live" && !busy && !still && !error && !reviewing;
+}
+
 export function CameraStage({
   mode,
   onMode,
@@ -58,6 +116,7 @@ export function CameraStage({
   still,
   busy,
   error,
+  reviewing,
   onCapture,
   onRetake,
   onScan,
@@ -73,6 +132,11 @@ export function CameraStage({
   still: string | null;
   busy: boolean;
   error: string | null;
+  /** A read is open on the confirm sheet Log renders over this stage (#112).
+   *  The stage stays mounted underneath — the frozen frame has to survive, and
+   *  #16's stored photo depends on that state — so the one thing it must not do
+   *  is go on scanning behind a sheet it would rebuild. See `scanEnabled`. */
+  reviewing: boolean;
   onCapture: (photo: Blob) => void;
   /** Photo mode: discard the frozen frame. Barcode mode: resume scanning
    *  after a lookup that came back empty. */
@@ -182,12 +246,21 @@ export function CameraStage({
     void track.applyConstraints(sizeFor(mode)).catch(() => {});
   }, [stream, mode]);
 
-  /** The scan loop (#15). Runs only while barcode mode is showing a live
-   *  finder with nothing pending — so a lookup in flight, or one that came
-   *  back empty, pauses it. That pause is load-bearing: without it the next
-   *  frame re-reads the same code and the failure repeats forever. */
+  /** The scan loop (#15). Runs only while `scanEnabled` says so — and that
+   *  function, not this array, is where the rule lives (#112). The effect
+   *  depends on one boolean and one memoised callback, so there is no list of
+   *  conditions here for a seventh one to go missing from. */
+  const canScan = scanEnabled({
+    mode,
+    finder,
+    busy,
+    still: still !== null,
+    error: error !== null,
+    reviewing,
+  });
+
   useEffect(() => {
-    if (mode !== "barcode" || finder !== "live" || busy || still || error) {
+    if (!canScan) {
       setScanning(false);
       return;
     }
@@ -231,7 +304,7 @@ export function CameraStage({
       stopped = true;
       clearTimeout(timer);
     };
-  }, [mode, finder, busy, still, error, onScan]);
+  }, [canScan, onScan]);
 
   async function shoot() {
     const video = videoRef.current;
@@ -261,7 +334,12 @@ export function CameraStage({
     ? scan
       ? "LOOKING IT UP"
       : "READING THE PHOTO"
-    : still || message
+    : // `reviewing` joins the two states that already had nothing to say: the
+      // sheet is the subject and the finder is behind its scrim. Not cosmetic
+      // housekeeping — with the loop paused (#112) `scanning` is false, so
+      // without this the deck's ring announces "Scanner paused" while the hint
+      // beside it reads "STARTING THE SCANNER", and both are in the a11y tree.
+      still || message || reviewing
       ? null
       : finder !== "live"
         ? finder === "starting"
