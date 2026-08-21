@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { foldMeals, type MealRow } from "./meals";
+import { FAVORITE_NAME_MAX, favoriteName, foldMeals, type MealRow } from "./meals";
 
 /** The fold used to exist twice — once on the Today timeline, once in
  *  GET /api/food-logs/recent — with the same key and the same name-joining
@@ -59,5 +59,35 @@ describe("foldMeals", () => {
 
   it("has nothing to say about an empty day", () => {
     expect(foldMeals([])).toEqual([]);
+  });
+});
+
+/** The name rule `POST /api/favorites` stores by and the confirm sheet's star
+ *  matches by (#103). It is one function precisely so those two cannot drift;
+ *  the route's own agreement with it is pinned in favorites.route.test.ts,
+ *  which is the half a unit test cannot reach. */
+describe("favoriteName", () => {
+  it("leaves an ordinary meal name alone", () => {
+    expect(favoriteName("Greek yoghurt, blueberries, granola")).toBe(
+      "Greek yoghurt, blueberries, granola",
+    );
+  });
+
+  it("trims the ends, so a typed name and its padded twin are one favourite", () => {
+    expect(favoriteName("  Chicken bowl \n")).toBe("Chicken bowl");
+  });
+
+  it("caps a fold that ran long at the ceiling", () => {
+    expect(favoriteName("x".repeat(400))).toHaveLength(FAVORITE_NAME_MAX);
+  });
+
+  /** Trim before cap, not after: 130 characters of padding around a short name
+   *  is a short name, and capping first would store 120 spaces. */
+  it("trims before it caps", () => {
+    expect(favoriteName(`${" ".repeat(200)}Oats${" ".repeat(200)}`)).toBe("Oats");
+  });
+
+  it("states the ceiling as 120", () => {
+    expect(FAVORITE_NAME_MAX).toBe(120);
   });
 });

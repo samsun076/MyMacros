@@ -77,3 +77,24 @@ export function foldMeals<T extends MealRow>(rows: readonly T[]): Meal<T>[] {
     };
   });
 }
+
+/** The longest name a starred meal is stored under (#12), and the function
+ *  that produces it (#103).
+ *
+ *  **Here rather than inline in `routes/favorites.ts`, because two sides now
+ *  need the same answer.** `POST /api/favorites` is idempotent by name and
+ *  matches it *exactly* (`name` has no `COLLATE NOCASE`), so a client can only
+ *  ask "is this meal already starred?" by comparing against the form the route
+ *  stores. A client that trimmed and a route that trimmed *and* sliced would
+ *  agree on every meal until a fold ran past the ceiling — and then the star on
+ *  the confirm sheet would stop filling for exactly the biggest reads, while
+ *  re-tapping it re-posted and silently got the same row back. That is the
+ *  dead-button shape #95 was filed about, arriving only for long meals.
+ *
+ *  It lives beside `foldMeals` because the fold is what produces the name in
+ *  the first place: a favourite's name is a folded meal's name. */
+export const FAVORITE_NAME_MAX = 120;
+
+export function favoriteName(name: string): string {
+  return name.trim().slice(0, FAVORITE_NAME_MAX);
+}

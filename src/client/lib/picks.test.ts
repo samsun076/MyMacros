@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Favorite, RecentMeal } from "../../shared/api";
-import { PICKS_MAX, mergePicks } from "./picks";
+import { FAVORITE_NAME_MAX } from "../../shared/meals";
+import { PICKS_MAX, favoriteDraft, favoriteNamed, mergePicks } from "./picks";
 
 /** #82's half of the fix. The merge was an untested `useMemo` inside Log.tsx
  *  and is now the single source both placements read — TEXT's inline list and
@@ -164,5 +165,158 @@ describe("mergePicks", () => {
     const recents = [recent("Pad thai"), recent("Katsu curry")];
     mergePicks([fav("Pad thai")], recents);
     expect(recents.map((m) => m.name)).toEqual(["Pad thai", "Katsu curry"]);
+  });
+});
+
+/** #103's half. The confirm sheet's star has to turn N read items into the one
+ *  meal `favorites` stores, and the collapse it uses must be `foldMeals` — not
+ *  a second join written for the sheet, which is exactly the two-things-that-
+ *  should-be-one-thing the register is about. These pin the fold's own
+ *  behaviour showing through (the ", ", the lowercased tail) as well as the two
+ *  things the adapter adds: unnamed rows dropped, and the name handed back in
+ *  the form the store will hold it in. */
+const draftItem = (name: string, over: Partial<Record<"calories" | "protein_g" | "carbs_g" | "fat_g", number>> = {}) => ({
+  name,
+  calories: 100,
+  protein_g: 10,
+  carbs_g: 5,
+  fat_g: 2,
+  ...over,
+});
+
+describe("favoriteDraft", () => {
+  /** The fold's signature: the first item keeps its case, the rest are
+   *  lowercased, joined with ", ". This is the assertion that fails if anyone
+   *  writes a second join on the client. */
+  it("names a multi-item read the way foldMeals names it", () => {
+    const draft = favoriteDraft([
+      draftItem("Grilled chicken breast"),
+      draftItem("Jasmine rice"),
+      draftItem("Steamed broccoli"),
+    ]);
+    expect(draft?.name).toBe("Grilled chicken breast, jasmine rice, steamed broccoli");
+  });
+
+  it("sums the calories of every named row into one kcal figure", () => {
+    const draft = favoriteDraft([
+      draftItem("Grilled chicken breast", { calories: 280 }),
+      draftItem("Jasmine rice", { calories: 210 }),
+      draftItem("Steamed broccoli", { calories: 55 }),
+    ]);
+    expect(draft?.kcal).toBe(545);
+  });
+
+  it("sums the three macros", () => {
+    const draft = favoriteDraft([
+      draftItem("Grilled chicken breast", { protein_g: 52, carbs_g: 0, fat_g: 6 }),
+      draftItem("Jasmine rice", { protein_g: 4, carbs_g: 45, fat_g: 0 }),
+    ]);
+    expect(draft).toMatchObject({ protein_g: 56, carbs_g: 45, fat_g: 6 });
+  });
+
+  /** Rounding is `POST /api/favorites`' job, the way it is the recents route's
+   *  — a second rounding rule here is a second rounding rule. `toBe` on the
+   *  exact float rather than `toBeCloseTo`, because `toBeCloseTo` passes
+   *  against a client that rounded and so would prove nothing. */
+  it("hands the sums over unrounded", () => {
+    const draft = favoriteDraft([
+      draftItem("Greek yogurt", { protein_g: 17.4 }),
+      draftItem("Granola", { protein_g: 4.3 }),
+    ]);
+    expect(draft?.protein_g).toBe(17.4 + 4.3);
+  });
+
+  /** A barcode read is one item, and its name is the product's — the case that
+   *  actually motivated the issue (a Barebells bar). Nothing about the fold
+   *  should touch it. */
+  it("leaves a single-item read's name exactly as it was read", () => {
+    expect(favoriteDraft([draftItem("Barebells PROTEIN BAR Peanut Butter & Jelly")])?.name).toBe(
+      "Barebells PROTEIN BAR Peanut Butter & Jelly",
+    );
+  });
+
+  /** #16: the recovery sheet opens on a blank row, and the save button lets a
+   *  meal through as long as ONE row is named. Fold the blank one in and the
+   *  favourite is called "Chicken, ". */
+  it("drops an unnamed row instead of folding it into the name", () => {
+    expect(favoriteDraft([draftItem("Chicken"), draftItem("")])?.name).toBe("Chicken");
+  });
+
+  it("drops an unnamed row from the totals too", () => {
+    expect(favoriteDraft([draftItem("Chicken", { calories: 300 }), draftItem("", { calories: 99 })])?.kcal).toBe(300);
+  });
+
+  it("has nothing to star when the only row is blank", () => {
+    expect(favoriteDraft([draftItem("")])).toBeNull();
+  });
+
+  it("has nothing to star when a row holds only whitespace", () => {
+    expect(favoriteDraft([draftItem("   ")])).toBeNull();
+  });
+
+  it("has nothing to star when there are no rows at all", () => {
+    expect(favoriteDraft([])).toBeNull();
+  });
+
+  /** Per row, before the join — so the fold's ", " separators are the only
+   *  spaces in the result and the stored name cannot depend on where the user
+   *  happened to leave a space. */
+  it("trims each row's name before joining them", () => {
+    expect(favoriteDraft([draftItem("  Chicken  "), draftItem("  Rice  ")])?.name).toBe(
+      "Chicken, rice",
+    );
+  });
+
+  /** The one that matters for the star: the name comes back already in the
+   *  form `POST /api/favorites` will store, so "already starred?" is a string
+   *  comparison and not a guess. */
+  it("caps a very long fold at the stored ceiling", () => {
+    const items = Array.from({ length: 12 }, (_, i) => draftItem(`Ingredient number ${i + 1}`));
+    expect(favoriteDraft(items)?.name).toHaveLength(FAVORITE_NAME_MAX);
+  });
+
+  it("still sums every row of a fold that was too long to name in full", () => {
+    const items = Array.from({ length: 12 }, (_, i) => draftItem(`Ingredient number ${i + 1}`, { calories: 10 }));
+    expect(favoriteDraft(items)?.kcal).toBe(120);
+  });
+});
+
+describe("favoriteNamed", () => {
+  it("finds the favourite a star of this meal would land on", () => {
+    expect(favoriteNamed([fav("Pad thai"), fav("Skyr bowl")], "Skyr bowl")?.id).toBe("fav-Skyr bowl");
+  });
+
+  /** The route matches `where("name", "=", name)` against a column with no
+   *  COLLATE NOCASE, so a differently-cased name is a *different* favourite.
+   *  Drawing a filled star here would promise idempotency the route wouldn't
+   *  honour — the tap would write a second row. Deliberately NOT mergePicks'
+   *  rule, which is a display dedupe and lenient on purpose. */
+  it("does not claim a differently-cased favourite as this meal's", () => {
+    expect(favoriteNamed([fav("Pad thai")], "pad thai")).toBeNull();
+  });
+
+  /** The truncation case, from the client's side: a fold that ran past the
+   *  ceiling was stored short, and the sheet still has the long one in hand. */
+  it("finds a favourite the store had to truncate", () => {
+    const long = "y".repeat(FAVORITE_NAME_MAX + 40);
+    expect(favoriteNamed([fav("y".repeat(FAVORITE_NAME_MAX))], long)?.name).toHaveLength(
+      FAVORITE_NAME_MAX,
+    );
+  });
+
+  it("matches a name whose only difference is padding", () => {
+    expect(favoriteNamed([fav("Oats")], "  Oats  ")?.id).toBe("fav-Oats");
+  });
+
+  it("says nothing is starred while /api/favorites is still in flight", () => {
+    expect(favoriteNamed(undefined, "Skyr bowl")).toBeNull();
+  });
+
+  it("says nothing is starred when the list holds no such meal", () => {
+    expect(favoriteNamed([fav("Pad thai")], "Skyr bowl")).toBeNull();
+  });
+
+  it("says nothing is starred for a meal with no name yet", () => {
+    expect(favoriteNamed([fav("Pad thai")], "   ")).toBeNull();
   });
 });

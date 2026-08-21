@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import type { FavoritesResponse } from "../../shared/api";
+import { favoriteName } from "../../shared/meals";
 import type { AppEnv } from "../types";
 import { isNum } from "../validate";
 
@@ -19,10 +20,16 @@ favorites.get("/", async (c) => {
 });
 
 /** Star a meal. Idempotent by name: starring the same meal twice returns
- *  the existing favorite rather than duplicating it. */
+ *  the existing favorite rather than duplicating it.
+ *
+ *  **The trim and the ceiling are `favoriteName`'s, not this route's** (#103).
+ *  The confirm sheet's star has to know whether the meal in front of it is
+ *  already starred, and it can only answer that by comparing against the name
+ *  this route would store — so the rule is stated once, in `shared/meals.ts`,
+ *  and both sides call it. */
 favorites.post("/", async (c) => {
   const body = await c.req.json<Record<string, unknown>>().catch(() => null);
-  const name = typeof body?.name === "string" ? body.name.trim().slice(0, 120) : "";
+  const name = typeof body?.name === "string" ? favoriteName(body.name) : "";
   const kcal = isNum(body?.kcal) && body.kcal >= 0 && body.kcal <= 10000 ? Math.round(body.kcal) : null;
   const grams = (v: unknown) => (isNum(v) && v >= 0 && v <= 1000 ? Math.round(v * 10) / 10 : null);
   const protein = grams(body?.protein_g);

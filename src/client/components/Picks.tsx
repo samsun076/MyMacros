@@ -1,6 +1,7 @@
 import { mealSlotFor } from "../lib/day";
 import { fmtInt } from "../lib/format";
 import type { Pick } from "../lib/picks";
+import { StarGlyph } from "./StarGlyph";
 
 /** One-tap favourites and recents (#12). No frozen sketch — system idiom.
  *
@@ -40,14 +41,12 @@ export function Picks({
       {picks.map((pick) => (
         <div className="pick" key={pick.favorite?.id ?? pick.meal.name}>
           <button
-            className={pick.favorite ? "pick-star on" : "pick-star"}
+            className={pick.favorite ? "pick-star star-mark on" : "pick-star star-mark"}
             aria-pressed={pick.favorite !== null}
             aria-label={pick.favorite ? `Unstar ${pick.meal.name}` : `Star ${pick.meal.name}`}
             onClick={() => onStar(pick)}
           >
-            <svg width="16" height="16" viewBox="0 0 16 16" strokeWidth="1.4" strokeLinejoin="round">
-              <path d="M8 1.8l1.9 3.9 4.3.6-3.1 3 .7 4.2L8 11.5l-3.8 2 .7-4.2-3.1-3 4.3-.6z" />
-            </svg>
+            <StarGlyph />
           </button>
           <button className="pick-main" disabled={saving} onClick={() => onRelog(pick)}>
             <span className="pick-name">{pick.meal.name}</span>

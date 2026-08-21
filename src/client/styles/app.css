@@ -1646,23 +1646,50 @@ section {
   border-top: 1px solid var(--line-soft);
 }
 
-.pick-star {
+/* What a star *means*, stated once (#103). There are two star controls now —
+   this list's and the confirm sheet's — and they have to agree about what
+   "starred" looks like or they stop reading as the same decision. Placement is
+   the caller's (`.pick-star`, `.sheet-star`); only the two states are here.
+
+   Both colours are tokens and both are the ones #12 chose: `--accent` because
+   starred is the app's one "you picked this" state and the accent switches
+   live (rule 5), `--ink-muted` because an unstarred star is an offer, not a
+   status. */
+.star-mark {
   background: none;
   border: none;
-  padding: 4px;
   cursor: pointer;
   display: grid;
   place-items: center;
 }
 
-.pick-star svg {
+.star-mark svg {
   stroke: var(--ink-muted);
   fill: none;
 }
 
-.pick-star.on svg {
+.star-mark.on svg {
   stroke: var(--accent);
   fill: var(--accent-soft);
+}
+
+/* Nothing to star yet — #16's blank recovery sheet, until a row is named. */
+.star-mark:disabled {
+  cursor: default;
+  opacity: 0.3;
+}
+
+/* Busy, and *not yet* what it is about to be. The star fills when the write
+   lands, so this is the only state in between — dimmed rather than filled,
+   because a mark that fills on tap is a claim the request hasn't earned. It
+   follows `:disabled` because a busy star is also disabled, and this is the
+   more specific thing to say about it. */
+.star-mark[aria-busy="true"] {
+  opacity: 0.5;
+}
+
+.pick-star {
+  padding: 4px;
 }
 
 .pick-main {
@@ -1789,6 +1816,28 @@ section {
   font-size: 9.5px;
   color: var(--ink-muted);
   letter-spacing: 0.08em;
+}
+
+/* The read's own facts and the star that keeps it (#103), as one right-hand
+   group. A flex container's baseline is its first item's, so `.sheet-head`'s
+   `align-items: baseline` still lines "READ IN 0.1S" up with the slot chip
+   exactly as it did before this existed — the star centres against the mono
+   text inside here instead of dragging the row onto a new baseline. */
+.sheet-head-end {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* **The bleed is the tap target, and it is load-bearing** — the same technique
+   `.item-hit` uses ten rules down. A 16px mark is a 16px target; 14px of
+   padding makes it 44, and the negative margin puts that back so the head row
+   is exactly the height it was. The right margin runs the target into the
+   sheet's own 20px padding rather than past it, so nothing overflows at 375
+   and the thumb still gets the corner. */
+.sheet-star {
+  padding: 14px;
+  margin: -14px -8px -14px -10px;
 }
 
 .slot-btn {

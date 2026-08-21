@@ -3,6 +3,7 @@ import { scanner } from "../lib/barcode";
 import { acquireCamera, openCamera } from "../lib/camera";
 import { frameFromFile, frameFromVideo } from "../lib/photo";
 import { LogModes, type LogMode } from "./LogModes";
+import { StarGlyph } from "./StarGlyph";
 
 /** The camera stage, ported from sketches/e-log-flow.html#camera — brackets,
  *  shutter, mode deck — built around a real <video> (#13).
@@ -375,9 +376,7 @@ export function CameraStage({
               aria-label={`Favorites and recents (${picksCount})`}
               onClick={onPicks}
             >
-              <svg width="22" height="22" viewBox="0 0 16 16" strokeWidth="1.4" strokeLinejoin="round">
-                <path d="M8 1.8l1.9 3.9 4.3.6-3.1 3 .7 4.2L8 11.5l-3.8 2 .7-4.2-3.1-3 4.3-.6z" />
-              </svg>
+              <StarGlyph size={22} />
               <span className="mono" aria-hidden="true">
                 {picksCount}
               </span>

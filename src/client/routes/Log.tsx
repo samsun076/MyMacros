@@ -3,6 +3,7 @@ import { useNavigate } from "react-router";
 import type {
   AnalyzeResponse,
   AnalyzedItem,
+  Favorite,
   FavoritesResponse,
   FoodSource,
   MealSlot,
@@ -12,12 +13,13 @@ import { CameraStage } from "../components/CameraStage";
 import { LogModes, type LogMode } from "../components/LogModes";
 import { NumericField } from "../components/NumericField";
 import { Picks } from "../components/Picks";
+import { StarGlyph } from "../components/StarGlyph";
 import { ApiError, api, useApi } from "../lib/api";
 import { releaseCamera } from "../lib/camera";
 import { deviceTimezone, localDay, mealSlotFor } from "../lib/day";
 import { fmtInt } from "../lib/format";
 import { FOOD_LIMITS, type NumericRule, portionQtyRule } from "../lib/numeric";
-import { type Pick, mergePicks } from "../lib/picks";
+import { type Pick, favoriteDraft, favoriteNamed, mergePicks } from "../lib/picks";
 import { type EditableItem, editable, portionLabel, savedGrams, savedPortion, setPortionQty } from "../lib/portion";
 
 /** The log flow: capture → editable confirm sheet → saved.
@@ -196,6 +198,35 @@ export function Log() {
     [favData, recentData],
   );
 
+  /** #103: the one meal this read would be starred as. `favoriteDraft` folds
+   *  the sheet's rows with `foldMeals` — the same collapse the recents in the
+   *  picks list come out of — and returns null when nothing on the sheet is
+   *  named yet, which is #16's blank recovery row. It recomputes as the user
+   *  types a name, so the star always describes what is on screen. */
+  const draft = useMemo(() => favoriteDraft(read?.items ?? []), [read]);
+
+  /** What the star has just been made to do, so it does not flicker back to
+   *  its old state in the window between the write landing and
+   *  `/api/favorites` being re-read. Keyed by the name it applies to: rename
+   *  the meal and it stops applying, which is right — that is a different
+   *  meal, and the list is the thing to ask about it. */
+  const [starEdit, setStarEdit] = useState<{ name: string; favorite: Favorite | null } | null>(null);
+  const [starring, setStarring] = useState(false);
+
+  /** The favourite this read already has, or null. Free: `/api/favorites` is
+   *  fetched for the picks list anyway, so the sheet can answer "already
+   *  starred?" with no extra round trip. **It answers honestly and narrowly**
+   *  — the match is exact, so it fires for a barcode read of a product that
+   *  has been starred before (the fold is the product name, byte for byte) and
+   *  usually will not for two photos of the same dinner, because the fold is
+   *  whatever the model named the items this time. */
+  const readFavorite =
+    draft === null
+      ? null
+      : starEdit?.name === draft.name
+        ? starEdit.favorite
+        : favoriteNamed(favData?.favorites, draft.name);
+
   /** Escape closes the panel, the way it closes any dialog. The confirm sheet
    *  has no such key handler and doesn't grow one here: it is a *destructive*
    *  dismiss (the read is thrown away, #16's photo included) and giving that
@@ -216,6 +247,48 @@ export function Log() {
       reloadFavs();
     } catch {
       /* a failed star toggle is not worth an error state */
+    }
+  }
+
+  /** The confirm sheet's star (#103).
+   *
+   *  **It fires now, not on save**, for three reasons and against one. Every
+   *  other star in this app writes on tap; the sheet can be dismissed, and a
+   *  control that quietly banks a decision for a save that may never happen is
+   *  the dead-button complaint #95 was filed about; and firing now is what lets
+   *  the same tap *unstar*, which is the undo an immediate write needs. What it
+   *  costs is a favourite for a meal that was then thrown away — one row, in
+   *  the one list of the app that has a delete control on every line.
+   *
+   *  **Nothing is optimistic.** The star fills when the write has landed, not
+   *  when it was tapped: `starring` holds the control busy in between. A star
+   *  that fills first and reverts on a failed request is a control that looked
+   *  like it did something it hadn't.
+   *
+   *  A failure is spoken, unlike the picks list's silent `toggleStar` above —
+   *  there, the row's own star is one of eight and the list is still standing;
+   *  here it is the only star on the screen and going back to it costs the
+   *  two-visit trip this issue exists to remove. */
+  async function toggleReadStar() {
+    if (!draft || starring) return;
+    setStarring(true);
+    setError(null);
+    try {
+      if (readFavorite) {
+        await api.del(`/api/favorites/${readFavorite.id}`);
+        setStarEdit({ name: draft.name, favorite: null });
+      } else {
+        setStarEdit({ name: draft.name, favorite: await api.post<Favorite>("/api/favorites", draft) });
+      }
+      reloadFavs();
+    } catch {
+      setError(
+        readFavorite
+          ? "Couldn't remove that from your favorites — check your connection."
+          : "Couldn't save that to your favorites — check your connection.",
+      );
+    } finally {
+      setStarring(false);
     }
   }
 
@@ -659,8 +732,44 @@ export function Log() {
                   {label(slot)} · {clock.short}
                 </span>
               </button>
-              <span className="mono">
-                {read.manual ? "COULDN'T READ IT" : `READ IN ${(read.readMs / 1000).toFixed(1)}S`}
+              {/* The star sits with the read's own facts rather than beside
+                  the save (#103). Two reasons it is here and not in
+                  `.sheet-foot`: this row is already where the sheet makes
+                  claims about the *whole* read — which meal it is, how long it
+                  took — and the star is exactly that kind of claim, where the
+                  rows below it are claims about one food each; and the one
+                  thing the control must not be is a second button competing
+                  with `Log N kcal`, which this puts at the opposite corner of
+                  the sheet, unfilled, at a sixth of the size. Rule 5's accent
+                  is still spent on the save; the star borrows it only as the
+                  16px mark that means "starred", the same mark and the same
+                  two tokens the picks list has used since #12. */}
+              <span className="sheet-head-end">
+                <span className="mono">
+                  {read.manual ? "COULDN'T READ IT" : `READ IN ${(read.readMs / 1000).toFixed(1)}S`}
+                </span>
+                {/* Disabled until something on the sheet has a name — #16's
+                    recovery sheet opens blank, and a favourite called ", " is
+                    the junk this must not be able to write. `favoriteDraft`
+                    refuses the same case independently, so the guard is
+                    structural rather than a rule about when to draw a
+                    button. */}
+                <button
+                  className={readFavorite ? "sheet-star star-mark on" : "sheet-star star-mark"}
+                  aria-pressed={readFavorite !== null}
+                  aria-busy={starring}
+                  disabled={!draft || starring}
+                  aria-label={
+                    !draft
+                      ? "Star this meal — name it first"
+                      : readFavorite
+                        ? `Unstar ${draft.name}`
+                        : `Star ${draft.name}`
+                  }
+                  onClick={() => void toggleReadStar()}
+                >
+                  <StarGlyph />
+                </button>
               </span>
             </div>
             <p className="sheet-sub">
