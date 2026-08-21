@@ -448,11 +448,12 @@ reason that directory exists.
 one screen's worth of arbitration — #52's horizontal swipe-to-reveal and #102's vertical
 drag-to-dismiss — and they are mirror images of each other, which is exactly the shape
 that invites a copy with the axes swapped. **The constants stay per-gesture and are
-argued where they live** (88px of travel to reveal a control, 64px to throw a panel
-away); the *rule* is one function each: when a finger has moved enough to mean anything,
-which axis wins, and whether a release commits or springs back. `src/shared/` is for
-quantities that cross the wire — this one never leaves the client, so it sits beside its
-two consumers instead.
+argued where they live** (88px of travel to reveal a control, a quarter of the
+panel's own height to throw it away — a fixed 64px shipped first and was 12% of the
+full panel against 41% of a one-pick one, #102's UAT); the *rule* is one function
+each: when a finger has moved enough to mean anything, which axis wins, and whether
+a release commits or springs back. `src/shared/` is for quantities that cross the
+wire — this one never leaves the client, so it sits beside its two consumers instead.
 
 **Deliberately two, and each is correct:**
 

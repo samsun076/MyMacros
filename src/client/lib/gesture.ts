@@ -9,9 +9,12 @@
  *  **The constants differ; the rule does not.** That distinction is the whole
  *  reason this file exists rather than a second copy of `swipe.ts` with the
  *  axes swapped. How far a finger travels before a panel is fully in (88px)
- *  and how far it travels before a sheet is gone (64px) are two decisions
- *  about two controls. *Whether an axis has been claimed yet*, and *whether a
- *  released drag commits or springs back*, are one decision stated twice —
+ *  and how far it travels before a sheet is gone (a quarter of that sheet's
+ *  own height) are two decisions about two controls — and they are not
+ *  even the same *kind* of number, which is why `commits` takes the threshold
+ *  as an argument rather than reading one. *Whether an axis has been claimed
+ *  yet*, and *whether a released drag commits or springs back*, are one
+ *  decision stated twice —
  *  which is #86's defect, and the kind that rots quietly: raise the intent
  *  threshold in one file and the other gesture goes on claiming at 8px with
  *  nothing to fail.

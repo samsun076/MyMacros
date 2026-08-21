@@ -42,20 +42,62 @@ import { claimAxis, commits } from "./gesture";
  *  quietly turn the handle back into a decoration. */
 export const SHEET_HANDLE_ATTR = "data-sheet-handle";
 
-/** How far down before letting go dismisses, rather than springing back.
+/** How far down before letting go dismisses, as a share of the panel's own
+ *  height (#102's UAT, 2026-08-21).
  *
- *  **Not `REVEAL_PX * 0.4`, and the difference is the point.** #52's 35.2px is
- *  a flick that reveals a control you must then tap; this ends the panel in one
- *  motion, and 35px of downward drift is well inside what a thumb produces
- *  while reading a list it means to scroll. 64 is eight times the intent
+ *  **A fixed pixel distance shipped first and it was the wrong shape**, not
+ *  merely the wrong number. `DISMISS_PX` was 64 for every panel, and the panel
+ *  is not one size: measured at 375x812 it is 522px with eight picks and 155px
+ *  with one, so the same 64 was a 12% throw on the list Dave has and a 41%
+ *  throw on the list a first-day user has. The gesture was three and a half
+ *  times more eager on the full panel — and the full panel is the one that
+ *  gets used. Dave, on `d6d0d68`, an installed app on a 13 mini: *"drag down
+ *  just a little to spring up doesnt work, just disappears."*
+ *
+ *  **A share is what iOS's own sheets use**, which is the muscle memory #102
+ *  set out to match, and it is the only shape that can serve both ends: a
+ *  third of the full panel (174px) is *taller than the whole* of the one-pick
+ *  panel, so no constant tuned for one is usable on the other.
+ *
+ *  **A quarter rather than a third, and the reason is the screen's bottom
+ *  edge.** The panel is anchored there, so a downward drag that starts low has
+ *  nowhere to go — measured at 375x812, the handle has 499px of travel below
+ *  it, row 5 has 202px and row 8 has 44px. A quarter (131px) is reachable from
+ *  the handle and rows 1-6; a third (174px) loses rows 6-8 as well. Row 8 is
+ *  already unreachable at 64px and always was. So: the largest share that
+ *  costs the body drag one row of reach on the reference device.
+ *
+ *  Physical scale, since that is what a thumb answers to: 375 CSS px spans
+ *  64.2mm of a 13 mini, so 64px is 11.0mm — narrower than the thumb making the
+ *  gesture — and a quarter of the full panel is 22mm.
+ *
+ *  **Only a thumb confirms this.** Every check in this repo agreed the old
+ *  number worked, because a synthetic touch lands exactly where it is told and
+ *  has no opinion about what "a little" means. */
+export const DISMISS_SHARE = 1 / 4;
+
+/** The floor under that share, and the last of the old fixed distance.
+ *
+ *  Below ~256px of panel — one or two picks — a quarter falls under 11mm,
+ *  which is the scale that failed in the field, so the share stops there
+ *  rather than shrinking with the list. 64 is still eight times the intent
  *  threshold, so the two decisions are nowhere near each other (#91's
- *  complaint about thresholds within five pixels of one another), and it is
- *  still generous on purpose: #102's own argument is that this dismiss is free,
- *  so the gesture should err toward firing rather than toward feeling dead.
+ *  complaint about thresholds within five pixels of one another).
  *
  *  Stated once, here. No CSS length restates it — `tools/sheet-drag.test.mjs`
  *  fails if one appears, the same guard #91 put on `REVEAL_PX`. */
 export const DISMISS_PX = 64;
+
+/** The commit distance for a panel this tall, in pixels.
+ *
+ *  Read once, at the moment the finger lands, for `armsDrag`'s reason: it is a
+ *  claim about the panel the drag started on, not a window that can reopen
+ *  mid-drag. It **reads** the rendered height rather than restating it — the
+ *  stylesheet still owns how tall the panel is, and this is the one consumer
+ *  of that number. */
+export function dismissDistance(sheetHeightPx: number): number {
+  return Math.max(DISMISS_PX, sheetHeightPx * DISMISS_SHARE);
+}
 
 /** Is this touch allowed to become a dismissal at all? (#102)
  *
@@ -101,6 +143,10 @@ export function useDragToDismiss(onDismiss: () => void) {
      *  state is a render behind — `swipe.ts` has the same ref for the same
      *  reason, and the same StrictMode bug in its history. */
     offset: number;
+    /** How far this particular drag has to go, fixed when the finger landed.
+     *  It depends on the panel's height and the panel's height depends on how
+     *  many picks there are, so it is per-drag rather than per-module. */
+    threshold: number;
   } | null>(null);
 
   /** A drag that ends over a favourite must not also log it.
@@ -124,7 +170,18 @@ export function useDragToDismiss(onDismiss: () => void) {
     });
     // Not armed is not "wait and see": the list is scrolled and this touch is
     // a scroll. Recording a start would only invite a later frame to reconsider.
-    start.current = armed ? { x: e.clientX, y: e.clientY, axis: "none", offset: 0 } : null;
+    start.current = armed
+      ? {
+          x: e.clientX,
+          y: e.clientY,
+          axis: "none",
+          offset: 0,
+          // `offsetHeight`, not the client rect: the sheet carries a transform
+          // while it is being dragged and this must be the panel's height, not
+          // whatever the last drag left on screen.
+          threshold: dismissDistance(e.currentTarget.offsetHeight),
+        }
+      : null;
   }, []);
 
   const onPointerMove = useCallback((e: React.PointerEvent<HTMLElement>) => {
@@ -167,7 +224,7 @@ export function useDragToDismiss(onDismiss: () => void) {
       }
       setDrag(null);
       swallowClick.current = true;
-      if (commits(from.offset, DISMISS_PX)) onDismiss();
+      if (commits(from.offset, from.threshold)) onDismiss();
     },
     [onDismiss],
   );

@@ -137,7 +137,12 @@ describe("the panel's rule has to win (#82, #102)", () => {
 describe("one quantity, one source (#86, #102)", () => {
   /** #91's rule, inherited: the commit distance is gesture feel and lives in
    *  `lib/sheet-drag.ts`. A CSS length that happened to equal it would be a
-   *  second statement of it, correct only until somebody moved one. */
+   *  second statement of it, correct only until somebody moved one.
+   *
+   *  Since #102's UAT the distance is a *share* of the panel's height and `DISMISS_PX`
+   *  is only its floor — but the floor is still a number the stylesheet must
+   *  not restate, and it is still the number a `padding` or a `translate` would
+   *  most plausibly collide with. */
   it("never restates the dismiss distance as a CSS length", () => {
     const rules = code.slice(code.indexOf(SHEET), code.indexOf(".sheet-wrap {"));
     expect(rules).not.toMatch(new RegExp(`(^|[^\\d.])${DISMISS_PX}px`));

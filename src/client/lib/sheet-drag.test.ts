@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { INTENT_PX } from "./gesture";
-import { DISMISS_PX, armsDrag } from "./sheet-drag";
+import { INTENT_PX, commits } from "./gesture";
+import { DISMISS_PX, DISMISS_SHARE, armsDrag, dismissDistance } from "./sheet-drag";
 
 /** When a downward drag on the picks panel is a dismissal and when it is a
  *  scroll (#102).
@@ -57,5 +57,72 @@ describe("how far down is a dismissal (#102)", () => {
    *  would report that, and by then it has shipped. */
   it("is far enough past the intent threshold to be a second decision", () => {
     expect(DISMISS_PX).toBeGreaterThan(INTENT_PX * 4);
+  });
+
+  /** …and so is every distance the share can produce, since the floor is the
+   *  smallest of them. The claim above is about one constant; this is about
+   *  the number the gesture actually uses. */
+  it("stays past it for every panel the list can produce", () => {
+    for (const h of [PANEL_1_PICK, PANEL_2_PICKS, PANEL_8_PICKS]) {
+      expect(dismissDistance(h)).toBeGreaterThan(INTENT_PX * 4);
+    }
+  });
+});
+
+/** The panel's rendered height, measured in Chrome at 375x812 (a 13 mini) with
+ *  the picks list at `PICKS_MAX` and then with rows hidden. Fixtures, not a
+ *  second statement of the layout: they say "for a panel of this height",
+ *  never "the panel is this tall". On device each is ~34px taller, because
+ *  `.sheet`'s bottom padding carries `env(safe-area-inset-bottom)`. */
+const PANEL_8_PICKS = 522;
+const PANEL_2_PICKS = 207;
+const PANEL_1_PICK = 155;
+
+describe("the commit distance scales with the panel (#102 UAT)", () => {
+  /** **The assertion the shipped build fails.** `DISMISS_PX` was the whole
+   *  threshold on `ba66109`, so 64px of travel dismissed the full panel — 12%
+   *  of it, 11mm of a 13 mini's glass, narrower than the thumb doing the
+   *  dragging. Dave could not produce a spring-back at all. */
+  it("does not throw the full panel away on 64px of travel", () => {
+    expect(commits(DISMISS_PX, dismissDistance(PANEL_8_PICKS))).toBe(false);
+  });
+
+  /** The same drag on a one-pick panel is a third of it and does commit. This
+   *  is the pair that a single constant cannot produce: one number is either
+   *  too eager for the tall panel or unreachable on the short one. */
+  it("does throw a one-pick panel away on the same 64px", () => {
+    expect(commits(DISMISS_PX, dismissDistance(PANEL_1_PICK))).toBe(true);
+  });
+
+  /** **Why a constant was the wrong shape rather than the wrong number.** A
+   *  third of the full panel is taller than the whole of the one-pick panel,
+   *  so a distance tuned for the list Dave has would be a drag the first-day
+   *  user cannot finish. Stated as arithmetic so that "just raise the number"
+   *  fails here rather than on a phone. */
+  it("could not have been one number", () => {
+    expect(PANEL_8_PICKS / 3).toBeGreaterThan(PANEL_1_PICK);
+  });
+
+  /** The floor is a floor: it binds on the short panel and gets out of the way
+   *  on the tall one. */
+  it("takes the floor on a short panel and the share on a tall one", () => {
+    expect(dismissDistance(PANEL_1_PICK)).toBe(DISMISS_PX);
+    expect(dismissDistance(PANEL_2_PICKS)).toBe(DISMISS_PX);
+    expect(dismissDistance(PANEL_8_PICKS)).toBe(PANEL_8_PICKS * DISMISS_SHARE);
+  });
+
+  /** **The screen's bottom edge is the ceiling on this number, and it is the
+   *  reason the share is a quarter and not a third.** The panel is anchored to
+   *  the bottom of the viewport, so a downward drag that starts low runs out of
+   *  glass: measured at 375x812, these are the pixels available below the
+   *  handle and below each of the eight rows. Row 8 could never dismiss, at any
+   *  threshold this project has shipped, and that is a property of the layout
+   *  rather than of the gesture. Raise the share to a half and five of nine
+   *  start points go dead — this test is what fails when someone does. */
+  const TRAVEL_375x812 = [499, 412, 360, 307, 254, 202, 149, 97, 44];
+
+  it("stays reachable from the handle and most of the list", () => {
+    const t = dismissDistance(PANEL_8_PICKS);
+    expect(TRAVEL_375x812.filter((available) => available >= t)).toHaveLength(7);
   });
 });
