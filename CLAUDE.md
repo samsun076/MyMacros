@@ -101,6 +101,17 @@ include `src/`, so `npm run check` type-checks tests with no extra project.
   Mutation testing is the formal name for this and Stryker would mechanise it;
   considered and not adopted, since the cost is a permanent slow gate to
   replace a habit that is already working.
+  **The mutation harness itself must refuse a non-unique anchor.** #102's
+  restored a mutation by replacing the *first* `return;` in the file and
+  corrupted `sheet-drag.ts` outright — and `npm test` came back **817/817
+  green on the corrupted file**. The sha assertion caught it; the suite did
+  not, and could not, because nothing in this repo executes that file. So the
+  harness needs three things and all three earned their place on a real
+  incident: assert the anchor matches **exactly once** before writing, sha the
+  file before and after, and sha it again after the revert to prove it is
+  byte-identical to where it started. Revert by inverse string replacement and
+  never by `git checkout` — the tree is meant to be dirty and a checkout
+  destroys the work under test.
   **And confirm the mutation actually landed before believing a green run.**
   #98's second mutation came back 33/33 green because the edit was never
   applied — the anchor its script searched for had moved, the `assert` fired,
