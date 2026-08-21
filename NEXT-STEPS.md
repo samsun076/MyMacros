@@ -2546,7 +2546,8 @@ section of NEXT-STEPS.md — it runs to the end of the file and carries what
 shipped, five limits that turned out to be doing nothing, and the reason #60
 goes first.
 
-Live at fadfb7c, production D1 on 0009_portion.sql, 838 tests, tree clean.
+Live at b5dda8a, production D1 on 0009_portion.sql, 838 tests, tree clean.
+(fadfb7c is the last code commit; b5dda8a is this write-up on top of it.)
 Ten issues shipped and were reviewed yesterday: #109, #107, #103, #112, #93,
 #91, #102, #114, #115, #117.
 
@@ -2585,8 +2586,16 @@ cookie from the DEV-only email/password route (the Origin header is required
 and must match APP_URL, or better-auth answers 403).
 ```
 
-## The SHA in that prompt is `fadfb7c` and it is correct as of writing
+## The SHA in that prompt is `b5dda8a` and it was wrong for four minutes
 
-Two previous starter prompts shipped with stale SHAs. If anything lands on
-`main` between this being written and the next session opening, **the prompt is
-wrong and the tree is the truth** — `git log --oneline -1` settles it.
+Two previous starter prompts shipped with stale SHAs. This one shipped stale
+too, for exactly as long as it took to commit the write-up that contains it:
+the prompt named `fadfb7c`, the last *code* commit, and `b5dda8a` — this file —
+landed on top of it seconds later. **A prompt that names the SHA it was written
+before cannot be right**, because writing it changes the answer.
+
+Caught and corrected the same minute, and recorded rather than quietly fixed,
+because it is the third time in three sessions and the mechanism is finally
+clear. If anything lands on `main` between this being written and the next
+session opening, **the prompt is wrong and the tree is the truth** —
+`git log --oneline -1` settles it in one command.
