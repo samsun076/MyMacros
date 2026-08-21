@@ -2600,3 +2600,136 @@ because it is the third time in three sessions and the mechanism is finally
 clear. If anything lands on `main` between this being written and the next
 session opening, **the prompt is wrong and the tree is the truth** —
 `git log --oneline -1` settles it in one command.
+
+## Session W — the unattended shape, and what it structurally cannot do
+
+Written 2026-08-21 in answer to "how much of this is unattended work?". The
+honest split, because the wrong half is the obvious one.
+
+**Roughly 80% of the work runs without Dave. Close to 0% of the verification
+that actually finds bugs does.**
+
+### Runs unattended
+
+| | |
+|---|---|
+| **#60** | Well specified. `PATCH /api/food-logs` over the id list the client already holds from the day payload — the same shape #52's delete uses. No open design calls. |
+| **#81** | Its design section is headed *"Design notes, not decisions — left open deliberately; settle them when building, and record what was chosen."* It delegates the calls and asks for them written down. |
+| **#59** | The server half exists: `PHOTO_SYSTEM` already says to trust a note over the picture, and `/api/analyze/photo` already reads, trims and folds a `note` field. **The client never sends it.** One review decision, delegated. |
+| **Rule 4b** | Production D1 pull works; the arithmetic is hand-computable independently, which is the whole requirement. |
+| **Rule 4** | Light-pack render check is headless. |
+| **Deploy checks** | Build check-run, shell-plus-asset content-type sampling, the whole loop. |
+
+### Cannot run unattended
+
+- **#116** — a design call with three costed options and no obvious answer.
+- **#24** — scope undefined. Somebody has to say what "done" means or it eats
+  the week.
+- **Every device UAT.**
+
+### The catch, and it is Session V's entire lesson
+
+**Unattended shipping is unverified shipping.** Ten findings on 2026-08-21,
+zero from the test suite. In one day: two mutations in #107 and two in #102
+left all 838 tests green; 817 tests passed on a structurally corrupted file;
+#102's core rule has never been touched by a human; and #114 existed only
+because a synthetic touch has no opinion about what "a little drag" means.
+
+### But unattended is not blind, and the distinction is worth keeping
+
+| Unattended **can** | Unattended **cannot** |
+|---|---|
+| Build, test, mutation-test | Feel — tracking versus lag, spring-back |
+| Headless drives — state machines, thresholds | Safe areas; `env()` reads 0 in Chrome |
+| **Read production rows** | A real camera, a real barcode |
+| Verify a deploy honestly | "Does this look right" |
+
+**Reading stored rows is the one unattended check with a real hit rate here.**
+#105, #106, #107 and #108 all came from it, and #117's reproduction was a
+read-only production pull. An unattended session that ships without reading its
+own rows afterwards has skipped the only bug-finder available to it.
+
+### The shape to run
+
+**Build #60, #81, #59. Commit each. Push nothing.** Leave a `REVIEW.md`
+carrying the diffs, the verbatim verification, the design calls each agent
+made, and — the part that matters most — **what each one structurally could not
+see.**
+
+**Do not deploy unattended.** Not because the build gate is weak; because a
+deploy nobody has thumb-tested is a deploy with this project's only working
+bug-finder switched off. #112 sat harmless for fifteen days and became a
+data-loss bug overnight with no edit to itself.
+
+**#116 wants two minutes of Dave before M11 can move.** It cannot be in an
+unattended session's scope, and neither can #24.
+
+## Starter prompt — UNATTENDED session (paste verbatim)
+
+```
+Working on MyMacros (~/Projects/MyMacros). This is an UNATTENDED session — Dave
+is not here and will not answer questions. Read CLAUDE.md, then the Session V
+and Session W sections of NEXT-STEPS.md. Session W is the one that tells you
+what this session may and may not do.
+
+Last code commit is fadfb7c; anything after it is documentation. Run
+`git log --oneline -1` for the real HEAD. Production D1 on 0009_portion.sql,
+838 tests, tree clean.
+
+Build three issues, in this order: #60, then #81, then #59. They are the last
+of M7 and they touch the same file family, so run them SEQUENTIALLY, one agent
+each. #60 first because it is the smallest and because there is currently no
+in-app way to verify a stored portion — every portion check costs a database
+query until it lands.
+
+COMMIT EACH ISSUE. PUSH NOTHING. DO NOT DEPLOY. The build gate is not the
+issue; the issue is that ten of ten findings yesterday came from a person or
+from production rows and none from the test suite, so a deploy nobody has
+thumb-tested has this project's only working bug-finder switched off.
+
+Where an issue leaves a design call open — #81 says so explicitly, #59 has one
+— MAKE IT, and record the reasoning in the commit. Do not stall waiting for an
+answer that is not coming. If you hit something that genuinely cannot be
+decided without Dave, build everything around it, write the question down in
+REVIEW.md, and move on.
+
+Agents implement and prove; the main session writes every commit and agents
+never touch git. Agents return verification output verbatim, not summarised.
+Read every diff and open three or four PNGs where structure could break.
+
+After the three land, do the rule 4b reconciliation M7's close owes. It is not
+a skip — #58 changed how a meal's macros are derived, so there is a real figure
+to check. 25-45 minutes with `npm run reconcile`, and heed the rule's own
+warning: if it finishes much faster, step 4 was skipped, and step 4 is the part
+with no output until it finds something.
+
+Then read production rows. It is the one unattended check with a real hit rate
+in this project — #105, #106, #107 and #108 all came from it. Read-only; never
+write to production.
+
+Leave REVIEW.md at the repo root carrying, per issue: the diff summary, the
+verbatim verification output, the design calls made and why, the mutation
+results including never-ran counts and any assertion that stayed green while
+the source was broken, and — most important — WHAT THIS SESSION STRUCTURALLY
+COULD NOT SEE. That last one is the handover; everything else is bookkeeping.
+
+Out of scope and do not start them: #116 and #24 both need a decision from
+Dave. #110, #113, #49 and #32 are unmilestoned and waiting on triage — leave
+them there.
+
+Environment, if starting cold: kill any orphan dev server on 5173,
+npm run db:migrate, node tools/seed-demo.mjs --weeks 12, and mint a session
+cookie from the DEV-only email/password route (the Origin header is required
+and must match APP_URL, or better-auth answers 403).
+```
+
+## What Dave does when he comes back
+
+1. Read `REVIEW.md`, starting with the "could not see" sections.
+2. Review the three diffs.
+3. `npm run build`, then push, then verify the deploy — shell and its referenced
+   asset together, asserting content-type, because the SPA fallback turns a
+   mid-rollout mismatch into a white screen with no error anywhere.
+4. **One device round across all three.** That is the pass that will find
+   whatever is actually wrong.
+5. Decide #116, which unblocks M11.
