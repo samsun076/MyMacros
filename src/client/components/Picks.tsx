@@ -29,7 +29,11 @@ export function Picks({
   saving: boolean;
   onStar: (pick: Pick) => void;
   onRelog: (pick: Pick) => void;
-  /** `picks` inline, `picks in-sheet` inside #82's panel. Layout only. */
+  /** `picks` inline, `picks in-sheet` inside #82's panel. Layout only — and
+   *  after #115 that is the *whole* difference between the two placements.
+   *  This component renders every pick it is handed and neither caller trims
+   *  the list first; why neither placement needs a length is argued once, in
+   *  lib/picks.ts, beside the cap it replaced. */
   className?: string;
 }) {
   return (

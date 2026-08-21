@@ -13,16 +13,57 @@ import { favoriteName, foldMeals } from "../../shared/meals";
  *  most-used first (that is what `favorites_user_use_idx` is for) and
  *  `/api/food-logs/recent` returns newest first; re-sorting on the client
  *  would be a second opinion about an order the routes already own. This
- *  function's whole job is the *join*: favourites ahead of recents, the
- *  overlap removed, and a cap.
+ *  function's whole job is the *join*: favourites ahead of recents and the
+ *  overlap removed.
+ *
+ *  **Nothing is shortened here either, and that is #115's fix — the same
+ *  argument as the order, one step over.** This used to end
+ *  `.slice(0, PICKS_MAX)` with `PICKS_MAX = 8`, taken over the *join*. By
+ *  2026-08-21 production held ten favourites, so two of them rendered nowhere
+ *  in the app; they could not be un-starred either, because the un-star
+ *  control lives on a row of this very list and there is no second surface
+ *  anywhere that lists favourites. And because favourites concatenate first,
+ *  the slice ate the recents half whole: eight favourites meant zero recents.
+ *
+ *  The rule that replaces the number: **user-chosen data is never truncated;
+ *  auto-generated data is.**
+ *
+ *  - **Favourites are chosen.** Each one is a deliberate tap on a star, and
+ *    dropping one silently is discarding an instruction. Nothing caps them
+ *    here, and `GET /api/favorites` has no limit of its own either.
+ *  - **Recents are generated**, endless by construction — and
+ *    `GET /api/food-logs/recent` already stops at eight distinct meals.
+ *    **That is the cap, it is stated there, and restating it here would be a
+ *    second opinion about a length the route owns**, exactly the way
+ *    re-sorting would be a second opinion about the order. The two eights
+ *    that used to sit either side of the wire were one quantity written
+ *    twice; only the route's remains.
+ *  - **Their slots are reserved by construction.** Nothing truncates the join,
+ *    so no number of favourites can crowd the recents out.
+ *
+ *  **Both placements are handed the whole list and render all of it, and the
+ *  reason they can differ in layout without differing in length is stated
+ *  here, once** — #115's own requirement, since the number that is gone was
+ *  the only thing that used to say anything about either of them.
+ *
+ *  - **The panel is bounded by the stylesheet.** `.sheet.picks-sheet` is
+ *    `max-height: 80dvh` over `.sheet`'s `overflow-y: auto`. Measured at
+ *    375x812 with rows hidden one at a time: rows are 52.5px, the panel grows
+ *    to 627px on ten rows and then stops at 650px from eleven on, scrolling
+ *    the rest. A longer list makes the scrollbar longer and the panel no
+ *    taller, which is exactly what that ceiling was written for — it simply
+ *    never had to do it, because nothing was allowed to get long enough.
+ *  - **TEXT's inline list cannot push the text box anywhere, and the claim
+ *    that it could was never true.** `PICKS_MAX`'s comment said eight "fills
+ *    TEXT's list without pushing the text box off the top". The list is a
+ *    block *after* `.log-ask` in ordinary flow, so it can only extend the
+ *    document downward. Measured, not reasoned: at 375 the textarea sits
+ *    146px from the document top with 21 rows below it and 146px with 3 —
+ *    the same number, while the document itself went 812px to 1559px. The
+ *    constraint that argued for the cap in the placement that was supposed to
+ *    need it most did not exist.
  */
 export type Pick = { meal: RecentMeal; favorite: Favorite | null };
-
-/** As many as the screen is worth. Eight fills TEXT's list without pushing the
- *  text box off the top, and fills the panel without turning it into a scroll
- *  chore — carried over from #12's implementation unchanged, and named here so
- *  the two placements cannot disagree about it. */
-export const PICKS_MAX = 8;
 
 /** A `Favorite` is structurally a `RecentMeal` plus its own bookkeeping, so a
  *  starred pick carries the favourite itself as its meal — that is what lets
@@ -38,7 +79,7 @@ export function mergePicks(
   const rest: Pick[] = (recents ?? [])
     .filter((m) => !starred.has(m.name.toLowerCase()))
     .map((meal) => ({ meal, favorite: null }));
-  return [...favs, ...rest].slice(0, PICKS_MAX);
+  return [...favs, ...rest];
 }
 
 /** One row of the confirm sheet, as far as starring cares. Structural on

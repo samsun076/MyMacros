@@ -7,6 +7,18 @@ import { isDay, isInstant, isNum, oneOf } from "../validate";
 
 const foodLogs = new Hono<AppEnv>();
 
+/** How many distinct meals "recent" means, and **since #115 this is the only
+ *  thing that bounds the recents half of the picks list.**
+ *
+ *  `mergePicks` used to slice the joined list at eight of its own, which threw
+ *  away *favourites* — chosen rows, listed nowhere else in the app — and, past
+ *  eight of them, the entire recents half. That slice is gone, so what the
+ *  panel shows is what this route sends. The client deliberately does not
+ *  restate the number: it would be a second opinion about a length this route
+ *  owns, the same way re-sorting would be a second opinion about the order
+ *  `orderBy` below already decides. `food-logs.route.test.ts` pins it. */
+const RECENTS_MAX = 8;
+
 /** GET /api/food-logs/recent (#12): the last few distinct meals, newest
  *  first, each folded the same way the timeline folds them (rows sharing a
  *  logged_at instant are one meal). Deduped by name so "the usual" shows up
@@ -36,7 +48,7 @@ foodLogs.get("/recent", async (c) => {
       carbs_g: round1(meal.carbs_g),
       fat_g: round1(meal.fat_g),
     });
-    if (meals.length >= 8) break;
+    if (meals.length >= RECENTS_MAX) break;
   }
   return c.json<RecentsResponse>({ meals });
 });

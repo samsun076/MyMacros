@@ -1759,9 +1759,15 @@ section {
 /* The panel borrows the confirm sheet whole — surface, grab handle, radius,
    backdrop-to-dismiss — and only lowers the ceiling: this sheet is dismissed
    by tapping the viewfinder above it, so there must always be a viewfinder
-   left to tap. Eight rows never reach this, which is the point of the cap in
-   lib/picks.ts; the rule is here so that stops being the only thing holding
-   it. Overflow is already `.sheet`'s business. */
+   left to tap. Overflow is already `.sheet`'s business.
+
+   **This ceiling is now the only thing bounding the panel, and it does real
+   work** (#115). It used to be belt and braces behind an eight-row cap in
+   lib/picks.ts — which turned out to be throwing away favourites, so it is
+   gone, and the list is as long as the user's own choices make it. A longer
+   list scrolls here instead of growing, which is exactly what this rule and
+   `.sheet`'s `overflow-y: auto` were for; the only reason it never had to
+   before is that nothing was ever allowed to get long enough. */
 /* **`.sheet.picks-sheet`, not `.picks-sheet`, and that is a bug fix rather
    than a flourish** (found while writing #102).
 

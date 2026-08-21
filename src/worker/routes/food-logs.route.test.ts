@@ -1,7 +1,12 @@
 import { env } from "cloudflare:test";
 import { Hono } from "hono";
 import { beforeEach, describe, expect, it } from "vitest";
-import type { DayResponse, FoodLogItemInput, FoodLogsCreated } from "../../shared/api";
+import type {
+  DayResponse,
+  FoodLogItemInput,
+  FoodLogsCreated,
+  RecentsResponse,
+} from "../../shared/api";
 import { createDb } from "../db";
 import type { AppEnv } from "../types";
 import day from "./day";
@@ -593,3 +598,49 @@ async function rowCount() {
     .first<{ n: number }>();
   return row?.n ?? 0;
 }
+
+/* ── #115: this route is now the ONLY cap on the recents half ─────────────── */
+
+/** `mergePicks` used to slice the joined picks list at 8 and no longer slices
+ *  at all, because a cap over the join threw away *favourites* — which are
+ *  chosen, and which nothing else in the app lists. What survives is this
+ *  route's own `meals.length >= 8`, and it is load-bearing in a way it was not
+ *  before: it is the whole reason an endless log history does not become an
+ *  endless panel. Two statements of eight became one, and this is the one.
+ *
+ *  Fifteen meals rather than nine, so a route that had quietly grown a
+ *  `.limit(10)` in front of the fold would still fail this. */
+describe("GET /api/food-logs/recent — the only bound on the recents half (#115)", () => {
+  const recents = () =>
+    app.fetch(new Request("https://fuel.debrief.run/api/food-logs/recent"), env);
+
+  async function saveDistinctMeals(n: number) {
+    for (let i = 1; i <= n; i++) {
+      const res = await save(
+        meal({
+          // Distinct instants: `foldMeals` groups on `logged_at|meal_slot`, so
+          // saves sharing a millisecond would fold into ONE meal and the test
+          // would pass by having too little data rather than by the cap.
+          logged_at: `2026-08-10T${String(i).padStart(2, "0")}:00:00.000Z`,
+          items: [item({ name: `Meal ${i}` })],
+        }),
+      );
+      if (res.status !== 201) throw new Error(`seed ${i} failed: ${res.status}`);
+    }
+  }
+
+  it("stops at eight distinct meals however long the history is", async () => {
+    await saveDistinctMeals(15);
+    const { meals } = await (await recents()).json<RecentsResponse>();
+    expect(meals.map((m) => m.name)).toEqual([
+      "Meal 15",
+      "Meal 14",
+      "Meal 13",
+      "Meal 12",
+      "Meal 11",
+      "Meal 10",
+      "Meal 9",
+      "Meal 8",
+    ]);
+  });
+});

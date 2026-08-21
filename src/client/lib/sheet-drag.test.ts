@@ -70,10 +70,20 @@ describe("how far down is a dismissal (#102)", () => {
 });
 
 /** The panel's rendered height, measured in Chrome at 375x812 (a 13 mini) with
- *  the picks list at `PICKS_MAX` and then with rows hidden. Fixtures, not a
- *  second statement of the layout: they say "for a panel of this height",
- *  never "the panel is this tall". On device each is ~34px taller, because
- *  `.sheet`'s bottom padding carries `env(safe-area-inset-bottom)`. */
+ *  eight picks in the list and then with rows hidden. Fixtures, not a second
+ *  statement of the layout: they say "for a panel of this height", never "the
+ *  panel is this tall". On device each is ~34px taller, because `.sheet`'s
+ *  bottom padding carries `env(safe-area-inset-bottom)`.
+ *
+ *  **Eight was `PICKS_MAX` when these were measured and is now just a number
+ *  of rows** (#115 removed the cap, because it was throwing favourites away).
+ *  All three fixtures re-measured unchanged afterwards — they were always
+ *  about a height — but the panel above them is not. Rows are 52.5px, so at
+ *  375x812 it grows to 627px on ten and then **stops at the `80dvh` ceiling,
+ *  650px, from eleven rows on**: that is where it starts to scroll, and where
+ *  `dismissDistance` saturates at 162.5px instead of rising with the list.
+ *  Eleven is therefore the tallest panel this gesture will ever be asked
+ *  about, and the range these three fixtures bracket is the whole of it. */
 const PANEL_8_PICKS = 522;
 const PANEL_2_PICKS = 207;
 const PANEL_1_PICK = 155;

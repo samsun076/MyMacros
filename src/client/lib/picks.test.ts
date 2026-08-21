@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Favorite, RecentMeal } from "../../shared/api";
 import { FAVORITE_NAME_MAX } from "../../shared/meals";
-import { PICKS_MAX, favoriteDraft, favoriteNamed, mergePicks } from "./picks";
+import { favoriteDraft, favoriteNamed, mergePicks } from "./picks";
 
 /** #82's half of the fix. The merge was an untested `useMemo` inside Log.tsx
  *  and is now the single source both placements read — TEXT's inline list and
@@ -97,11 +97,62 @@ describe("mergePicks", () => {
     expect(picks.map((p) => p.meal.name)).toEqual(["Greek Yoghurt"]);
   });
 
-  it("caps the list at 8, counting favourites and recents together", () => {
+  /* ── #115: nothing is dropped ──────────────────────────────────────────
+   *
+   *  These replace four tests that pinned `PICKS_MAX = 8` — and they are
+   *  written as the exact inverse of them, because the old ones were correct
+   *  about the code and wrong about the product: production held ten
+   *  favourites and two of them rendered nowhere. Each names the number the
+   *  old cap would have produced, so a re-introduced `.slice(0, 8)` fails on
+   *  the *contents* rather than only on a length. */
+
+  /** **The issue's own "done when", and the one to keep.** Twelve is well
+   *  clear of the boundary that shipped, and every name is asserted rather
+   *  than a count, so a slice at any position fails here. */
+  it("keeps every favourite when there are more than the old cap held", () => {
+    const favs = Array.from({ length: 12 }, (_, i) => fav(`f${i + 1}`));
+    expect(mergePicks(favs, []).map((p) => p.meal.name)).toEqual([
+      "f1",
+      "f2",
+      "f3",
+      "f4",
+      "f5",
+      "f6",
+      "f7",
+      "f8",
+      "f9",
+      "f10",
+      "f11",
+      "f12",
+    ]);
+  });
+
+  /** The favourite handle has to survive too: a starred row that lost it would
+   *  render an empty star and re-log without bumping `use_count`. Separate
+   *  from the names above for the reason the ordering pair is separate — a
+   *  mutant that drops the handle leaves the names intact. */
+  it("keeps the twelfth favourite's own handle, not just its name", () => {
+    const favs = Array.from({ length: 12 }, (_, i) => fav(`f${i + 1}`));
+    expect(mergePicks(favs, []).at(-1)?.favorite?.id).toBe("fav-f12");
+  });
+
+  /** **The recents' reserved slots.** Eight favourites used to consume the
+   *  whole list, so the panel's recents half disappeared for anyone past that
+   *  — silently, since a shorter list looks like a shorter history. */
+  it("still shows the recents when favourites alone would have filled the old cap", () => {
+    const favs = Array.from({ length: 8 }, (_, i) => fav(`f${i + 1}`));
+    expect(
+      mergePicks(favs, [recent("r1"), recent("r2"), recent("r3")])
+        .filter((p) => p.favorite === null)
+        .map((p) => p.meal.name),
+    ).toEqual(["r1", "r2", "r3"]);
+  });
+
+  /** And the join is still a join: favourites first, recents after, with no
+   *  boundary anywhere in between. Ten rows where the old cap gave eight. */
+  it("returns favourites and recents whole, in that order", () => {
     const favs = [fav("f1"), fav("f2"), fav("f3"), fav("f4"), fav("f5")];
     const recents = [recent("r1"), recent("r2"), recent("r3"), recent("r4"), recent("r5")];
-    // one assertion: the names carry the length, so a mutant that drops the
-    // cap can't fail a `toHaveLength` and leave the ordering unreported
     expect(mergePicks(favs, recents).map((p) => p.meal.name)).toEqual([
       "f1",
       "f2",
@@ -111,23 +162,20 @@ describe("mergePicks", () => {
       "r1",
       "r2",
       "r3",
+      "r4",
+      "r5",
     ]);
   });
 
-  it("states the cap as 8", () => {
-    expect(PICKS_MAX).toBe(8);
-  });
-
-  it("caps favourites alone when there are more than 8 of them", () => {
-    const favs = Array.from({ length: 12 }, (_, i) => fav(`f${i + 1}`));
-    const picks = mergePicks(favs, [recent("r1")]);
-    expect(picks.map((p) => p.meal.name)).toEqual(["f1", "f2", "f3", "f4", "f5", "f6", "f7", "f8"]);
-  });
-
-  it("keeps every capped pick a favourite when favourites overflow", () => {
-    const favs = Array.from({ length: 12 }, (_, i) => fav(`f${i + 1}`));
-    expect(mergePicks(favs, [recent("r1")]).map((p) => p.favorite !== null)).toEqual(
-      Array(8).fill(true),
+  /** The recents' bound belongs to `GET /api/food-logs/recent`, which stops at
+   *  eight distinct meals — see `food-logs.route.test.ts`, which pins it. This
+   *  is the client half of that single source: hand it more than the route
+   *  would ever send and it still hands all of them back, so nothing here can
+   *  quietly become a second cap. */
+  it("does not cap the recents either — the route owns that length", () => {
+    const recents = Array.from({ length: 12 }, (_, i) => recent(`r${i + 1}`));
+    expect(mergePicks([], recents).map((p) => p.meal.name)).toEqual(
+      Array.from({ length: 12 }, (_, i) => `r${i + 1}`),
     );
   });
 

@@ -200,3 +200,22 @@ describe("starring a read from the confirm sheet (#103)", () => {
     expect(rows).toEqual([]);
   });
 });
+
+/** The server half of #115. `mergePicks` no longer caps anything, so what the
+ *  picks list shows is now exactly what these two routes send — which makes
+ *  "how long is each feed?" a question with a single answer per feed, and this
+ *  is where the favourites one is pinned.
+ *
+ *  **Twelve, not nine.** Production held ten when the client cap was found, so
+ *  a fixture at the boundary would pass against a route that had quietly grown
+ *  a `.limit(10)`. */
+describe("GET /api/favorites — a chosen row is never dropped (#115)", () => {
+  it("returns every favourite, however many there are", async () => {
+    for (let i = 1; i <= 12; i++) {
+      await star({ name: `Favourite ${i}`, kcal: 300, protein_g: 30, carbs_g: 20, fat_g: 10 });
+    }
+    expect((await listed()).map((f) => f.name).sort()).toEqual(
+      Array.from({ length: 12 }, (_, i) => `Favourite ${i + 1}`).sort(),
+    );
+  });
+});
