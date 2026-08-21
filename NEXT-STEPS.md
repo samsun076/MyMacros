@@ -2304,11 +2304,12 @@ with a correction note) are all still open and all substantial.
 ## Starter prompt (paste verbatim)
 
 ```
-Working on MyMacros (~/Projects/MyMacros). Read CLAUDE.md, then the LAST
-section of NEXT-STEPS.md (Session U) — it has tomorrow's queue, the ordering
-trap in it, and what was left unverified.
+Working on MyMacros (~/Projects/MyMacros). Read CLAUDE.md, then the Session U
+section of NEXT-STEPS.md — it runs to the end of the file and carries today's
+queue, the ordering trap in it, what was left unverified, and the two-day
+scope.
 
-Live at a3c9a34, production D1 on 0009_portion.sql, 516 tests, tree clean.
+Live at d8fd0e6, production D1 on 0009_portion.sql, 516 tests, tree clean.
 Five issues shipped and were UAT'd on device yesterday: #82, #58, #98, #104,
 #108.
 
@@ -2324,6 +2325,11 @@ a path that silently clamps most portions into a column that cannot be
 repaired.
 
 After those: #103, then #102 (spec already settled in the issue), then #106.
+
+The two-day aim is to close M7 and M11. M6 is deliberately out of scope and
+the last section says why — don't pull it in. #91 (wants mockups) and #93
+(needs a device) are blocked on Dave, so raise them early rather than at the
+end.
 
 Run each as an orchestration — one agent per issue, sequential where files
 collide, and #109/#107/#103 all touch the same family. Agents implement and
