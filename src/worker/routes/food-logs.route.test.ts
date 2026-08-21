@@ -487,8 +487,14 @@ describe("POST /api/food-logs — a partial portion is refused (#104)", () => {
 
 describe("POST /api/food-logs — the portion's bounds (#104)", () => {
   /* The route refuses out-of-range NUMBERS (as it does for kcal and grams)
-     and truncates over-long LABELS (as it does for `name`). MAX_QTY 100 and
-     the 24-char unit are carried from `normalize()` in analyze.ts. */
+     and truncates over-long LABELS (as it does for `name`). The ceilings and
+     the 24-char unit are carried from `normalize()` in analyze.ts.
+
+     Every case below is counted in SLICES, so 100 is the ceiling in play
+     (#109 made it unit-aware — a weight gets 2,000). The unit-aware half, and
+     the agreement of all three copies of the rule, live in
+     `portion-limits.route.test.ts`; what stays here is this route's own
+     refuse-don't-clamp behaviour, which #109 did not change. */
   it("refuses a qty past the ceiling normalize() enforces", async () => {
     expect((await save(meal({ items: [item({ ...SLICES, portion_qty: 101 })] }))).status).toBe(400);
   });

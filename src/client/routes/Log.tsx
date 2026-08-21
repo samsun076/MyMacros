@@ -16,7 +16,7 @@ import { ApiError, api, useApi } from "../lib/api";
 import { releaseCamera } from "../lib/camera";
 import { deviceTimezone, localDay, mealSlotFor } from "../lib/day";
 import { fmtInt } from "../lib/format";
-import { FOOD_LIMITS, type NumericRule } from "../lib/numeric";
+import { FOOD_LIMITS, type NumericRule, portionQtyRule } from "../lib/numeric";
 import { type Pick, mergePicks } from "../lib/picks";
 import { type EditableItem, editable, portionLabel, savedPortion, setPortionQty } from "../lib/portion";
 
@@ -825,7 +825,16 @@ function ItemRow({
               Above the four macro fields on purpose: it is the thing that
               *moves* them, so reading top-to-bottom is cause then effect.
               `live`, like every other field on this sheet: the row's own kcal
-              and the footer total rescale as you type. */}
+              and the footer total rescale as you type.
+
+              **The bound follows the unit** (#109): `portionQtyRule`, never
+              `FOOD_LIMITS.portion_qty` directly. 100 is a generous ceiling for
+              a row counted in slices and a wrong one for a row measured in
+              grams, and spreading the counted rule onto both is what stored
+              200 g of chicken as 100 g. The clamp itself stays — a field
+              somebody is typing in is where a clamp is *visible*, which is the
+              #95/#96 typo-catcher pattern; what #109 forbids is rewriting a
+              wire value nobody can see. */}
           {item.portion && (
             <div className="item-portion">
               <label htmlFor={qtyId}>HOW MUCH</label>
@@ -834,7 +843,7 @@ function ItemRow({
                 value={item.portion.qty}
                 onCommit={onPortion}
                 live
-                {...FOOD_LIMITS.portion_qty}
+                {...portionQtyRule(item.portion.unit)}
               />
               <span className="mono">{item.portion.unit.toUpperCase()}</span>
             </div>

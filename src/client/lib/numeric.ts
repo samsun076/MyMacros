@@ -76,10 +76,18 @@ export type NumericCommit =
  *  `NumericField` already defaults to 0 and restating a default is exactly how
  *  Onboarding's `?? 62` rotted against a column rebuilt to 58.
  */
+/** The portion row on a barcode read. Min 1 because 0 g of something is not
+ *  a small meal, it is a field being cleared, and clearing has its own answer.
+ *
+ *  Hoisted out of the table below so `portion_qty_measured` can **derive** its
+ *  ceiling from this one rather than restate it (#109): both answer the same
+ *  question — how much of this food, by weight — and 2,000 g is the far end
+ *  #15 settled for it. A second `2000` two rows down would be #86's defect
+ *  inside a single object literal. */
+const GRAMS = { min: 1, max: 2000 } as const;
+
 export const FOOD_LIMITS = {
-  /** The portion row on a barcode read. Min 1 because 0 g of something is not
-   *  a small meal, it is a field being cleared, and clearing has its own answer. */
-  grams: { min: 1, max: 2000 },
+  grams: GRAMS,
   /** Per item, never per meal — a sheet of several items may total more, and
    *  the footer is right to say so. */
   kcal: { min: 0, max: 10000 },
@@ -88,13 +96,25 @@ export const FOOD_LIMITS = {
    *  would only invite an argument about which. 1dp matches what the app
    *  stores and what the barcode rescale produces. */
   macro_g: { min: 0, max: 1000, decimals: 1 },
-  /** The per-item portion count (#58) — "4" in *4 slices*. **Derived here, not
-   *  copied from the row above it**: `grams` measures a scanned product's
-   *  weight and 2 kg is a plausible slip; this counts *things*, and the
-   *  ceiling that matters is how many of one food a person eats at a sitting.
-   *  100 is far past a real meal in every unit the reader emits (slices,
-   *  tacos, cups, wings) and still catches the thumb that turns 4 into 44 or
-   *  drops a decimal point.
+  /** The per-item portion count (#58) — "4" in *4 slices* — **for a COUNTED
+   *  unit only**. Reach it through `portionQtyRule(unit)`, never directly:
+   *  spreading this row onto a field whose unit is grams is exactly the bug
+   *  #109 was.
+   *
+   *  **Derived here, not copied from `grams`**: that row measures a scanned
+   *  product's weight and 2 kg is a plausible slip; this counts *things*, and
+   *  the ceiling that matters is how many of one food a person eats at a
+   *  sitting. 100 is far past a real meal in every unit that counts something
+   *  — slices, tacos, cups, wings — and still catches the thumb that turns 4
+   *  into 44 or drops a decimal point.
+   *
+   *  **What #109 fixed is not this number, it is the list.** The comment that
+   *  stood here justified 100 across "every unit the reader emits (slices,
+   *  tacos, cups, wings)" and that enumeration was short by exactly the two
+   *  units in the prompt's own example line, `g` and `oz` — the units a person
+   *  who weighs their food produces every time. The reasoning was sound and
+   *  the list was incomplete, which is a different failure from a wrong
+   *  number. 100 is still right for what it now names.
    *
    *  1dp because half portions are ordinary — "1.5 cups", "half a bowl" —
    *  and min 0.1 for `grams`' reason exactly: 0 of something is not a small
@@ -102,10 +122,98 @@ export const FOOD_LIMITS = {
    *  also load-bearing rather than tidy, because the rescale divides by the
    *  as-read qty and a committed 0 would be a divide-by-zero.
    *
-   *  `normalize()` in `src/worker/routes/analyze.ts` states the same ceiling
-   *  a second time for the wire. Deliberate, and explained there. */
+   *  `normalize()` in `src/worker/routes/analyze.ts` and `portionQty()` in
+   *  `routes/food-logs.ts` state the same pair of ceilings a second and third
+   *  time for the wire. Deliberate, explained there, and pinned by
+   *  `src/worker/routes/portion-limits.route.test.ts`. */
   portion_qty: { min: 0.1, max: 100, decimals: 1 },
+  /** The same field when the unit is MEASURED rather than counted (#109) —
+   *  `200 g`, `250 ml`. Ceiling derived from `grams` above, because it is the
+   *  same question that row already answered. */
+  portion_qty_measured: { min: 0.1, max: GRAMS.max, decimals: 1 },
 } as const satisfies Record<string, NumericRule>;
+
+/** Units a portion is MEASURED in, as opposed to counted (#109).
+ *
+ *  **Reading `unit` to pick a bound is not converting between units.** #58 is
+ *  emphatic that `unit` is *a label, never a conversion*, and this is the
+ *  first thing in the app that reads it for anything. Nothing here turns oz
+ *  into g or ml into l; no qty is ever rescaled by a factor derived from a
+ *  label. The only thing the label decides is which typo-catcher applies to
+ *  the number sitting next to it.
+ *
+ *  **The line is "read off a scale or a pack" vs "counted".** A measured unit
+ *  carries a number somebody read from a food scale or a package label, so
+ *  honest input runs into the hundreds and thousands — 200 g of chicken is not
+ *  a slipped thumb, it is Tuesday. A counted unit counts household-sized
+ *  things, so honest input stays in single or low double digits. Note that
+ *  `cups`, `tbsp` and `tsp` are standard volumes and still belong on the
+ *  counted side: you count scoops, and 2,000 cups is a typo nothing else in
+ *  the app would catch.
+ *
+ *  **Volume is in, and that was the judgement call.** #109 named only the
+ *  weights, `g` and `oz`. But "250 ml of milk" is the same sentence as "200 g
+ *  of chicken" with a different label on it, and #109's whole finding is that
+ *  the *enumeration* was short while the reasoning was sound. Shipping another
+ *  short list would be shipping the same bug. `kg`, `lb` and `l` are here for
+ *  completeness rather than need — honest input in those never approaches
+ *  either ceiling, so their entry changes no outcome — but they are what a
+ *  pack prints, and a list assembled by asking "which ones do we actually
+ *  need?" is precisely how the first one came out short.
+ *
+ *  **To add a unit, ask one question: does its number come off a scale or a
+ *  pack, or does it count things?** Nothing else about the label matters.
+ *  Restated verbatim in `src/worker/routes/analyze.ts` and
+ *  `routes/food-logs.ts`; the three lists are pinned against each other by
+ *  `src/worker/routes/portion-limits.route.test.ts`. */
+export const MEASURED_PORTION_UNITS = [
+  "g",
+  "gram",
+  "kg",
+  "kilogram",
+  "oz",
+  "ounce",
+  "fl oz",
+  "floz",
+  "fluid ounce",
+  "lb",
+  "pound",
+  "ml",
+  "milliliter",
+  "millilitre",
+  "l",
+  "liter",
+  "litre",
+] as const;
+
+/** Lower-case, no periods, single-spaced, singular. The reader emits "grams",
+ *  a hand-edit produces "Oz." and a pack says "fl. oz." — all one unit. */
+function unitKey(unit: string) {
+  return unit
+    .toLowerCase()
+    .replace(/\./g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/s$/, "");
+}
+
+export function isMeasuredPortionUnit(unit: string | null | undefined): boolean {
+  return typeof unit === "string" && (MEASURED_PORTION_UNITS as readonly string[]).includes(unitKey(unit));
+}
+
+/** What the HOW MUCH field accepts for a row counted in `unit` (#109).
+ *
+ *  The one entry point. `FOOD_LIMITS.portion_qty` on its own is the counted
+ *  rule and reaching for it directly is how 200 g became 100 g.
+ *
+ *  The return type is **inferred, not annotated `NumericRule`**: the table's
+ *  rows are `as const`, so the union carries `max: 100 | 2000` where the
+ *  interface carries `max?: number`. The drift test compares that number
+ *  against the Worker's, and an optional `number` would make the comparison
+ *  need a null check the value cannot actually produce. */
+export function portionQtyRule(unit: string | null | undefined) {
+  return isMeasuredPortionUnit(unit) ? FOOD_LIMITS.portion_qty_measured : FOOD_LIMITS.portion_qty;
+}
 
 /** A decimal literal and nothing else. `Number()` alone is too generous to be
  *  a validator: it reads `"0x1f"` as 31 and `" "` as 0, so a field backed by it

@@ -7,6 +7,7 @@ import {
   commitWhileTyping,
   formatNumeric,
   parseNumeric,
+  portionQtyRule,
 } from "./numeric";
 
 describe("parseNumeric", () => {
@@ -134,6 +135,49 @@ describe("FOOD_LIMITS", () => {
     for (const [name, rule] of Object.entries(FOOD_LIMITS)) {
       expect(rule.min, name).toBeLessThan(rule.max);
     }
+  });
+});
+
+/** #109. The HOW MUCH field's bound follows the row's unit, and the *clamp*
+ *  stays exactly where it was.
+ *
+ *  Those are two separate claims and both matter. #109 killed a clamp on the
+ *  **wire** — a number rewritten where nobody could see it — and left the one
+ *  in the field alone, because a field somebody is typing in is where a clamp
+ *  is visible and says `MAX 100` about itself. That is the #95/#96
+ *  typo-catcher pattern and it is the thing #109 must not have quietly taken
+ *  with it. One assertion each: a red run on a table tells you about its first
+ *  row and nothing else.
+ *
+ *  Which units are measured, and that the Worker agrees about them, is pinned
+ *  in `src/worker/routes/portion-limits.route.test.ts` — the only place all
+ *  three copies of the rule can be reached at once. */
+describe("portionQtyRule (#109)", () => {
+  it("lets an honest 200 g through — the reported bug, in the field", () => {
+    expect(parseNumeric("200", portionQtyRule("g"))).toEqual({ kind: "value", value: 200, clamped: null });
+  });
+
+  it("still clamps a weight, and still says so", () => {
+    expect(parseNumeric("2500", portionQtyRule("g"))).toEqual({ kind: "value", value: 2000, clamped: "max" });
+  });
+
+  it("keeps the tight ceiling where the unit counts things", () => {
+    expect(parseNumeric("200", portionQtyRule("slices"))).toEqual({ kind: "value", value: 100, clamped: "max" });
+  });
+
+  it("takes a volume as measured", () => {
+    expect(parseNumeric("250", portionQtyRule("ml"))).toEqual({ kind: "value", value: 250, clamped: null });
+  });
+
+  it("reads the label however the reader spelled it", () => {
+    expect(parseNumeric("200", portionQtyRule("Grams"))).toEqual({ kind: "value", value: 200, clamped: null });
+  });
+
+  /** A row with no portion draws no field at all, so this only ever guards
+   *  against the shape of the call, not a screen. Counted is the safe default:
+   *  it is the tighter of the two. */
+  it("defaults to the counted bound when there is no unit", () => {
+    expect(portionQtyRule(null).max).toBe(100);
   });
 });
 

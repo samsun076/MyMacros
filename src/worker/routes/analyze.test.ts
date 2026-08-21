@@ -93,9 +93,59 @@ describe("normalize", () => {
   describe("portion", () => {
     const p = (portion: unknown) => normalize(item({ portion }))?.portion;
 
-    it("clamps a qty above the ceiling instead of dropping the portion", () => {
-      expect(p({ qty: 5000, unit: "slices" })).toEqual({ qty: 100, unit: "slices" });
-      expect(p({ qty: 100.4, unit: "slices" })).toEqual({ qty: 100, unit: "slices" });
+    /* #109. Two changes, and they are separable — one about the number, one
+       about what happens when the number is exceeded.
+
+       Each case is its own `it` on purpose. The table these replace was a
+       single test with two assertions in it, and a red run of that shape tells
+       you about the first line and nothing about the second. */
+    it("passes a weighed portion through — the bug (#109)", () => {
+      expect(p({ qty: 200, unit: "g" })).toEqual({ qty: 200, unit: "g" });
+    });
+
+    it("takes the measured ceiling for a weight, not the counted one", () => {
+      expect(p({ qty: 2000, unit: "g" })).toEqual({ qty: 2000, unit: "g" });
+    });
+
+    it("still has a ceiling for a weight", () => {
+      expect(p({ qty: 2000.1, unit: "g" })).toBeNull();
+    });
+
+    /** Volume was the judgement call #109 left open — decided in, because
+     *  "250ml of milk" is "200g of chicken" with a different label. */
+    it("treats a volume as measured too", () => {
+      expect(p({ qty: 250, unit: "ml" })).toEqual({ qty: 250, unit: "ml" });
+    });
+
+    it("reads the unit as a label, however it is spelled", () => {
+      expect(p({ qty: 200, unit: "Grams" })).toEqual({ qty: 200, unit: "Grams" });
+    });
+
+    /** A cup is a standard volume and is still *counted* — you count scoops. */
+    it("keeps the tight ceiling for a counted unit", () => {
+      expect(p({ qty: 200, unit: "cups" })).toBeNull();
+    });
+
+    it("keeps the tight ceiling for a slipped thumb on slices", () => {
+      expect(p({ qty: 5000, unit: "slices" })).toBeNull();
+    });
+
+    /** The behaviour change, stated on its own: this used to answer
+     *  `{ qty: 100 }` — a portion the person never said, shown and stored with
+     *  nothing anywhere saying it had been rewritten. */
+    it("drops an over-range portion rather than clamping it (#109)", () => {
+      expect(p({ qty: 100.4, unit: "slices" })).toBeNull();
+    });
+
+    it("accepts the counted ceiling itself", () => {
+      expect(p({ qty: 100, unit: "slices" })).toEqual({ qty: 100, unit: "slices" });
+    });
+
+    /** Not the clamp coming back: 1dp is the resolution the field and the
+     *  column both hold, so 100.04 and 100.0 are the same portion. The guard
+     *  sits on the value that ships, at both ends. */
+    it("rounds to 1dp before testing the ceiling, as it does the floor", () => {
+      expect(p({ qty: 100.04, unit: "slices" })).toEqual({ qty: 100, unit: "slices" });
     });
 
     it("keeps a fractional qty at one decimal place", () => {
