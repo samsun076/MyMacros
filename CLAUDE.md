@@ -146,7 +146,14 @@ npm run verify:viewport -- --camera --cookie <name>=<token>
 
 The log flow's modes are addressable: `/log#photo`, `/log#barcode`, `/log#text`, plus
 `/log#picks` (#82 — PHOTO with the favourites/recents panel pulled up). Unlike
-`#confirm` they inject no demo data, so they aren't DEV-gated. Trends adds `/trends#empty`
+`#confirm` they inject no demo data, so they aren't DEV-gated. `/log#basket` (#81) is
+DEV-gated and is the issue's own lunch — a scanned patty, a scanned bun and a typed line
+that read as two foods, so **three captures, four items, two sources**. It is the only
+way to reach a mixed basket unattended: doing it for real needs two barcodes in front of a
+camera headless Chrome does not have. Deliberately the tall case — four rows, a per-row
+provenance line each, a footer holding two controls side by side — because a stage that
+shoots the easy case produces a PNG that looks like evidence. It is in `verify:viewport`'s
+route list. Trends adds `/trends#empty`
 and `/trends#sparse` (#22), both DEV-gated — they build a real `TrendsResponse` by running
 `buildTrends` over fabricated inputs, so a stage can't drift into a shape the route would
 never produce.
@@ -799,6 +806,35 @@ result about the *inputs* and says nothing about this register.
   request open with `Fetch.enable` and simply not continuing it, which is how
   M3's analyzing state was shot. (`--camera`/`--settle` close the *other* half
   of this gap; see Commands.)
+- **D1 binds 100 parameters per statement, and a multi-row INSERT spends them
+  fast** (#81). A `food_logs` row is 22 columns, so `POST /api/food-logs` 500'd
+  at **five foods** — `too many SQL variables at offset 606: SQLITE_ERROR` —
+  and had done since #10 on 2026-08-04. Measured 1…21 against real workerd:
+  1–4 returned 201, 5–20 returned 500, 21 hit the route's own 400. It needed no
+  basket; a photograph of a plate returning five foods reached it. `insertChunks`
+  in `src/worker/db.ts` is the fix, applied at both insert sites, and it reads
+  the row width off the row rather than restating it. **Any new multi-row insert
+  must go through it** — everything else in `src/worker/` is single-row, checked
+  by enumeration.
+  **The lesson is bigger than the bug: the stated bound and the operative bound
+  were different numbers.** The route's `MAX_ITEMS = 20` looked like the
+  capacity and the real ceiling sat four rows lower, unnamed and undocumented.
+  CLAUDE.md's "a bound that has never been reached has never been tested" was
+  written about limits that never fire; this is the inverse — a limit that fires
+  long before the one everybody is reading. **Production's largest meal is four
+  items.** It was one food short, for seventeen days, and a 500 here discards a
+  confirm sheet that exists in browser memory and nowhere else.
+- **Nothing in this repo executes `Log.tsx`, and the mutation results prove
+  it** (#81). `stow` was mutated to *replace* the basket instead of appending —
+  #81's original bug, restored verbatim — and `npm test` came back **988/988
+  green**. Same shape as #102's corrupted `sheet-drag.ts` passing 817 tests. The
+  sheet's own logic (basket assembly, the save body, the confirm/discard wiring,
+  the flat-index→capture translation) has **no unit oracle at all**: what is
+  tested is `lib/basket.ts` beneath it and the route above it, and the layer
+  between is covered only by CDP drives, which are not in `npm test` and do not
+  run in CI. That is the argument for pushing decisions *down* into
+  `lib/`-shaped functions (#100's rule) rather than leaving them in a component
+  — and for not believing a green suite about a screen.
 - **The Anthropic SDK retries timeouts, so `timeout` is not a deadline.** With
   the default `maxRetries: 2`, a 20s `timeout` is a 60s worst case. A real
   wall-clock ceiling is an `AbortSignal` — an abort is terminal. Both analyze

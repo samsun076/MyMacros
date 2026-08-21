@@ -9,6 +9,7 @@ import type {
 } from "../../shared/api";
 import { foldMeals, mealNameKey } from "../../shared/meals";
 import { sameMacros, scaleMacros } from "../../shared/portion";
+import { insertChunks } from "../db";
 import { ownedPhotoKey } from "../photos";
 import type { AppEnv } from "../types";
 import { isDay, isInstant, isNum, oneOf } from "../validate";
@@ -273,10 +274,11 @@ const portionUnit = (v: unknown) => {
  *
  *  Both were literals inside a single handler each until #60 gave them a second
  *  reader — which is the moment #86's rule starts to apply, and the moment a
- *  copy would go on agreeing right up until somebody moved one of them. The
- *  edit sheet caps its basket at the first and refuses to grow past it in the
- *  UI as well, so the refusal is a rule the user meets rather than a 400 they
- *  discover.
+ *  copy would go on agreeing right up until somebody moved one of them. Both
+ *  client sheets cap at the first and refuse to grow past it in the UI as well
+ *  — #60's edit sheet and, since #81, the confirm sheet's basket — so the
+ *  refusal is a rule the user meets rather than a 400 they discover. They share
+ *  one restatement of it, `MAX_MEAL_ITEMS` in `src/client/lib/basket.ts`.
  *
  *  20 is "a plate does not have twenty distinct foods on it"; 50 is #52's, and
  *  is deliberately looser than 20 because it bounds a *probe* rather than a
@@ -290,13 +292,32 @@ const slotOf = oneOf(["breakfast", "lunch", "dinner", "snack"] as const);
 // in migration 0001 already named photo and barcode, so nothing migrates
 const sourceOf = oneOf(["text", "favorite", "photo", "barcode"] as const);
 
+/** A scanned code, as `GET /api/barcode/:code` accepts one.
+ *
+ *  Named because #81 gave it a second caller and not before: the body-level
+ *  barcode and a per-item one are the same field at two scopes, and a basket
+ *  holding two scans is precisely the case where a copy of this test would
+ *  start refusing one code and accepting the other. EAN-8 through GTIN-14. */
+function isBarcode(v: unknown): v is string {
+  return typeof v === "string" && /^\d{8,14}$/.test(v);
+}
+
 /** POST /api/food-logs (#10): the confirm sheet's save. One row per item,
  *  all sharing one `logged_at` instant — that shared instant is what groups
  *  a save back into a single timeline meal entry on the Today screen.
  *
  *  `logged_on` comes from the client, which owns the local day (#44):
  *  midnight cutoff, set once at creation. There is no edit route yet; when
- *  one lands (desktop review surface), it must never recompute `logged_on`. */
+ *  one lands (desktop review surface), it must never recompute `logged_on`.
+ *
+ *  **One save is still one meal, and since #81 it may be several captures**
+ *  (scan the patty, scan the bun, type the mustard). Nothing about the shape
+ *  of this handler changed for that and no column moved: `source`, `photo_key`
+ *  and `barcode` have been per-row since migration 0001, so all that was
+ *  missing was a wire that could say so. Each of the three is read off the item
+ *  when the item names it and off the body when it does not — see the block
+ *  before `rows.push`, which is also where the per-item photo key meets
+ *  `ownedPhotoKey` on its own account. */
 foodLogs.post("/", async (c) => {
   const body = await c.req.json<FoodLogCreate>().catch(() => null);
   if (!body || typeof body !== "object") return c.json({ error: "invalid_body" }, 400);
@@ -322,13 +343,41 @@ foodLogs.post("/", async (c) => {
   // stays answerable later without a second lookup (#15).
   let scanned: string | null = null;
   if (body.barcode !== undefined) {
-    if (typeof body.barcode !== "string" || !/^\d{8,14}$/.test(body.barcode)) {
-      return c.json({ error: "invalid_barcode" }, 400);
-    }
+    if (!isBarcode(body.barcode)) return c.json({ error: "invalid_barcode" }, 400);
     scanned = body.barcode;
   }
   if (!Array.isArray(body.items) || body.items.length < 1 || body.items.length > MAX_ITEMS) {
     return c.json({ error: "items_required" }, 400);
+  }
+
+  /* Provenance is stated by ALL the items or by none of them (#81).
+   *
+   * The three fields fall back to the body when an item is silent, which is
+   * what every single-capture save in the app relies on — but that fallback is
+   * only safe while silence means "there is one capture and it is the body's".
+   * The middle case is the dangerous one: a basket that states `source: "text"`
+   * on the mustard and forgets its `barcode: null` writes a hand-typed row
+   * carrying the patty's code, a row claiming to have been scanned. Nothing
+   * 400s, nothing looks wrong, and it cannot be repaired afterwards because the
+   * capture is gone the moment the sheet closes. That is the collapse #81
+   * forbids in as many words, and the column #75's per-source analysis reads.
+   *
+   * **This is the third instance of a rule this route already keeps twice**,
+   * not a new one: the four `ai_*` macros are all-or-nothing and the portion
+   * triple is all-or-nothing, both because a record with holes answers its own
+   * question for none of the rows it is on. Provenance is the same shape.
+   *
+   * The compatibility path is untouched and that is the point of stating it
+   * this way rather than requiring the fields outright: a save from one capture
+   * names none of the three, inherits all three, and is byte-identical to what
+   * it sent before this issue. What the guard removes is only the partial
+   * statement — which no client produces on purpose, and which is
+   * indistinguishable from a client bug when it arrives. */
+  const PROVENANCE = ["source", "photo_key", "barcode"] as const;
+  const statedOn = (it: unknown) =>
+    PROVENANCE.filter((k) => (it as Record<string, unknown> | null)?.[k] !== undefined).length;
+  if (body.items.some((it) => statedOn(it) > 0) && body.items.some((it) => statedOn(it) < 3)) {
+    return c.json({ error: "invalid_item_provenance", fields: [...PROVENANCE] }, 400);
   }
 
   /* Normally the instant of the save. Undo supplies the original instead (#52).
@@ -425,6 +474,52 @@ foodLogs.post("/", async (c) => {
       return c.json({ error: "invalid_portion" }, 400);
     }
 
+    /* How THIS food was captured (#81) — one meal, several captures.
+     *
+     * All three columns have been per-row since migration 0001; what #81 adds
+     * is a wire that can say so. Scan a patty, scan its bun, type the mustard
+     * and one save writes three rows with three sources, two barcodes and no
+     * photo — which is a truer record than any single-source save could hold,
+     * and is what #75's per-source estimate-quality analysis will read. The
+     * issue is explicit that a basket must not be collapsed to one source.
+     *
+     * **Absent falls back to the body-level value; an explicit `null` means
+     * none.** Those are different answers and a mixed basket needs both: the
+     * body carries the photographed capture's key so the meal still has a
+     * thumbnail, and the hand-typed mustard in the same save has to be able to
+     * say the photo does not show it. A save from one capture sends none of
+     * these three and takes the body-level value for every row, which is what
+     * it did before this issue and is byte-identical to it.
+     *
+     * **Every per-item key goes through `ownedPhotoKey` on its own.** The R2
+     * prefix IS the authorization check (`worker/photos.ts`), and the check
+     * done on `body.photo_key` twenty lines up vouches for exactly one string
+     * — a key arriving on an item has been through nothing. Same regex for a
+     * per-item barcode, for the same reason: a validator that only guards the
+     * scope the client happens to use today is not a validator. */
+    let itemPhotoKey = photoKey;
+    if (item?.photo_key !== undefined) {
+      if (item.photo_key === null) itemPhotoKey = null;
+      else {
+        const owned = ownedPhotoKey(item.photo_key, c.var.user.id);
+        if (!owned) return c.json({ error: "invalid_photo_key" }, 400);
+        itemPhotoKey = owned;
+      }
+    }
+
+    let itemBarcode = scanned;
+    if (item?.barcode !== undefined) {
+      if (item.barcode === null) itemBarcode = null;
+      else if (!isBarcode(item.barcode)) return c.json({ error: "invalid_barcode" }, 400);
+      else itemBarcode = item.barcode;
+    }
+
+    // `sourceOf` returns undefined for anything outside the enum, which is the
+    // same refusal the body-level source gets — a row whose provenance is a
+    // typo is a row #75 would read as a category it has never seen.
+    const itemSource = item?.source === undefined ? source : sourceOf(item.source);
+    if (!itemSource) return c.json({ error: "invalid_item_source" }, 400);
+
     rows.push({
       id: crypto.randomUUID(),
       user_id: c.var.user.id,
@@ -436,12 +531,15 @@ foodLogs.post("/", async (c) => {
       protein_g: protein,
       carbs_g: carbs,
       fat_g: fat,
-      source,
-      // stamped on every row of the save, the same way logged_at is: the
-      // timeline folds rows sharing an instant into one meal, and that meal
-      // has one photo
-      photo_key: photoKey,
-      barcode: scanned,
+      source: itemSource,
+      // The capture's own, falling back to the save's (#81). It used to be
+      // stamped on every row the way `logged_at` is, on the reasoning that one
+      // meal has one photo — which is still true of the *meal* and was never
+      // true of the *rows*: the fold already picks the first row carrying a
+      // key, so a basket where one capture of three was photographed shows its
+      // thumbnail without claiming the other two are in the frame.
+      photo_key: itemPhotoKey,
+      barcode: itemBarcode,
       confidence,
       edited: item.edited === true ? 1 : 0,
       ai_kcal: ai?.kcal ?? null,
@@ -454,7 +552,15 @@ foodLogs.post("/", async (c) => {
     });
   }
 
-  await c.var.db.insertInto("food_logs").values(rows).execute();
+  /* Chunked because D1 binds at most 100 parameters per statement and this row
+     is 22 columns wide — five foods in one INSERT is a 500, which on this route
+     throws away a confirm sheet that exists nowhere but the browser's memory.
+     Measured, not read: 1–4 items returned 201 and 5–20 returned 500 before
+     this. See `insertChunks`, which reads the width off the row rather than
+     restating it, and which is honest about not being atomic. */
+  for (const chunk of insertChunks(rows)) {
+    await c.var.db.insertInto("food_logs").values(chunk).execute();
+  }
 
   // a re-log from a favorite records the use, so most-used sorting works
   if (typeof body.favorite_id === "string" && body.favorite_id.length > 0) {
@@ -875,7 +981,12 @@ foodLogs.patch("/", async (c) => {
       .execute();
   }
   if (inserts.length) {
-    await c.var.db.insertInto("food_logs").values(inserts).execute();
+    // Same ceiling as POST's, and reachable here by adding five rows to a saved
+    // meal in one pass of the edit sheet (#60) — the sheet's Add button has no
+    // limit short of `MAX_ITEMS`.
+    for (const chunk of insertChunks(inserts)) {
+      await c.var.db.insertInto("food_logs").values(chunk).execute();
+    }
   }
 
   /* Read back by id rather than by the group key: these are exactly the rows

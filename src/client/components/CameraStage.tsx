@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { scanner } from "../lib/barcode";
 import { acquireCamera, openCamera } from "../lib/camera";
 import { frameFromFile, frameFromVideo } from "../lib/photo";
+import { HeldBar } from "./HeldBar";
 import { LogModes, type LogMode } from "./LogModes";
 import { StarGlyph } from "./StarGlyph";
 
@@ -117,6 +118,8 @@ export function CameraStage({
   busy,
   error,
   reviewing,
+  held,
+  onReview,
   onCapture,
   onRetake,
   onScan,
@@ -135,8 +138,23 @@ export function CameraStage({
   /** A read is open on the confirm sheet Log renders over this stage (#112).
    *  The stage stays mounted underneath — the frozen frame has to survive, and
    *  #16's stored photo depends on that state — so the one thing it must not do
-   *  is go on scanning behind a sheet it would rebuild. See `scanEnabled`. */
+   *  is go on scanning behind a sheet it would rebuild. See `scanEnabled`.
+   *
+   *  **Since #81 this is not "a basket exists".** Adding a second food to a
+   *  meal means standing here with a full basket and a scanner that has to be
+   *  running; Log computes the difference once, in `sheetOpen`, and hands the
+   *  answer down. */
   reviewing: boolean;
+  /** How many foods are already in the basket (#81), and the tap that goes back
+   *  to them. Zero draws nothing at all — the bar exists to say "you are
+   *  holding something", and a bar that says "0 items held" on every visit to
+   *  the camera is chrome nobody asked for.
+   *
+   *  It is deliberately not derived from `reviewing`: those two are the pair
+   *  #81 splits apart, and a stage that inferred one from the other would be
+   *  the same defect one component down. */
+  held: number;
+  onReview: () => void;
   onCapture: (photo: Blob) => void;
   /** Photo mode: discard the frozen frame. Barcode mode: resume scanning
    *  after a lookup that came back empty. */
@@ -365,6 +383,14 @@ export function CameraStage({
         </span>
         <span className="mono">{clock}</span>
       </div>
+
+      {/* The basket, over the viewfinder rather than inside the deck (#81).
+          Under the top bar because it belongs with the screen's other
+          statement about where you are, and in ordinary flow because the deck
+          is already three controls wide at 375 and a fourth would be the row
+          that broke it. `.finder` gives up the height, which is the right
+          trade: the finder is the one element here that can afford it. */}
+      {held > 0 && !reviewing && <HeldBar held={held} onReview={onReview} />}
 
       <div className="finder">
         {/* rendered unconditionally so the ref exists when getUserMedia

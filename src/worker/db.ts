@@ -197,3 +197,54 @@ export function createDb(env: Env): Kysely<Database> {
 }
 
 export type Db = Kysely<Database>;
+
+/** How many bound parameters D1 will take in one statement.
+ *
+ *  **Found by driving the route, not by reading a doc** (#81, 2026-08-21).
+ *  `POST /api/food-logs` builds one multi-row INSERT and the row is 22 columns
+ *  wide, so five foods is 110 placeholders and D1 answers
+ *  `too many SQL variables at offset 606: SQLITE_ERROR` — a 500, which on this
+ *  route discards a confirm sheet that exists in the browser's memory and
+ *  nowhere else. Measured across 1…21 items against real workerd and real D1:
+ *  **1–4 returned 201, 5–20 returned 500**, 21 returned the route's own 400.
+ *
+ *  It has been there since #10 (4218111, 2026-08-04) and had never fired,
+ *  because until #81 a save was one read and a read is usually one or two
+ *  foods. That is CLAUDE.md's "a bound that has never been reached has never
+ *  been tested" with the roles reversed — the route's own `MAX_ITEMS = 20` was
+ *  the bound *stating* a capacity, and the real ceiling four rows down was the
+ *  one doing the work. A photograph of a plate returning five foods reaches it
+ *  today, with no basket involved.
+ *
+ *  Kept as a number rather than a computed probe: D1 does not report its own
+ *  limit, and a value discovered by binary search at runtime would be a second
+ *  source for a constant the platform owns. If Cloudflare raises it, the
+ *  symptom of this staying at 100 is one extra round trip per five foods. */
+export const D1_MAX_BOUND_PARAMS = 100;
+
+/** Split a multi-row insert into statements D1 will actually run.
+ *
+ *  **Chunked rather than looped one row at a time**, because the round trip is
+ *  what costs: twenty foods is five statements here and twenty there, on a
+ *  route a person is standing still waiting for.
+ *
+ *  **The width is read off the first row**, so it cannot drift from the
+ *  columns being written — a hand-counted 22 is a literal that rots the next
+ *  time a migration adds a column, which is precisely how the ceiling above
+ *  went unnoticed. Rows in one call are the same shape by construction: they
+ *  are built by one loop from one object literal.
+ *
+ *  **This is not atomic and the caller has to be able to live with that.** The
+ *  house pattern already is — nothing in `src/worker/` uses `batch()` or a
+ *  transaction — and for `food_logs` the partial state is coherent rather than
+ *  torn: every row of a save carries the same `logged_at`, so a failure after
+ *  the first chunk leaves a *shorter* meal that still folds into one timeline
+ *  entry and can be corrected in #60's edit sheet. What it must never be used
+ *  for is a set of rows that are meaningless apart. */
+export function insertChunks<T extends object>(rows: readonly T[], limit = D1_MAX_BOUND_PARAMS): T[][] {
+  const width = Object.keys(rows[0] ?? {}).length;
+  const per = Math.max(1, Math.floor(limit / Math.max(width, 1)));
+  const chunks: T[][] = [];
+  for (let i = 0; i < rows.length; i += per) chunks.push(rows.slice(i, i + per) as T[]);
+  return chunks;
+}

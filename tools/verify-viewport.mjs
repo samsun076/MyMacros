@@ -74,6 +74,13 @@ if (!routes) {
         // this is the only route that draws the three-column grid — and the
         // field the bug report names by name had nothing that could reach it.
         "/log#portion",
+        // #81's basket: three captures, four foods, two sources. The tallest
+        // the confirm sheet gets, and the only state where its footer holds
+        // two controls side by side — "+ Add another" beside `Log N kcal`,
+        // which is the row most likely to push past the edge at 375. Also the
+        // only sheet whose rows carry mixed provenance, so each one draws its
+        // own label under the name.
+        "/log#basket",
         "/#saved",
         // #52's revealed row. The only state in the app deliberately parked
         // past the right edge — the delete control sits outside `.swipe` and

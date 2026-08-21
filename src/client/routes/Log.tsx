@@ -5,17 +5,27 @@ import type {
   AnalyzedItem,
   Favorite,
   FavoritesResponse,
-  FoodSource,
   MealSlot,
   RecentsResponse,
 } from "../../shared/api";
 import { CameraStage } from "../components/CameraStage";
+import { HeldBar } from "../components/HeldBar";
 import { ItemRow } from "../components/ItemRow";
 import { LogModes, type LogMode } from "../components/LogModes";
 import { NumericField } from "../components/NumericField";
 import { Picks } from "../components/Picks";
 import { StarGlyph } from "../components/StarGlyph";
 import { ApiError, api, useApi } from "../lib/api";
+import {
+  type Capture,
+  MAX_MEAL_ITEMS,
+  basketItemCount,
+  basketRows,
+  needsDismissConfirm,
+  roomFor,
+  sheetOpen,
+  showsGrams,
+} from "../lib/basket";
 import { releaseCamera } from "../lib/camera";
 import { deviceTimezone, localDay, mealSlotFor } from "../lib/day";
 import { fmtInt } from "../lib/format";
@@ -39,38 +49,10 @@ import { SHEET_HANDLE_ATTR, useDragToDismiss } from "../lib/sheet-drag";
  *  `lib/camera.ts` for the length of one visit to this screen, and this screen
  *  ends it (#94). */
 
-/** One reading, whatever produced it. `source`, `photoKey` and `barcode` are
- *  the only things the sheet carries forward about which mode it came from. */
-type Read = {
-  items: EditableItem[];
-  readMs: number;
-  source: FoodSource;
-  photoKey?: string;
-  barcode?: string;
-  /** Barcode reads only (#15): the grams the numbers are scaled to, plus the
-   *  pristine figures at `baseGrams` that the grams field rescales from.
-   *  Rescaling from the base rather than from the current values is what keeps
-   *  repeated adjustments from drifting.
-   *
-   *  **Not the same `base` as `EditableItem.base` (#58)**, and the shared name
-   *  is worth reading twice: this one is per *read* — one array of pristine
-   *  per-100g figures for the whole barcode product — where an item's is per
-   *  *row*, the as-read copy of that one food. Same technique at two scales,
-   *  which is why they ended up with the same word; renaming this one would
-   *  mean editing the shipped grams path to suit a new one. */
-  grams?: number;
-  base?: AnalyzedItem[];
-  baseGrams?: number;
-  /** #16: the read failed or found nothing, so the sheet opened on a blank row
-   *  for the user to fill in. The photo is already stored — `photoKey` is set
-   *  even here, which is the whole point of writing R2 before calling Claude. */
-  manual?: string;
-};
-
 /** The sheet the failure path opens (#16). One empty row, the photo attached,
  *  and the save route unchanged — the recovery is the surface the happy path
  *  already uses, not a new screen. */
-function manualRead(why: string, photoKey: string | undefined, ms: number): Read {
+function manualRead(why: string, photoKey: string | undefined, ms: number): Capture {
   const blank: AnalyzedItem = {
     name: "",
     calories: 0,
@@ -98,6 +80,7 @@ function initialMode(): LogMode {
     case "#text":
     case "#confirm":
     case "#portion":
+    case "#basket":
       return "text";
     case "#barcode":
       return "barcode";
@@ -116,9 +99,52 @@ function initialMode(): LogMode {
  *  no screenshot and no way to drive its field in a browser: the one control
  *  the bug report names by name was the one nothing could reach. Like
  *  `#confirm` it opens over the text screen rather than the live viewfinder —
- *  the sheet is the subject, and a stage that needs a camera isn't one. */
-function demoRead(): Read | null {
-  if (!import.meta.env.DEV) return null;
+ *  the sheet is the subject, and a stage that needs a camera isn't one.
+ *
+ *  `/log#basket` is #81's, and it is the issue's own lunch: a scanned chicken
+ *  patty, a scanned bun, and a typed line that read as two foods. **Three
+ *  captures, four items, two sources** — which is the state nothing else here
+ *  can reach, because reaching it for real needs two barcodes in front of a
+ *  camera headless Chrome does not have. It is also the tall case on purpose:
+ *  four rows carry a per-row provenance line each, the footer grows a second
+ *  control beside the save, and the head says how many captures are held, so
+ *  what has to survive at 375 is the totals row and the save button under all
+ *  of that (build rule 6). A stage that shot the two-item case would produce a
+ *  PNG that looks like evidence and measures nothing, which is the objection
+ *  `/#editing` already records.
+ *
+ *  **No photo capture in it, deliberately.** A `photo` capture with items and
+ *  no `photoKey` is a shape no reader produces — the Worker writes R2 before it
+ *  calls Claude — so faking one would put a state on screen the app cannot
+ *  reach. The mixed-source save including a photographed row is covered where
+ *  it can be honest, in `food-logs.route.test.ts`. */
+function demoBasket(): Capture[] {
+  if (!import.meta.env.DEV) return [];
+  if (window.location.hash === "#basket") {
+    // The patty and the bun are barcode captures — each one product, each with
+    // its own code — and the mustard was typed. Two of them carry `grams`, and
+    // the sheet still draws no grams field, which is the retirement `showsGrams`
+    // exists to make visible rather than silent.
+    const patty: AnalyzedItem = {
+      name: "Chicken breast patty",
+      calories: 190, protein_g: 23, carbs_g: 9.5, fat_g: 7,
+      confidence: null,
+    };
+    const bun: AnalyzedItem = {
+      name: "Brioche burger bun",
+      calories: 250, protein_g: 8, carbs_g: 42, fat_g: 5.5,
+      confidence: null,
+    };
+    const typed: AnalyzedItem[] = [
+      { name: "Yellow mustard", calories: 15, protein_g: 0.9, carbs_g: 1.4, fat_g: 0.6, confidence: 0.7, portion: { qty: 2, unit: "tsp" } },
+      { name: "Dill pickle spears", calories: 12, protein_g: 0.5, carbs_g: 2.6, fat_g: 0.1, confidence: 0.55, portion: { qty: 3, unit: "spears" } },
+    ];
+    return [
+      { items: [editable(patty)], readMs: 380, source: "barcode", barcode: "5000112637922", grams: 114, base: [patty], baseGrams: 114 },
+      { items: [editable(bun)], readMs: 420, source: "barcode", barcode: "8712566341726", grams: 67, base: [bun], baseGrams: 67 },
+      { items: typed.map(editable), readMs: 1600, source: "text" },
+    ];
+  }
   if (window.location.hash === "#confirm") {
     // Portions are #58's subject, so the demo meal carries them — three items,
     // three different units, one of them fractional, so the control is
@@ -129,7 +155,7 @@ function demoRead(): Read | null {
       { name: "Jasmine rice", calories: 210, protein_g: 4, carbs_g: 45, fat_g: 0, confidence: 0.6, portion: { qty: 1, unit: "cup" } },
       { name: "Steamed broccoli", calories: 55, protein_g: 4, carbs_g: 11, fat_g: 1, confidence: 0.85, portion: { qty: 1.5, unit: "cups" } },
     ];
-    return { items: items.map(editable), readMs: 1800, source: "text" };
+    return [{ items: items.map(editable), readMs: 1800, source: "text" }];
   }
   if (window.location.hash === "#portion") {
     // per-100g figures, the way OpenFoodFacts returns them, scaled to 150g
@@ -143,17 +169,19 @@ function demoRead(): Read | null {
       carbs_g: round1(it.carbs_g * 1.5),
       fat_g: round1(it.fat_g * 1.5),
     }));
-    return {
-      items: items.map(editable),
-      readMs: 400,
-      source: "barcode",
-      barcode: "5000112637922",
-      grams: 150,
-      base,
-      baseGrams: 100,
-    };
+    return [
+      {
+        items: items.map(editable),
+        readMs: 400,
+        source: "barcode",
+        barcode: "5000112637922",
+        grams: 150,
+        base,
+        baseGrams: 100,
+      },
+    ];
   }
-  return null;
+  return [];
 }
 
 export function Log() {
@@ -163,7 +191,26 @@ export function Log() {
   const [busy, setBusy] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [read, setRead] = useState<Read | null>(demoRead);
+  /** The basket: every capture that will become one meal (#81). One reading was
+   *  a `Read | null` until this issue; it is now a list, and everything the
+   *  sheet renders is derived from it rather than from a "current" read. */
+  const [basket, setBasket] = useState<Capture[]>(demoBasket);
+  /** The user tapped "Add another" and is back on the capture modes with the
+   *  basket still held.
+   *
+   *  **Explicit state, and it may not be inferred from the basket.** The
+   *  obvious shortcut is to clear the sheet by emptying the basket, which is
+   *  what `read = null` used to mean — and that is exactly the bug this issue
+   *  is about, one layer up: "no sheet" and "nothing held" would be the same
+   *  value again, so the next capture would have nothing to append to and
+   *  would replace. The two states are different and are stored as two things;
+   *  `sheetOpen` is where they are combined, once. */
+  const [adding, setAdding] = useState(false);
+  /** A backdrop tap arrived on a basket holding more than one capture, so the
+   *  sheet is asking before it throws three trips to the fridge away. Cleared
+   *  by either answer, and by a successful append — see `needsDismissConfirm`
+   *  for why this exists at all when #52 argues against confirmations. */
+  const [confirmDismiss, setConfirmDismiss] = useState(false);
   const [still, setStill] = useState<string | null>(null);
   const [slot, setSlot] = useState<MealSlot>(() => mealSlotFor());
   const [editing, setEditing] = useState<number | null>(null);
@@ -219,12 +266,38 @@ export function Log() {
     [favData, recentData],
   );
 
-  /** #103: the one meal this read would be starred as. `favoriteDraft` folds
+  /** Every food in the basket, flattened once and in capture order, each still
+   *  carrying the capture it came from (#81). The sheet addresses rows by one
+   *  flat index the way it always has — `editing`, `update(i, …)` — and a row's
+   *  provenance travels with it rather than being looked up by position. */
+  const rows = useMemo(() => basketRows(basket), [basket]);
+
+  /** **The one boolean** (#112, #81). The sheet renders when this is true, the
+   *  camera stage is told `reviewing` from it, and its scan loop is gated on
+   *  the same value — so there is no second place for a condition to go
+   *  missing from. `adding` is what separates it from "the basket has
+   *  something in it", which is the state #81 adds and the state the scanner
+   *  has to keep running through. */
+  const open = sheetOpen({ basket, adding });
+  const held = basketItemCount(basket);
+  /** The capture the sheet's *whole-read* chrome speaks for: the read time,
+   *  #16's "couldn't read it" line, #15's grams field. All three were
+   *  properties of the one read a sheet used to hold; with a basket they are
+   *  properties of the first capture, and each one says so at its own site
+   *  rather than pretending the basket has a single answer. */
+  const first = basket[0];
+
+  /** #103: the one meal this basket would be starred as. `favoriteDraft` folds
    *  the sheet's rows with `foldMeals` — the same collapse the recents in the
    *  picks list come out of — and returns null when nothing on the sheet is
    *  named yet, which is #16's blank recovery row. It recomputes as the user
-   *  types a name, so the star always describes what is on screen. */
-  const draft = useMemo(() => favoriteDraft(read?.items ?? []), [read]);
+   *  types a name, so the star always describes what is on screen.
+   *
+   *  Across the *whole* basket since #81, which is right rather than merely
+   *  convenient: what a star saves is the meal, the meal is every capture, and
+   *  starring a patty-and-bun basket has to produce the favourite that re-logs
+   *  both. */
+  const draft = useMemo(() => favoriteDraft(rows.map((r) => r.item)), [rows]);
 
   /** What the star has just been made to do, so it does not flicker back to
    *  its old state in the window between the write landing and
@@ -355,7 +428,35 @@ export function Log() {
     const h = now.getHours() % 12 || 12;
     const m = String(now.getMinutes()).padStart(2, "0");
     return { short: `${h}:${m}`, meridian: `${h}:${m}${now.getHours() < 12 ? "A" : "P"}` };
-  }, [read]); // eslint-disable-line react-hooks/exhaustive-deps -- re-stamp when the sheet opens
+  }, [basket]); // eslint-disable-line react-hooks/exhaustive-deps -- re-stamp when the sheet opens
+
+  /** Put a capture in the basket and bring the sheet back (#81).
+   *
+   *  **It appends, always, and that is one rule rather than two.** Appending
+   *  onto an empty basket *is* replacing, so there is no "first capture or
+   *  later capture?" branch here to get wrong — which matters because that
+   *  branch is the bug this issue is about, in its original form: both
+   *  non-photo readers called `setRead(...)` wholesale, so the patty was gone
+   *  the moment the bun was scanned.
+   *
+   *  **The cap is enforced here as well as at the three call sites**, and the
+   *  duplication is deliberate rather than defensive. Each reader refuses first
+   *  because a refusal needs a *sentence*, and only the reader knows how many
+   *  foods came back and what to say about them; this guard cannot speak, so it
+   *  would be a silent discard if it ever fired alone. What it is, is the
+   *  refusal that cannot be forgotten by a fourth reader added later, checked
+   *  against the basket as it actually is rather than as a closure remembers
+   *  it. If it ever does the work on its own, the symptom is a capture that
+   *  vanishes without a word — so a fourth reader owes a sentence, not a guard.
+   *
+   *  `adding` goes false because a capture is the answer to "add another": the
+   *  sheet is what comes back, with the new food at the bottom of it. */
+  const stow = useCallback((capture: Capture) => {
+    setBasket((b) => (roomFor(basketItemCount(b), capture.items.length) ? [...b, capture] : b));
+    setAdding(false);
+    setEditing(null);
+    setConfirmDismiss(false);
+  }, []);
 
   async function readText() {
     setBusy(true);
@@ -367,9 +468,12 @@ export function Log() {
         setError("Couldn't find any food in that — try describing what you ate.");
         return;
       }
+      if (!roomFor(held, items.length)) {
+        setError(overfull(held, items.length));
+        return;
+      }
       setSlot(mealSlotFor());
-      setRead({ items: items.map(editable), readMs: Date.now() - t0, source: "text" });
-      setEditing(null);
+      stow({ items: items.map(editable), readMs: Date.now() - t0, source: "text" });
     } catch (err) {
       // Text needs no manual-entry rescue: what the user typed is still in the
       // box, so retrying is one tap and nothing was lost (#16).
@@ -396,21 +500,30 @@ export function Log() {
     form.append("photo", photo, "meal.jpg");
     try {
       const { items, photo_key } = await api.postForm<AnalyzeResponse>("/api/analyze/photo", form);
+      // The one read that can overflow the cap in a single step: a plate can
+      // come back as five foods, and only a photograph does that. Refused
+      // whole rather than truncated — dropping foods off the end of a read to
+      // make it fit is a silent edit of what the reader said, and the photo is
+      // in R2 either way, so nothing is lost by logging what is held first.
+      if (!roomFor(held, items.length)) {
+        setError(overfull(held, items.length));
+        setStill(null);
+        return;
+      }
       setSlot(mealSlotFor());
       if (!items.length) {
         // #16: no food found is a failure of the read, not of the user. The
         // photo is stored; open the sheet so it can still be logged.
-        setRead(manualRead("No food found in that photo.", photo_key, Date.now() - t0));
-        setEditing(0);
+        stow(manualRead("No food found in that photo.", photo_key, Date.now() - t0));
+        setEditing(held);
         return;
       }
-      setRead({
+      stow({
         items: items.map(editable),
         readMs: Date.now() - t0,
         source: "photo",
         photoKey: photo_key,
       });
-      setEditing(null);
     } catch (err) {
       // The photo survives an analysis failure by construction — the Worker
       // writes R2 before it calls Claude, so the key comes back on the error
@@ -418,7 +531,7 @@ export function Log() {
       const detail = err instanceof ApiError ? (err.detail as { photo_key?: string } | null) : null;
       const code = err instanceof ApiError ? err.code : "network";
       setSlot(mealSlotFor());
-      setRead(
+      stow(
         manualRead(
           code === "analyze_timeout"
             ? "The read took too long and was stopped."
@@ -429,7 +542,10 @@ export function Log() {
           Date.now() - t0,
         ),
       );
-      setEditing(0);
+      // The blank row is the LAST one now, not the zeroth: a recovery row
+      // appended to a basket opens on itself, not on whatever the first
+      // capture put at index 0.
+      setEditing(held);
     } finally {
       setBusy(false);
     }
@@ -449,8 +565,12 @@ export function Log() {
         setError("That product is listed, but without any nutrition information.");
         return;
       }
+      if (!roomFor(held, items.length)) {
+        setError(overfull(held, items.length));
+        return;
+      }
       setSlot(mealSlotFor());
-      setRead({
+      stow({
         items: items.map(editable),
         readMs: Date.now() - t0,
         source: "barcode",
@@ -459,7 +579,6 @@ export function Log() {
         base: items,
         baseGrams: grams,
       });
-      setEditing(null);
     } catch (err) {
       const code = err instanceof ApiError ? err.code : "network";
       setError(
@@ -472,7 +591,13 @@ export function Log() {
     } finally {
       setBusy(false);
     }
-  }, []);
+    // `held` and nothing else. This callback gates the scan loop, so every
+    // value it closes over is a dependency of a camera effect (#94/#112) —
+    // which is why the cap is asked as a *count* rather than handed the
+    // basket. The count moves when a capture is stowed or thrown away, both of
+    // which stop the loop anyway; the array moves on every keystroke in the
+    // sheet, which would rebuild the loop while somebody is typing into it.
+  }, [held, stow]);
 
   // stable identity: CameraStage's scan loop keys its effect on this, so a
   // fresh closure per render would tear the loop down and rebuild it each time
@@ -485,26 +610,54 @@ export function Log() {
 
   /** The grams field rescales every number linearly from the pristine base.
    *  `orig` moves with it: changing the portion is not correcting the read,
-   *  and `edited` exists to flag corrections. */
+   *  and `edited` exists to flag corrections.
+   *
+   *  **It edits capture 0 and is only ever drawn when there is exactly one**
+   *  (`showsGrams`). The field is per *read* — one number for one product —
+   *  so a basket holding two scanned products has nothing for it to mean, and
+   *  it retires rather than silently applying to the first. See `showsGrams`
+   *  for what that costs and why #58 forbids the tidier fix. */
   function setGrams(grams: number) {
-    setRead((r) => {
-      if (!r?.base || !r.baseGrams) return r;
+    setBasket((b) => {
+      const r = b[0];
+      if (b.length !== 1 || !r?.base || !r.baseGrams) return b;
       const scale = grams / r.baseGrams;
-      return {
-        ...r,
-        grams,
-        items: r.base.map((it) => {
-          const scaled: AnalyzedItem = {
-            ...it,
-            calories: Math.round(it.calories * scale),
-            protein_g: round1(it.protein_g * scale),
-            carbs_g: round1(it.carbs_g * scale),
-            fat_g: round1(it.fat_g * scale),
-          };
-          return editable(scaled);
-        }),
-      };
+      return [
+        {
+          ...r,
+          grams,
+          items: r.base.map((it) => {
+            const scaled: AnalyzedItem = {
+              ...it,
+              calories: Math.round(it.calories * scale),
+              protein_g: round1(it.protein_g * scale),
+              carbs_g: round1(it.carbs_g * scale),
+              fat_g: round1(it.fat_g * scale),
+            };
+            return editable(scaled);
+          }),
+        },
+      ];
     });
+  }
+
+  /** Change one food, wherever in the basket it sits (#81).
+   *
+   *  The sheet still addresses rows by a single flat index — `editing`,
+   *  `update(i, …)`, `setItemQty(i, …)` — because that is the surface it had
+   *  when a basket was one read, and re-indexing every handler by a pair would
+   *  have been a rewrite of the sheet rather than of the navigation. `rows`
+   *  holds the translation, in one place, derived from the basket. */
+  function patchItem(flat: number, fn: (it: EditableItem) => EditableItem) {
+    const row = rows[flat];
+    if (!row) return;
+    setBasket((b) =>
+      b.map((c, ci) =>
+        ci === row.capture
+          ? { ...c, items: c.items.map((it, ii) => (ii === row.index ? fn(it) : it)) }
+          : c,
+      ),
+    );
   }
 
   /** #58's control: rescale ONE item from its own as-read copy.
@@ -512,13 +665,11 @@ export function Log() {
    *  Deliberately not folded into `setGrams`. That field is per *read* and
    *  measured in grams for #15's reasons, it ships, and making the two
    *  symmetrical would mean refactoring a working path to suit a new one. They
-   *  scale from different bases too — `r.base` is one array for the whole
-   *  barcode read, `it.base` is per row — which is the actual difference
+   *  scale from different bases too — a capture's `base` is one array for the
+   *  whole barcode read, `it.base` is per row — which is the actual difference
    *  between "how much of this product" and "how many of these four things". */
   function setItemQty(index: number, qty: number) {
-    setRead((r) =>
-      r ? { ...r, items: r.items.map((it, i) => (i === index ? setPortionQty(it, qty) : it)) } : r,
-    );
+    patchItem(index, (it) => setPortionQty(it, qty));
   }
 
   /** Photo mode: drop the frozen frame. Barcode mode: clear the failure that
@@ -528,11 +679,17 @@ export function Log() {
     setError(null);
   }
 
-  /** Dismissing the sheet discards the read, and with it the frozen frame —
-   *  the finder comes back live rather than stranding the user on a photo
-   *  whose read they just threw away. */
-  function dismiss() {
-    setRead(null);
+  /** Throw the whole basket away, and with it the frozen frame — the finder
+   *  comes back live rather than stranding the user on a photo whose read they
+   *  just threw away.
+   *
+   *  Split from `dismiss` by #81 so that the *guard* and the *destruction* are
+   *  two functions: the confirmation's own button calls this one, and nothing
+   *  else may. */
+  function discard() {
+    setBasket([]);
+    setAdding(false);
+    setConfirmDismiss(false);
     setStill(null);
     setError(null);
     // #82: the panel is hidden rather than closed while a read is up, so
@@ -540,36 +697,90 @@ export function Log() {
     setPicksOpen(false);
   }
 
-  function update(index: number, patch: Partial<AnalyzedItem>) {
-    setRead((r) =>
-      r
-        ? { ...r, items: r.items.map((it, i) => (i === index ? { ...it, ...patch } : it)) }
-        : r,
-    );
+  /** The backdrop tap. One capture goes straight out, exactly as it has since
+   *  M2; more than one is asked about first — see `needsDismissConfirm` for why
+   *  this is the one place in the app that gets a confirmation instead of an
+   *  undo, and why the count is of captures rather than of foods. */
+  function dismiss() {
+    if (needsDismissConfirm(basket)) {
+      setConfirmDismiss(true);
+      return;
+    }
+    discard();
   }
 
+  /** #81's whole feature: keep the basket, go back to the capture modes.
+   *
+   *  The frozen frame goes because it is the *previous* capture's, and coming
+   *  back to a still with a retake button on it is landing on a photo you have
+   *  already read rather than on a viewfinder. #16's copy of it is safe: the
+   *  photo is in R2 and its key is on the capture in the basket, which is
+   *  precisely what is being kept. */
+  function addAnother() {
+    setAdding(true);
+    setEditing(null);
+    setConfirmDismiss(false);
+    setStill(null);
+    setError(null);
+  }
+
+  function update(index: number, patch: Partial<AnalyzedItem>) {
+    patchItem(index, (it) => ({ ...it, ...patch }));
+  }
+
+  /** One save, whatever it took to build it (#81).
+   *
+   *  **One capture sends exactly the body it sent before this issue.** The
+   *  per-item `source`/`photo_key`/`barcode` fields are added only when the
+   *  basket holds more than one capture, so #76's `ai_*` set, #104's portion
+   *  triple and #107's grams all cross the wire on the shipped path untouched
+   *  — a deliberate narrowing of what this issue can break, and the reason the
+   *  three-line conditional is worth more than the uniformity of always
+   *  sending them.
+   *
+   *  **The body-level three come from the FIRST capture and the items say the
+   *  rest.** The route reads each column off the item when the item names it
+   *  and off the body when it does not, so the fallback is exercised by every
+   *  single-capture save in the app. A basket's later captures state their own,
+   *  including an explicit `null` where there is none — a hand-typed mustard
+   *  inside a save whose body carries a photographed capture's key must not
+   *  inherit it, because the photo does not show the mustard.
+   *
+   *  **`savedGrams` is resolved per CAPTURE, not per save.** It was one call
+   *  out here when a save was one read (#107: one product, one number, every
+   *  row scaled by it). A basket can hold two scanned products with different
+   *  weights, and asking once would stamp the first product's grams onto the
+   *  second one's row. The retired-field decision in `showsGrams` is about
+   *  what can still be *adjusted*; what was already produced is real data and
+   *  each capture keeps its own. */
   async function save() {
-    if (!read) return;
+    if (!basket.length) return;
     setSaving(true);
     setError(null);
+    const first = basket[0] as Capture;
+    const mixed = basket.length > 1;
     // `edited` answers "how good are the AI's estimates?", so a row the user
     // typed from scratch is not an edit — there was nothing to correct (#16).
-    const manual = read.manual !== undefined;
-    const edited = manual ? [] : read.items.filter(isEdited);
-    // #107: a barcode read's portion is the HOW MUCH field, and it is one
-    // number for the whole read — so it is resolved once, out here, rather
-    // than per item inside the map. Every row of a barcode save gets the same
-    // `portion_qty` because a barcode read is one product; see `savedGrams`.
-    const readGrams = savedGrams(read);
+    // Per capture, because #16's blank recovery row can now sit in a basket
+    // beside two rows that were genuinely read.
+    const edited = basket.flatMap((c) => (c.manual !== undefined ? [] : c.items.filter(isEdited)));
     try {
       await api.post("/api/food-logs", {
         logged_on: localDay(),
         timezone: deviceTimezone(),
         meal_slot: slot,
-        source: read.source,
-        photo_key: read.photoKey,
-        barcode: read.barcode,
-        items: read.items.map((it) => ({
+        source: first.source,
+        photo_key: first.photoKey,
+        barcode: first.barcode,
+        items: basket.flatMap((capture) => {
+        const manual = capture.manual !== undefined;
+        // #107: a barcode read's portion is the HOW MUCH field, and it is one
+        // number for the whole read — so it is resolved once per capture,
+        // rather than per item inside the map. Every row of a barcode capture
+        // gets the same `portion_qty` because a barcode read is one product;
+        // see `savedGrams`.
+        const readGrams = savedGrams(capture);
+        return capture.items.map((it) => ({
           name: it.name,
           kcal: it.calories,
           protein_g: it.protein_g,
@@ -609,7 +820,19 @@ export function Log() {
                 // supplies both, that is the one the row should record.
                 ...(readGrams ?? savedPortion(it)),
               }),
-        })),
+          // Where this food came from, stated per row for a basket and left to
+          // the body for a single capture (#81). `?? null` rather than
+          // omission: absent means "take the body's", and a typed row in a
+          // photographed meal has to be able to say it has no photo of its own.
+          ...(mixed
+            ? {
+                source: capture.source,
+                photo_key: capture.photoKey ?? null,
+                barcode: capture.barcode ?? null,
+              }
+            : {}),
+        }));
+        }),
       });
       // the saved toast renders on Today (sketch stage 4): slot, kcal,
       // elapsed time as a first-class quality signal, and the edited count
@@ -630,14 +853,14 @@ export function Log() {
   }
 
   const totals = useMemo(() => {
-    const items = read?.items ?? [];
+    const items = rows.map((r) => r.item);
     return {
       kcal: items.reduce((s, it) => s + it.calories, 0),
       p: Math.round(items.reduce((s, it) => s + it.protein_g, 0)),
       c: Math.round(items.reduce((s, it) => s + it.carbs_g, 0)),
       f: Math.round(items.reduce((s, it) => s + it.fat_g, 0)),
     };
-  }, [read]);
+  }, [rows]);
 
   return (
     <>
@@ -657,6 +880,8 @@ export function Log() {
           </div>
 
           <LogModes mode={mode} onMode={setMode} barcodeReady={false} />
+
+          {held > 0 && !open && <HeldBar held={held} onReview={() => setAdding(false)} />}
 
           <section className="log-ask">
             <label className="eyebrow" htmlFor="describe">
@@ -678,7 +903,7 @@ export function Log() {
             >
               {busy ? "Reading…" : "Read it"}
             </button>
-            {error && !read && (
+            {error && !open && (
               <p className="signin-error" role="alert">
                 {error}
               </p>
@@ -702,16 +927,30 @@ export function Log() {
           clock={clock.meridian}
           still={still}
           busy={busy}
-          error={read ? null : error}
+          error={open ? null : error}
           // #112: the sheet renders *over* this stage rather than replacing it,
           // so the stage has to be told a read is up. Without it the scan loop
           // went on decoding behind the sheet and every re-read rebuilt it,
           // discarding the grams the user had typed — a wipe that, since #107
           // stores that number, lands in the row as the reader's default.
-          // `read !== null` and nothing else: the picks panel deliberately
-          // stays out of the camera's effects (#94), and `still`/`busy` are
-          // about the capture, not about what is on screen.
-          reviewing={read !== null}
+          //
+          // **`open`, not "the basket has something in it"** (#81). Those were
+          // the same statement until this issue and are not any more: while the
+          // user is adding a second food the basket is full of captures and the
+          // scanner has to be *running*, which is the whole point of the tap
+          // that got them here. It is `sheetOpen(...)` and nothing else — one
+          // boolean, computed once, feeding the sheet's own render condition,
+          // this prop and the loop's gate, so a condition cannot reach one of
+          // the three and miss the others. The picks panel deliberately stays
+          // out of the camera's effects (#94), and `still`/`busy` are about the
+          // capture, not about what is on screen.
+          reviewing={open}
+          // What is held, over the viewfinder (#81). An invisible basket that a
+          // stray tap destroys is the failure this issue names — and the way
+          // back to the sheet must not be "capture something else", which is
+          // the only way back a bare `adding` flag would leave.
+          held={held}
+          onReview={() => setAdding(false)}
           onCapture={(photo) => void readPhoto(photo)}
           onRetake={retake}
           onScan={onScan}
@@ -726,7 +965,7 @@ export function Log() {
           `dismiss` closes it too, so throwing a read away lands you back on
           the camera rather than on a panel you had forgotten was open. The
           stream keeps running behind it; nothing here touches the camera. */}
-      {picksOpen && !read && picks.length > 0 && (
+      {picksOpen && !open && picks.length > 0 && (
         <div
           className="sheet-wrap"
           onClick={(e) => {
@@ -771,7 +1010,7 @@ export function Log() {
         </div>
       )}
 
-      {read && (
+      {open && first && (
         <div
           className={still ? "sheet-wrap over-photo" : "sheet-wrap"}
           onClick={(e) => {
@@ -827,8 +1066,20 @@ export function Log() {
                   16px mark that means "starred", the same mark and the same
                   two tokens the picks list has used since #12. */}
               <span className="sheet-head-end">
+                {/* What produced what is on this sheet. One capture keeps the
+                    read time it has reported since M2 — a first-class quality
+                    signal, and the number the toast repeats. Several captures
+                    have several read times and no single one of them describes
+                    the sheet, so the honest thing to say is how many there
+                    are; it is also the count the dismiss guard is about, which
+                    means the sentence in the confirmation is not the first
+                    time the number is mentioned. */}
                 <span className="mono">
-                  {read.manual ? "COULDN'T READ IT" : `READ IN ${(read.readMs / 1000).toFixed(1)}S`}
+                  {basket.length > 1
+                    ? `${basket.length} CAPTURES`
+                    : first.manual
+                      ? "COULDN'T READ IT"
+                      : `READ IN ${(first.readMs / 1000).toFixed(1)}S`}
                 </span>
                 {/* Disabled until something on the sheet has a name — #16's
                     recovery sheet opens blank, and a favourite called ", " is
@@ -854,17 +1105,45 @@ export function Log() {
                 </button>
               </span>
             </div>
-            <p className="sheet-sub">
-              {read.manual
-                ? `${read.manual} Your photo is saved — type what you ate, or close this to retake.`
-                : "Tap anything to change it before it saves."}
-            </p>
+            {/* **The guard, and it is the only confirmation in the app** —
+                see `needsDismissConfirm` for why this one earns what #52
+                argues against everywhere else: a basket lives in this screen's
+                memory and nowhere else, so there is no row to restore and no
+                undo to offer. It replaces the subtitle rather than stacking
+                under it, because the sheet is asking one question and a page
+                of editing instructions above the question is noise; and it is
+                at the *top* so it cannot be scrolled past on a tall basket,
+                which is exactly the basket this can fire on. */}
+            {confirmDismiss ? (
+              <div className="sheet-confirm" role="alertdialog" aria-label="Discard everything in this meal?">
+                <p>
+                  Throw away all {basket.length} captures? Nothing here is saved yet, and there is no
+                  undo — {rows.length === 1 ? "the one food" : `all ${rows.length} foods`} would go.
+                </p>
+                <div className="sheet-confirm-acts">
+                  <button type="button" className="btn btn-quiet" onClick={() => setConfirmDismiss(false)}>
+                    Keep editing
+                  </button>
+                  <button type="button" className="btn-text danger" onClick={discard}>
+                    Discard everything
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <p className="sheet-sub">
+                {first.manual
+                  ? `${first.manual} Your photo is saved — type what you ate, or close this to retake.`
+                  : basket.length > 1
+                    ? "Tap anything to change it. One save, one entry on Today."
+                    : "Tap anything to change it before it saves."}
+              </p>
+            )}
 
             {/* Barcode reads land per-100g or per-package, so the portion is
                 the one thing the database can't tell us (OpenFoodFacts leaves
                 serving_size null even for Nutella). One field, scaling every
                 number live — the sheet's own editing idiom, not a new screen. */}
-            {read.grams !== undefined && (
+            {showsGrams(basket) && first.grams !== undefined && (
               <div className="portion-row">
                 <label className="eyebrow" htmlFor="grams">
                   How much
@@ -879,17 +1158,59 @@ export function Log() {
                     The ceiling came down from 5,000 g, which #95 inherited from
                     that discarding handler and kept so the fix stayed a fix.
                     5 kg was never a portion of anything; see FOOD_LIMITS. */}
-                <NumericField id="grams" value={read.grams} onCommit={setGrams} live {...FOOD_LIMITS.grams} />
+                <NumericField id="grams" value={first.grams} onCommit={setGrams} live {...FOOD_LIMITS.grams} />
                 <span className="mono">GRAMS</span>
               </div>
             )}
 
-            {read.items.map((item, i) => (
+            {/* **The retirement, said rather than silently applied — and the
+                number SHOWN rather than merely promised** (#81/#58).
+
+                The grams field describes one product; a second capture leaves
+                it with nothing to mean, so it goes, and a control that simply
+                disappears is the dead-affordance complaint #95 was filed about
+                with the button removed instead of disabled.
+
+                **A frozen number that is shown is a documented limitation; a
+                frozen number that is hidden is a trap**, and that distinction
+                is not hypothetical here. Production holds a barcode row at
+                155 g of a 55 g bar — 564 kcal, 22% of that day's intake —
+                which is either a real portion or a slipped thumb, and the only
+                way anybody can tell is by reading the number. So each retired
+                amount is printed against the food it belongs to, read-only.
+                Nothing is lost either: it is already in that capture's macros
+                and goes to the `portion_qty`/`ai_portion_qty` columns
+                `savedGrams` writes. What is gone is the ability to CHANGE it
+                here, and the sentence says so. */}
+            {basket.length > 1 && basket.some((c) => c.grams !== undefined) && (
+              <div className="sheet-retired">
+                <p className="opt-hint">
+                  HOW MUCH describes one scanned product, so it steps aside here. These amounts are
+                  saved as they stand — reopen the meal from Today to change one.
+                </p>
+                <ul>
+                  {basket
+                    .filter((c) => c.grams !== undefined)
+                    .map((c, i) => (
+                      <li key={i}>
+                        <span>{c.items.map((it) => it.name).join(", ")}</span>
+                        <span className="mono">{c.grams} G</span>
+                      </li>
+                    ))}
+                </ul>
+              </div>
+            )}
+
+            {rows.map(({ item, from }, i) => (
               <ItemRow
-                key={i}
+                key={`${i}`}
                 item={item}
-                manual={read.manual !== undefined}
-                source={read.source}
+                manual={from.manual !== undefined}
+                // Per row, not per sheet (#81). A basket mixes provenance by
+                // design, and FROM THE BARCODE has to sit on the row that was
+                // actually scanned — the same reason #60's edit sheet reads
+                // `source` off the stored row rather than off the entry.
+                source={from.source}
                 editing={editing === i}
                 onToggle={() => setEditing(editing === i ? null : i)}
                 onChange={(patch) => update(i, patch)}
@@ -906,15 +1227,47 @@ export function Log() {
                   {totals.p}P · {totals.c}C · {totals.f}F
                 </span>
               </div>
-              {/* a blank row has nothing to save until it's named — the save
-                  route rejects an empty name, so the button says so first */}
-              <button
-                className="save"
-                disabled={saving || read.items.every((it) => !it.name.trim())}
-                onClick={() => void save()}
-              >
-                {saving ? "Logging…" : `Log ${fmtInt(totals.kcal)} kcal`}
-              </button>
+              {/* **"Add another" sits beside the save, not above the rows**
+                  (#81). Both are decisions about the whole basket, which is
+                  what the footer is for, and the two together are the question
+                  the sheet is actually asking after a capture: is this the
+                  meal, or is there more of it? Put by the item list it would
+                  read as "add a blank row", which is #60's control on a
+                  different sheet and a different thing entirely — this one goes
+                  back to the camera.
+
+                  Rule 5's accent stays on the save. The add is `.btn-quiet`,
+                  sized to its own text so the primary keeps the rest of the
+                  row; at 375 with a five-figure total that is the tightest this
+                  gets, which is what `/log#basket` exists to measure. */}
+              <div className="sheet-acts">
+                <button
+                  type="button"
+                  className="btn btn-quiet sheet-add-another"
+                  disabled={saving || held >= MAX_MEAL_ITEMS}
+                  onClick={addAnother}
+                >
+                  + Add another
+                </button>
+                {/* a blank row has nothing to save until it's named — the save
+                    route rejects an empty name, so the button says so first */}
+                <button
+                  className="save"
+                  disabled={saving || rows.every(({ item }) => !item.name.trim())}
+                  onClick={() => void save()}
+                >
+                  {saving ? "Logging…" : `Log ${fmtInt(totals.kcal)} kcal`}
+                </button>
+              </div>
+              {/* The cap, met as a rule rather than discovered as a 400 (#81).
+                  `MAX_MEAL_ITEMS` is the client's one restatement of the save
+                  route's `MAX_ITEMS`; the route refuses independently. Nothing
+                  has ever reached it — see the note on the constant. */}
+              {held >= MAX_MEAL_ITEMS && (
+                <p className="opt-hint">
+                  That's as many foods as one meal holds. Log these and start another.
+                </p>
+              )}
               {error && (
                 <p className="signin-error" role="alert">
                   {error}
@@ -926,6 +1279,13 @@ export function Log() {
       )}
     </>
   );
+}
+
+/** Why a read was refused rather than appended (#81). One sentence, naming
+ *  both numbers, because "that didn't work" on a scan the user just made is
+ *  indistinguishable from a broken scanner. */
+function overfull(held: number, incoming: number) {
+  return `That would put ${held + incoming} foods in one meal, and ${MAX_MEAL_ITEMS} is the most one save holds. Log what's here first.`;
 }
 
 function isEdited(item: EditableItem) {

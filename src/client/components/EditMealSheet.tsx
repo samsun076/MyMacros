@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type { AnalyzedItem, FoodLog, FoodLogItemEdit, MealSlot } from "../../shared/api";
 import { api } from "../lib/api";
+import { MAX_MEAL_ITEMS } from "../lib/basket";
 import { fmtInt } from "../lib/format";
 import { blankItem, editableFromLog, setPortionQty, type EditableItem } from "../lib/portion";
 import { ItemRow } from "./ItemRow";
@@ -220,10 +221,12 @@ export function EditMealSheet({
           {/* #16's blank row, reached deliberately instead of by a failed read.
               Capped where the save route caps (`MAX_ITEMS`), and the cap is met
               here rather than discovered as a 400. */}
-          <button type="button" className="btn-text" disabled={items.length >= MAX_ITEMS} onClick={add}>
+          <button type="button" className="btn-text" disabled={items.length >= MAX_MEAL_ITEMS} onClick={add}>
             + Add an item
           </button>
-          {items.length >= MAX_ITEMS && <span className="opt-hint">That's as many foods as one meal holds.</span>}
+          {items.length >= MAX_MEAL_ITEMS && (
+            <span className="opt-hint">That's as many foods as one meal holds.</span>
+          )}
         </div>
 
         <div className="sheet-foot">
@@ -256,13 +259,13 @@ export function EditMealSheet({
   );
 }
 
-/** Restated from `routes/food-logs.ts`, which owns it for the wire (#86). The
- *  house pattern for a bound the client also has to draw — same shape as
- *  `FOOD_LIMITS` restating `energy()`'s ceilings — and the reason the copy is
- *  tolerable is the same: the route refuses independently, so the worst a
- *  drifted copy does is show a button that 400s, never write a row nobody
- *  meant. `food-logs.route.test.ts` pins the server's. */
-const MAX_ITEMS = 20;
+/* `MAX_MEAL_ITEMS` was declared here until #81, restating the route's
+   `MAX_ITEMS` for the client's sake (#86's house pattern for a bound the
+   client also has to draw). #81's confirm-sheet basket is the second client
+   surface that caps an item list, and a second copy of a cap that has never
+   bound anything is the register's own defect with nothing to catch it — so
+   the restatement moved to `lib/basket.ts` and both sheets read it. The
+   argument for tolerating one copy at all is unchanged and lives there. */
 
 const SLOTS: MealSlot[] = ["breakfast", "lunch", "dinner", "snack"];
 

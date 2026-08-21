@@ -1593,3 +1593,547 @@ describe("PATCH /api/food-logs — removing and adding items (#60)", () => {
     expect((await storedRow(chicken.id))?.kcal).toBe(310);
   });
 });
+
+/* ── #81: one meal, several captures ───────────────────────────────────────── */
+
+/** Scan the chicken patty, scan its bun, type the mustard — one save, one
+ *  timeline entry, three sources.
+ *
+ *  Nothing here needed a migration and that is the point: `source`, `photo_key`
+ *  and `barcode` have been per-row columns since 0001, and what #81 adds is a
+ *  wire that can say so. So these tests are mostly about the *fallback* — an
+ *  item that names none of the three takes the body's, which is what every
+ *  single-capture save in the app has always done and must go on doing
+ *  byte-for-byte.
+ *
+ *  One assertion per `it` wherever two facts are separable. #60's own note says
+ *  why: an assertion after a failed one never runs, and "expected 400, got 201"
+ *  says nothing about whether the row it should not have written exists. */
+
+const PHOTO_KEY = `${USER}/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee.jpg`;
+const OTHER_PHOTO_KEY = "food-logs-other-user/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee.jpg";
+
+/** The issue's lunch, as the confirm sheet's basket would send it: body-level
+ *  values from the FIRST capture, every item stating its own. */
+const BASKET = {
+  logged_on: "2026-08-10",
+  meal_slot: "lunch",
+  source: "barcode",
+  barcode: "5000112637922",
+  items: [
+    {
+      ...item({ name: "Chicken patty", kcal: 190, protein_g: 23, carbs_g: 9.5, fat_g: 7, confidence: null }),
+      ai_kcal: 190,
+      ai_protein_g: 23,
+      ai_carbs_g: 9.5,
+      ai_fat_g: 7,
+      source: "barcode",
+      photo_key: null,
+      barcode: "5000112637922",
+    },
+    {
+      ...item({ name: "Brioche bun", kcal: 250, protein_g: 8, carbs_g: 42, fat_g: 5.5, confidence: null }),
+      ai_kcal: 250,
+      ai_protein_g: 8,
+      ai_carbs_g: 42,
+      ai_fat_g: 5.5,
+      source: "barcode",
+      photo_key: null,
+      barcode: "8712566341726",
+    },
+    {
+      ...item({ name: "Yellow mustard", kcal: 15, protein_g: 0.9, carbs_g: 1.4, fat_g: 0.6, confidence: 0.7 }),
+      ai_kcal: 15,
+      ai_protein_g: 0.9,
+      ai_carbs_g: 1.4,
+      ai_fat_g: 0.6,
+      source: "text",
+      photo_key: null,
+      barcode: null,
+    },
+  ],
+};
+
+describe("POST /api/food-logs — one meal from several captures (#81)", () => {
+  it("accepts a body whose items name their own capture", async () => {
+    expect((await save(BASKET)).status).toBe(201);
+  });
+
+  it("writes every capture's rows under one shared logged_at", async () => {
+    // The claim the whole feature rests on: the shared instant is what folds
+    // these back into a single timeline entry (#10), so two scans and a typed
+    // line are one row on Today rather than three.
+    //
+    // Split from the status above deliberately (#60's note): an assertion after
+    // a failed one never runs, so a single test would report "expected 201, got
+    // 400" and say nothing at all about the instant, which is the half the
+    // feature rests on.
+    const { logs } = await (await save(BASKET)).json<FoodLogsCreated>();
+    expect(new Set(logs.map((l) => l.logged_at)).size).toBe(1);
+  });
+
+  it("keeps each row's own source through a mixed save", async () => {
+    const res = await save(BASKET);
+    const { logs } = await res.json<FoodLogsCreated>();
+    const byName = new Map(logs.map((l) => [l.name, l]));
+    expect([
+      byName.get("Chicken patty")?.source,
+      byName.get("Brioche bun")?.source,
+      byName.get("Yellow mustard")?.source,
+    ]).toEqual(["barcode", "barcode", "text"]);
+  });
+
+  it("keeps each row's own barcode, including the one that has none", async () => {
+    // Collapsing a basket to one code would put the patty's barcode on the
+    // mustard — a row claiming to be a scan of a product it is not.
+    const res = await save(BASKET);
+    const { logs } = await res.json<FoodLogsCreated>();
+    const byName = new Map(logs.map((l) => [l.name, l]));
+    expect([
+      byName.get("Chicken patty")?.barcode,
+      byName.get("Brioche bun")?.barcode,
+      byName.get("Yellow mustard")?.barcode,
+    ]).toEqual(["5000112637922", "8712566341726", null]);
+  });
+
+  it("folds a mixed save into exactly one meal", async () => {
+    // Asserted through `foldMeals` rather than by eye, because the fold is what
+    // the Today timeline and the recents list both run — this is the claim the
+    // issue's "Done when" makes, stated in the function that decides it.
+    await save(BASKET);
+    const rows = await env.DB.prepare(
+      "SELECT * FROM food_logs WHERE user_id = ? AND logged_on = '2026-08-10' AND meal_slot = 'lunch'",
+    )
+      .bind(USER)
+      .all<FoodLog>();
+    expect(foldMeals(rows.results).length).toBe(1);
+  });
+
+  it("sums a mixed save's calories into that one entry", async () => {
+    await save(BASKET);
+    const rows = await env.DB.prepare(
+      "SELECT * FROM food_logs WHERE user_id = ? AND logged_on = '2026-08-10' AND meal_slot = 'lunch'",
+    )
+      .bind(USER)
+      .all<FoodLog>();
+    expect(foldMeals(rows.results)[0]?.kcal).toBe(455);
+  });
+
+  it("names all three foods in the entry's description", async () => {
+    await save(BASKET);
+    const rows = await env.DB.prepare(
+      "SELECT * FROM food_logs WHERE user_id = ? AND logged_on = '2026-08-10' AND meal_slot = 'lunch' ORDER BY rowid",
+    )
+      .bind(USER)
+      .all<FoodLog>();
+    expect(foldMeals(rows.results)[0]?.name).toBe("Chicken patty, brioche bun, yellow mustard");
+  });
+
+  it("keeps `edited` per row inside a mixed save", async () => {
+    // `edited` answers "did the user override the reader?", one food at a time.
+    // A basket that flattened it would report the whole meal as corrected
+    // because one item in it was.
+    const res = await save({
+      ...BASKET,
+      items: [
+        BASKET.items[0],
+        { ...BASKET.items[1], edited: true, kcal: 300 },
+        BASKET.items[2],
+      ],
+    });
+    const { logs } = await res.json<FoodLogsCreated>();
+    const byName = new Map(logs.map((l) => [l.name, l]));
+    expect([
+      byName.get("Chicken patty")?.edited,
+      byName.get("Brioche bun")?.edited,
+      byName.get("Yellow mustard")?.edited,
+    ]).toEqual([0, 1, 0]);
+  });
+});
+
+describe("POST /api/food-logs — a per-item photo key is checked on its own (#81)", () => {
+  /** **The R2 prefix IS the authorization check** (`worker/photos.ts`), and the
+   *  check the body-level key goes through vouches for exactly one string. A
+   *  key arriving on an item has been through nothing unless this route puts it
+   *  through `ownedPhotoKey` itself — so these two tests are the ones that fail
+   *  if that call is ever removed, and the body-level tests above are not. */
+  const withOwnKey = () =>
+    save({
+      ...BASKET,
+      source: "photo",
+      photo_key: PHOTO_KEY,
+      items: [
+        { ...BASKET.items[0], source: "photo", photo_key: PHOTO_KEY },
+        BASKET.items[2],
+      ],
+    });
+
+  it("accepts a per-item key that is under the caller's own prefix", async () => {
+    expect((await withOwnKey()).status).toBe(201);
+  });
+
+  it("stores that key on the row that named it", async () => {
+    const { logs } = await (await withOwnKey()).json<FoodLogsCreated>();
+    expect(logs.find((l) => l.name === "Chicken patty")?.photo_key).toBe(PHOTO_KEY);
+  });
+
+  it("refuses a per-item key belonging to another user", async () => {
+    const res = await save({
+      ...BASKET,
+      items: [{ ...BASKET.items[0], photo_key: OTHER_PHOTO_KEY }, BASKET.items[2]],
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("names the refusal so the client can tell it from a bad macro", async () => {
+    const res = await save({
+      ...BASKET,
+      items: [{ ...BASKET.items[0], photo_key: OTHER_PHOTO_KEY }, BASKET.items[2]],
+    });
+    expect((await res.json<{ error: string }>()).error).toBe("invalid_photo_key");
+  });
+
+  it("writes NO rows when one item's key is refused", async () => {
+    // The half that a status assertion cannot reach: the loop validates every
+    // item before a single INSERT runs, so a refusal partway through must leave
+    // the table exactly as it was rather than half a meal.
+    const before = await rowCount();
+    await save({
+      ...BASKET,
+      items: [BASKET.items[0], { ...BASKET.items[1], photo_key: OTHER_PHOTO_KEY }],
+    });
+    expect(await rowCount()).toBe(before);
+  });
+
+  it("refuses a per-item key that is not a well-formed key at all", async () => {
+    const res = await save({
+      ...BASKET,
+      items: [{ ...BASKET.items[0], photo_key: `${USER}/../../etc/passwd` }, BASKET.items[2]],
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("an explicit null per-item key means NO photo, not the body's", async () => {
+    // The distinction the mixed basket needs: the body carries the
+    // photographed capture's key so the meal still has a thumbnail, and the
+    // hand-typed food in the same save has to be able to say the photo does
+    // not show it.
+    const res = await save({
+      ...BASKET,
+      source: "photo",
+      photo_key: PHOTO_KEY,
+      items: [{ ...BASKET.items[2], photo_key: null }],
+    });
+    expect((await res.json<FoodLogsCreated>()).logs[0]?.photo_key).toBe(null);
+  });
+});
+
+describe("POST /api/food-logs — a per-item barcode is validated like the body's (#81)", () => {
+  it("refuses a per-item barcode that is not 8–14 digits", async () => {
+    const res = await save({
+      ...BASKET,
+      items: [{ ...BASKET.items[0], barcode: "12345" }, BASKET.items[2]],
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("names that refusal invalid_barcode", async () => {
+    const res = await save({
+      ...BASKET,
+      items: [{ ...BASKET.items[0], barcode: "12345" }, BASKET.items[2]],
+    });
+    expect((await res.json<{ error: string }>()).error).toBe("invalid_barcode");
+  });
+
+  it("refuses a per-item barcode carrying anything but digits", async () => {
+    const res = await save({
+      ...BASKET,
+      items: [{ ...BASKET.items[0], barcode: "5000112637a2" }, BASKET.items[2]],
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("accepts a 14-digit per-item code", async () => {
+    const res = await save({
+      ...BASKET,
+      items: [{ ...BASKET.items[0], barcode: "50001126379221" }],
+    });
+    expect((await res.json<FoodLogsCreated>()).logs[0]?.barcode).toBe("50001126379221");
+  });
+
+  it("refuses a per-item source outside the four the column allows", async () => {
+    const res = await save({
+      ...BASKET,
+      items: [{ ...BASKET.items[0], source: "guess" }],
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("names that refusal invalid_item_source", async () => {
+    const res = await save({ ...BASKET, items: [{ ...BASKET.items[0], source: "guess" }] });
+    expect((await res.json<{ error: string }>()).error).toBe("invalid_item_source");
+  });
+});
+
+describe("POST /api/food-logs — an item that says nothing takes the body's (#81)", () => {
+  /** The fallback, and it is not a new path: every save the app has ever made
+   *  from one capture goes through it. If it broke, the symptom would be the
+   *  whole app rather than #81's basket — which is exactly why it is worth a
+   *  test that names it. */
+  it("takes the body's source when the item names none", async () => {
+    const res = await save(meal({ source: "photo", items: [item()] }));
+    expect((await res.json<FoodLogsCreated>()).logs[0]?.source).toBe("photo");
+  });
+
+  it("takes the body's photo_key when the item names none", async () => {
+    const res = await save(meal({ source: "photo", photo_key: PHOTO_KEY, items: [item()] }));
+    expect((await res.json<FoodLogsCreated>()).logs[0]?.photo_key).toBe(PHOTO_KEY);
+  });
+
+  it("takes the body's barcode when the item names none", async () => {
+    const res = await save(meal({ source: "barcode", barcode: "5000112637922", items: [item()] }));
+    expect((await res.json<FoodLogsCreated>()).logs[0]?.barcode).toBe("5000112637922");
+  });
+
+  it("stamps the body's photo_key on every row of a multi-item single capture", async () => {
+    // One photograph returning three foods: still one capture, still one photo,
+    // and the rows still all carry it. This is the behaviour #81 must not have
+    // changed while making the column per-item on the wire.
+    const res = await save(
+      meal({
+        source: "photo",
+        photo_key: PHOTO_KEY,
+        items: [item({ name: "A" }), item({ name: "B" }), item({ name: "C" })],
+      }),
+    );
+    const { logs } = await res.json<FoodLogsCreated>();
+    expect(logs.map((l) => l.photo_key)).toEqual([PHOTO_KEY, PHOTO_KEY, PHOTO_KEY]);
+  });
+
+  it("a photographed row and a typed one in one save, both stating all three", async () => {
+    // **This test used to mix a stated item with a silent one and it no longer
+    // may**: the all-or-nothing guard below refuses that shape outright,
+    // because a silent item inside a stated basket is how a hand-typed food
+    // ends up carrying somebody else's barcode. What it asserts now is the
+    // thing that mattered about it — a basket really can hold two provenances
+    // — said in the shape the contract allows.
+    const res = await save(
+      meal({
+        source: "photo",
+        photo_key: PHOTO_KEY,
+        items: [
+          { ...item({ name: "Photographed" }), source: "photo", photo_key: PHOTO_KEY, barcode: null },
+          { ...item({ name: "Typed" }), source: "text", photo_key: null, barcode: null },
+        ],
+      }),
+    );
+    const { logs } = await res.json<FoodLogsCreated>();
+    const byName = new Map(logs.map((l) => [l.name, l]));
+    expect([byName.get("Photographed")?.source, byName.get("Typed")?.source]).toEqual(["photo", "text"]);
+  });
+
+  it("and the typed row carries no photo while the photographed one does", async () => {
+    const res = await save(
+      meal({
+        source: "photo",
+        photo_key: PHOTO_KEY,
+        items: [
+          { ...item({ name: "Photographed" }), source: "photo", photo_key: PHOTO_KEY, barcode: null },
+          { ...item({ name: "Typed" }), source: "text", photo_key: null, barcode: null },
+        ],
+      }),
+    );
+    const { logs } = await res.json<FoodLogsCreated>();
+    const byName = new Map(logs.map((l) => [l.name, l]));
+    expect([byName.get("Photographed")?.photo_key, byName.get("Typed")?.photo_key]).toEqual([PHOTO_KEY, null]);
+  });
+});
+
+describe("POST /api/food-logs — the cap on one meal (#81)", () => {
+  /** `MAX_ITEMS`. The client refuses first and says why (`MAX_MEAL_ITEMS` in
+   *  `lib/basket.ts`), so this is the refusal nobody should ever meet — and it
+   *  is the only execution of the bound that exists, because nothing in
+   *  production has ever put twenty distinct foods in one meal. */
+  it("accepts exactly twenty foods in one save", async () => {
+    const items = Array.from({ length: 20 }, (_, i) => item({ name: `Food ${i}` }));
+    const res = await save(meal({ items }));
+    expect(res.status).toBe(201);
+  });
+
+  it("refuses twenty-one", async () => {
+    const items = Array.from({ length: 21 }, (_, i) => item({ name: `Food ${i}` }));
+    const res = await save(meal({ items }));
+    expect(res.status).toBe(400);
+  });
+
+  it("writes no rows at all when the cap is exceeded", async () => {
+    const before = await rowCount();
+    const items = Array.from({ length: 21 }, (_, i) => item({ name: `Food ${i}` }));
+    await save(meal({ items }));
+    expect(await rowCount()).toBe(before);
+  });
+});
+
+
+describe("POST /api/food-logs — more foods than one INSERT can bind (#81)", () => {
+  /** **The ceiling under the cap, found by driving the route.**
+   *
+   *  D1 binds at most 100 parameters per statement and a `food_logs` row is 22
+   *  columns, so five foods in one INSERT is 110 placeholders and D1 answers
+   *  `too many SQL variables` — a 500, on the one route where the thing being
+   *  saved exists nowhere but the browser's memory. Measured across 1…21 items
+   *  before the fix: **1–4 were 201, 5–20 were 500**, 21 was the route's own
+   *  400. It has been there since #10 and had never fired, because a save was
+   *  one read and a read is usually one or two foods; #81 makes five a matter
+   *  of five taps, and a photographed plate could already reach it.
+   *
+   *  Five is the case that separates the fixed route from the broken one.
+   *  Everything else here is a regression guard around it. */
+  it("saves five foods in one meal", async () => {
+    const items = Array.from({ length: 5 }, (_, i) => item({ name: `Five ${i}` }));
+    const res = await save(meal({ items }));
+    expect(res.status).toBe(201);
+  });
+
+  it("writes all five rows, not the first four", async () => {
+    // The half a status assertion cannot see: a chunked insert that dropped a
+    // chunk would still answer 201.
+    const before = await rowCount();
+    const items = Array.from({ length: 5 }, (_, i) => item({ name: `Rows ${i}` }));
+    await save(meal({ items }));
+    expect(await rowCount()).toBe(before + 5);
+  });
+
+  it("keeps all twenty rows of a full meal under one instant", async () => {
+    // Twenty is five statements. If they were separate saves rather than
+    // separate statements, the meal would fold into five timeline entries.
+    const items = Array.from({ length: 20 }, (_, i) => item({ name: `Full ${i}` }));
+    const res = await save(meal({ items }));
+    const { logs } = await res.json<FoodLogsCreated>();
+    expect(new Set(logs.map((l) => l.logged_at)).size).toBe(1);
+  });
+
+  it("returns every row it wrote", async () => {
+    const items = Array.from({ length: 20 }, (_, i) => item({ name: `Back ${i}` }));
+    const res = await save(meal({ items }));
+    expect((await res.json<FoodLogsCreated>()).logs.length).toBe(20);
+  });
+
+  it("adds five items to a saved meal in one PATCH", async () => {
+    // The same ceiling on the other route: #60's edit sheet can add rows until
+    // `MAX_ITEMS`, and every added row is an INSERT of the same 22 columns.
+    const { logs, ids } = await saveEntry({ items: [item({ name: "One" })] });
+    const res = await patch({
+      ids,
+      meal_slot: "dinner",
+      items: [
+        asIs(logs[0] as FoodLog),
+        ...Array.from({ length: 5 }, (_, i) => ({
+          name: `Added ${i}`,
+          kcal: 50,
+          protein_g: 1,
+          carbs_g: 2,
+          fat_g: 3,
+        })),
+      ],
+    });
+    expect(res.status).toBe(200);
+  });
+
+  it("stores all five of those added rows", async () => {
+    const { logs, ids } = await saveEntry({ items: [item({ name: "One" })] });
+    await patch({
+      ids,
+      meal_slot: "dinner",
+      items: [
+        asIs(logs[0] as FoodLog),
+        ...Array.from({ length: 5 }, (_, i) => ({
+          name: `Stored ${i}`,
+          kcal: 50,
+          protein_g: 1,
+          carbs_g: 2,
+          fat_g: 3,
+        })),
+      ],
+    });
+    expect(await rowCount()).toBe(6);
+  });
+});
+
+describe("POST /api/food-logs — provenance is stated by all the items or none (#81)", () => {
+  /** The middle case, and the reason it is refused rather than tolerated.
+   *
+   *  The three fields fall back to the body when an item is silent — which is
+   *  what every single-capture save in the app relies on. But a basket that
+   *  states `source: "text"` on the mustard and forgets its `barcode: null`
+   *  writes a hand-typed row carrying the patty's code: a row claiming to have
+   *  been scanned, on the column #75's per-source analysis reads, unfixable
+   *  afterwards because the capture is gone. Nothing about it looks wrong.
+   *
+   *  Same all-or-nothing this route already keeps for the four `ai_*` macros
+   *  and for the portion triple, and for the identical reason. */
+  const patty = BASKET.items[0] as Record<string, unknown>;
+  const mustard = BASKET.items[2] as Record<string, unknown>;
+  const without = (it: Record<string, unknown>, key: string) => {
+    const copy = { ...it };
+    delete copy[key];
+    return copy;
+  };
+
+  it("refuses a basket where one item omits its barcode", async () => {
+    const res = await save({ ...BASKET, items: [patty, without(mustard, "barcode")] });
+    expect(res.status).toBe(400);
+  });
+
+  it("names that refusal invalid_item_provenance", async () => {
+    const res = await save({ ...BASKET, items: [patty, without(mustard, "barcode")] });
+    expect((await res.json<{ error: string }>()).error).toBe("invalid_item_provenance");
+  });
+
+  it("would have written the patty's barcode onto the mustard — and writes nothing", async () => {
+    // The assertion the status cannot make. Before the guard this request
+    // returned 201 and stored `source=text` beside `barcode=5000112637922`.
+    const before = await rowCount();
+    await save({ ...BASKET, items: [patty, without(mustard, "barcode")] });
+    expect(await rowCount()).toBe(before);
+  });
+
+  it("refuses a basket where one item omits its photo_key", async () => {
+    const res = await save({ ...BASKET, items: [patty, without(mustard, "photo_key")] });
+    expect(res.status).toBe(400);
+  });
+
+  it("refuses a basket where one item omits its source", async () => {
+    const res = await save({ ...BASKET, items: [patty, without(mustard, "source")] });
+    expect(res.status).toBe(400);
+  });
+
+  it("refuses a basket where one item states nothing at all", async () => {
+    // The shape a client bug takes: three captures appended correctly and the
+    // fourth built by a path that forgot to stamp it.
+    const res = await save({ ...BASKET, items: [patty, item({ name: "Silent" })] });
+    expect(res.status).toBe(400);
+  });
+
+  it("accepts a basket where every item states all three", async () => {
+    expect((await save(BASKET)).status).toBe(201);
+  });
+
+  it("still accepts a save where NO item states any of them", async () => {
+    // The compatibility path, and the one this guard must not touch: a save
+    // from one capture names none of the three and inherits all three.
+    const res = await save(meal({ source: "photo", photo_key: PHOTO_KEY, items: [item(), item({ name: "Two" })] }));
+    expect(res.status).toBe(201);
+  });
+
+  it("and that save still inherits every field from the body", async () => {
+    const res = await save(
+      meal({ source: "photo", photo_key: PHOTO_KEY, barcode: "5000112637922", items: [item(), item({ name: "Two" })] }),
+    );
+    const { logs } = await res.json<FoodLogsCreated>();
+    expect(logs.map((l) => [l.source, l.photo_key, l.barcode])).toEqual([
+      ["photo", PHOTO_KEY, "5000112637922"],
+      ["photo", PHOTO_KEY, "5000112637922"],
+    ]);
+  });
+});

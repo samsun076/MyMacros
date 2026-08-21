@@ -223,6 +223,30 @@ export type FoodLogItemInput = {
   portion_qty?: number | null;
   portion_unit?: string | null;
   ai_portion_qty?: number | null;
+  /** How THIS food was captured, when the save is one meal built from several
+   *  captures (#81) — scan the patty, scan the bun, type the mustard.
+   *
+   *  **All three are already per-row columns**, and have been since migration
+   *  0001. Nothing migrates for this; what changes is that the wire can finally
+   *  say what the table could always hold. A basket must not be collapsed to
+   *  one source — #75's per-source estimate-quality analysis is the reader of
+   *  that column, and telling it a hand-typed mustard was scanned is the same
+   *  class of false statement as #60's `edited` flag on a portion change.
+   *
+   *  **Omitted means "the body-level value"; `null` means "none".** The
+   *  distinction is load-bearing for a mixed basket: a typed row inside a save
+   *  whose body carries the photographed capture's `photo_key` must not inherit
+   *  it, because the photo does not show that food. A single-capture save sends
+   *  none of these three and is byte-for-byte the save it was before #81 —
+   *  which is deliberate, and is what keeps #76's, #104's and #107's shipped
+   *  paths untouched by this issue.
+   *
+   *  Every per-item `photo_key` is checked against the caller's own R2 prefix
+   *  independently. The prefix IS the authorization check (`worker/photos.ts`),
+   *  and a body-level check cannot vouch for a key sitting on an item. */
+  source?: FoodSource;
+  photo_key?: string | null;
+  barcode?: string | null;
 };
 
 /** POST /api/food-logs body. One save = one meal = one shared `logged_at`
@@ -240,11 +264,20 @@ export type FoodLogCreate = {
   /** Device IANA timezone, mirrored into profiles.timezone (#44). */
   timezone?: string;
   meal_slot: MealSlot;
+  /** How the meal was captured — and since #81 the **default** for its rows
+   *  rather than a claim about all of them. A basket built from several
+   *  captures states each row's own `source` on the item and sends its first
+   *  capture's here; a save from one capture sends only this, exactly as it
+   *  always has. */
   source: FoodSource;
   /** R2 object key from POST /api/analyze/photo, stamped on every row of the
-   *  save so the timeline can show the meal's own photo. */
+   *  save that does not name its own (#81) so the timeline can show the meal's
+   *  own photo. The fold picks the first row carrying one, so a basket where
+   *  only one capture was photographed still shows its thumbnail. */
   photo_key?: string;
-  /** The scanned code, when the meal came from GET /api/barcode/:code. */
+  /** The scanned code, when the meal came from GET /api/barcode/:code. Also a
+   *  per-row default since #81 — a basket holding two scans states both codes
+   *  on their own items. */
   barcode?: string;
   /** When the save is a one-tap re-log (#12): bumps that favorite's
    *  use_count so most-used sorting works. */

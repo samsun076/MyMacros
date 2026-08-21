@@ -1449,6 +1449,47 @@ section {
   }
 }
 
+/* The basket, on the capture screen (#81). Full-width and in ordinary flow —
+   the deck is already three controls wide at 375 and a fourth is what would
+   break that row, and the finder is the one element on this screen with height
+   to give up. `--accent-soft` at the border and nothing filled: it is a
+   statement first and a control second, and a filled bar up here would compete
+   with the shutter for the eye. */
+.held-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0 20px 8px;
+  padding: 10px 14px;
+  background: color-mix(in srgb, var(--surface) 80%, transparent);
+  border: 1px solid var(--accent-soft);
+  border-radius: var(--radius-thumb);
+  cursor: pointer;
+  text-align: left;
+}
+
+.held-bar .mono {
+  font-family: var(--data-font);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  color: var(--ink);
+}
+
+.held-bar .held-cta {
+  font-family: var(--body-font);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--accent);
+}
+
+/* TEXT has its own frame padding, so the bar sits flush with the mode row
+   above it rather than carrying the camera stage's 20px inset a second time. */
+.log-screen .held-bar {
+  margin: 14px 0 0;
+}
+
 .cam-deck {
   padding: 10px 22px calc(26px + env(safe-area-inset-bottom, 0px));
 }
@@ -2198,6 +2239,138 @@ section {
   margin-top: 8px;
   padding-top: 14px;
   border-top: 1px solid var(--line);
+}
+
+/* #81's two whole-basket decisions, on one row. `auto 1fr` rather than two
+   equal halves: the save is the primary and rule 5's accent is spent on it, so
+   it keeps whatever the add button does not need. `min-width: 0` on the save
+   because a grid item's default `min-width: auto` refuses to shrink below its
+   own content, and `Log 10,240 kcal` beside a nowrap secondary is what would
+   push the row past 375 — the one width build rule 6 says has to hold. */
+.sheet-acts {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: stretch;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.sheet-acts .save {
+  margin-top: 0;
+  min-width: 0;
+}
+
+/* Sized to its own text, and deliberately NOT `.btn`'s uppercase eyebrow type.
+   Two reasons, and the first was measured rather than judged: at 0.14em
+   tracking and uppercase, "+ ADD ANOTHER" lays out at 183px, which at 375
+   leaves the save 140px and **wraps `Log 10,277 kcal` onto two lines** — no
+   overflow, so `verify:viewport` passes it, and a two-line primary all the
+   same. Sentence case at 13px is 123px and leaves 200px, which holds the
+   five-figure label on one line at all three widths. The second reason is the
+   hierarchy build rule 5 asks for: the accent belongs to the save, and a
+   secondary shouting in the same register as the primary is what makes a
+   footer read as two equals. Still a real 44px target — the padding is what
+   gets it there, not a min-height nobody can see. */
+.sheet-add-another {
+  white-space: nowrap;
+  padding: 15px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  font-stretch: normal;
+  letter-spacing: 0.02em;
+  text-transform: none;
+  border-radius: var(--radius-card);
+}
+
+/* The grams field explaining its own retirement (#81/#58). Sits where the
+   field was, above the rows, so the space it occupies is the space the control
+   occupied — a note that appeared at the bottom would read as a footnote about
+   the save rather than as an answer to "where did that field go". */
+.sheet-retired {
+  margin-top: 14px;
+  padding: 10px 12px;
+  background: var(--bg);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-thumb);
+}
+
+.sheet-retired .opt-hint {
+  font-size: 11.5px;
+}
+
+/* The amounts themselves, read-only. Same two-column shape the item rows use
+   above — name on the left, figure on the right — so a number that can no
+   longer be edited still reads as belonging to its food rather than as part of
+   the sentence explaining it. */
+.sheet-retired ul {
+  list-style: none;
+  margin-top: 8px;
+  display: grid;
+  gap: 4px;
+}
+
+.sheet-retired li {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 12px;
+  color: var(--ink);
+}
+
+.sheet-retired li .mono {
+  flex: none;
+  font-family: var(--data-font);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  color: var(--ink-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* The dismiss guard (#81) — the only confirmation in the app, and it replaces
+   the subtitle rather than stacking under it, so the sheet is asking one thing
+   at a time. `--danger` on the destructive verb and nothing else: build rule 9
+   says the colour has to be sign-carrying and labelled, and "Discard
+   everything" is both. The accent is deliberately NOT here — rule 8 spends it
+   on the focus macro and Night Athletic switches it live, so a destructive
+   control built on it would turn gold when somebody changed their accent. */
+.sheet-confirm {
+  margin-top: 10px;
+  padding: 12px 14px;
+  background: var(--bg);
+  /* Derived from the token rather than a new one: `--danger` is defined per
+     theme and `--accent-soft` has no destructive counterpart, so mixing is how
+     this stays a rule-2 colour instead of a literal. */
+  border: 1px solid color-mix(in srgb, var(--danger) 45%, transparent);
+  border-radius: var(--radius-thumb);
+}
+
+.sheet-confirm p {
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--ink);
+}
+
+/* Wraps rather than squeezes: at 375 the two controls plus a gap are close to
+   the sheet's usable width, and a confirmation whose "Keep editing" is clipped
+   is worse than one that costs a second line. Keep-editing leads, because the
+   safe answer is the one a thumb should find first. */
+.sheet-confirm-acts {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 14px;
+  margin-top: 10px;
+}
+
+.sheet-confirm-acts .btn {
+  flex: 0 1 auto;
+  padding: 11px 16px;
+  font-size: 13px;
+}
+
+.sheet-confirm-acts .btn-text.danger {
+  color: var(--danger);
 }
 
 .totals {
