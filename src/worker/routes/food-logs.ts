@@ -1,6 +1,14 @@
 import { Hono } from "hono";
-import type { FoodLogCreate, FoodLogsCreated, RecentsResponse } from "../../shared/api";
+import type {
+  FoodLogCreate,
+  FoodLogUpdate,
+  FoodLogsCreated,
+  FoodLogsUpdated,
+  MealSlot,
+  RecentsResponse,
+} from "../../shared/api";
 import { foldMeals, mealNameKey } from "../../shared/meals";
+import { sameMacros, scaleMacros } from "../../shared/portion";
 import { ownedPhotoKey } from "../photos";
 import type { AppEnv } from "../types";
 import { isDay, isInstant, isNum, oneOf } from "../validate";
@@ -261,6 +269,22 @@ const portionUnit = (v: unknown) => {
   return unit ? unit : null;
 };
 
+/** How many foods one meal may hold, and how many ids may name one entry.
+ *
+ *  Both were literals inside a single handler each until #60 gave them a second
+ *  reader — which is the moment #86's rule starts to apply, and the moment a
+ *  copy would go on agreeing right up until somebody moved one of them. The
+ *  edit sheet caps its basket at the first and refuses to grow past it in the
+ *  UI as well, so the refusal is a rule the user meets rather than a 400 they
+ *  discover.
+ *
+ *  20 is "a plate does not have twenty distinct foods on it"; 50 is #52's, and
+ *  is deliberately looser than 20 because it bounds a *probe* rather than a
+ *  meal — a list that long is a client bug either way, and the point is only
+ *  not to run it unbounded against the table. */
+const MAX_ITEMS = 20;
+const MAX_IDS = 50;
+
 const slotOf = oneOf(["breakfast", "lunch", "dinner", "snack"] as const);
 // the schema's four sources are all writable from M3 — the CHECK constraint
 // in migration 0001 already named photo and barcode, so nothing migrates
@@ -303,7 +327,7 @@ foodLogs.post("/", async (c) => {
     }
     scanned = body.barcode;
   }
-  if (!Array.isArray(body.items) || body.items.length < 1 || body.items.length > 20) {
+  if (!Array.isArray(body.items) || body.items.length < 1 || body.items.length > MAX_ITEMS) {
     return c.json({ error: "items_required" }, 400);
   }
 
@@ -493,7 +517,7 @@ foodLogs.delete("/", async (c) => {
   }
   // A gesture deletes one meal. A list this long is a client bug or a probe,
   // and either way is not something to run unbounded against the table.
-  if (ids.length > 50) return c.json({ error: "too_many_ids" }, 400);
+  if (ids.length > MAX_IDS) return c.json({ error: "too_many_ids" }, 400);
 
   const result = await c.var.db
     .deleteFrom("food_logs")
@@ -509,6 +533,372 @@ foodLogs.delete("/", async (c) => {
   if (!deleted) return c.json({ error: "not_found" }, 404);
 
   return c.json({ deleted });
+});
+
+/** PATCH /api/food-logs (#60): reopen one saved timeline entry and correct it.
+ *
+ *  **An entry is a save, not a row** — the same convention #52's DELETE reads.
+ *  One meal is every `food_logs` row sharing a `logged_at` instant (#10), so
+ *  the client sends the id list it already holds from `/api/day` and this
+ *  rewrites the group in place.
+ *
+ *  **`user_id` is on every statement that writes, not checked before them.**
+ *  The ids come from the request, so the scope has to be part of the statement
+ *  doing the work — a "does this belong to them" read followed by an unscoped
+ *  write is two statements that can disagree. The read below is scoped too, and
+ *  it is a read of the caller's own rows for the fields the body is not allowed
+ *  to carry; nothing another user owns can enter through it, and nothing it
+ *  returns is what authorises the write.
+ *
+ *  **Two of those scopes look redundant and are not**, which was measured
+ *  rather than argued. The id set the DELETE and the UPDATE run against has
+ *  already been through the scoped SELECT, so removing `user_id` from either of
+ *  them leaves the whole route test suite green — a guard with no test that can
+ *  fail, which normally means a guard that is not doing anything. It is doing
+ *  something. Remove it from the SELECT alone and the route stops answering
+ *  404, but the other user's row is *still untouched*, because the write-side
+ *  scope catches what the read let through; remove it from both and the row is
+ *  rewritten. So these are a second line rather than decoration, and the pair
+ *  of tests that separates those two outcomes ("answers 404 for another user's
+ *  row" and "leaves another user's row exactly as it was") is deliberately two
+ *  tests for that reason — as one test the second assertion never ran.
+ *
+ *  **Every id must resolve, and they must all be one entry.** A partial match
+ *  means the client's picture of the meal is stale — it was built from
+ *  `/api/day`, which is already user-scoped, so the only ways to be short are a
+ *  row deleted underneath it or an id that was never ours. Rewriting the group
+ *  from a stale list would silently drop whatever the client could not see. A
+ *  list spanning two instants is worse: it would merge two meals into one, and
+ *  no undo covers that.
+ *
+ *  **What cannot be edited is what cannot be *said*** — see `FoodLogItemEdit`.
+ *  `logged_on` and `logged_at` (#44, and the group key), `source`, `photo_key`,
+ *  `barcode`, `confidence` and the four `ai_*` macros have no field on the
+ *  wire, so "they survive an edit" is not a rule this handler has to remember.
+ *  Each surviving row keeps its own; each added row is #16's blank row.
+ *
+ *  **`edited` is derived here and never sent.** It answers "did the user
+ *  override the AI's numbers?", and this side is the one holding the previous
+ *  numbers, so it can answer honestly where a client can only assert. Three
+ *  consequences fall straight out of that and all three are the issue's:
+ *  changing only the meal slot sets nothing, because a slot is not something
+ *  the AI said; a row that was already `edited` stays edited, because
+ *  un-setting it would claim the reader had been agreed with; and changing
+ *  only a portion sets nothing, because #58 is explicit that eating four
+ *  slices instead of two overrides nothing.
+ *
+ *  **That third one is not free and the first cut of this route got it
+ *  wrong.** A portion change rescales the macros before they are sent, so it
+ *  reaches this handler looking exactly like a hand-edit; see the long comment
+ *  on `explained` below for how the two are told apart and why the arithmetic
+ *  had to move into `src/shared/`.
+ *
+ *  **Nothing recalculates elsewhere.** `/api/day` sums the rows on every mount
+ *  (#48) and M4's budget reads the same totals, so a corrected meal is correct
+ *  everywhere with no cache to invalidate. Keep it that way.
+ *
+ *  **The orphaned R2 photo is an accepted leak, and this is the note saying
+ *  so.** Removing the last row that carries a `photo_key` — here, or through
+ *  #52's delete — leaves the object in R2 with nothing pointing at it. Cleanup
+ *  is not implemented and that is a decision, not an oversight: deleting the
+ *  object is a write that fails independently of the D1 write, and the failure
+ *  that ordering permits is the *bad* direction — photo gone, row still
+ *  pointing at it, a 404 on a meal you can see. The leak is 214 KB a shot at
+ *  one user. When it is worth paying for, the cheap fix is a sweep that lists
+ *  R2 keys under the user's prefix and deletes those matching no `photo_key` —
+ *  written down here so it is a known job rather than a later discovery.
+ */
+/** Every column a PATCH may write, named as a type so the `set()` below cannot
+ *  quietly grow a ninth. The list is the guarantee: `logged_on`, `logged_at`,
+ *  `source`, `photo_key`, `barcode`, `confidence`, the four `ai_*` and
+ *  `ai_portion_qty`/`portion_unit` are absent, and a route that tried to write
+ *  one would not compile. */
+type RowEdit = {
+  meal_slot: MealSlot;
+  name: string;
+  kcal: number;
+  protein_g: number;
+  carbs_g: number;
+  fat_g: number;
+  portion_qty: number | null;
+  edited: number;
+  updated_at: string;
+};
+
+foodLogs.patch("/", async (c) => {
+  const body = await c.req.json<FoodLogUpdate>().catch(() => null);
+  if (!body || typeof body !== "object") return c.json({ error: "invalid_body" }, 400);
+
+  const mealSlot = slotOf(body.meal_slot);
+  if (!mealSlot) return c.json({ error: "invalid_fields", fields: ["meal_slot"] }, 400);
+
+  const ids = Array.isArray(body.ids) ? body.ids.filter((v) => typeof v === "string") : [];
+  if (!ids.length || ids.length !== (body.ids as unknown[] | undefined)?.length) {
+    return c.json({ error: "invalid_fields", fields: ["ids"] }, 400);
+  }
+  if (ids.length > MAX_IDS) return c.json({ error: "too_many_ids" }, 400);
+
+  /* The same refusal POST makes, and deliberately the same code (#60).
+     An edit that removes every item is a DELETE, and #52's swipe is the
+     delete — it has an undo toast and a restore path behind it. Accepting an
+     empty list here would be a second way to destroy a meal, with no way
+     back, reachable from a sheet whose other controls are all reversible. The
+     edit sheet refuses to remove the last row for the same reason and says
+     which gesture to use instead. */
+  if (!Array.isArray(body.items) || body.items.length < 1 || body.items.length > MAX_ITEMS) {
+    return c.json({ error: "items_required" }, 400);
+  }
+
+  const stored = await c.var.db
+    .selectFrom("food_logs")
+    .selectAll()
+    .where("user_id", "=", c.var.user.id)
+    .where("id", "in", ids)
+    .execute();
+  /* Someone else's id matches nothing, and so does a duplicate — both land here
+     as a short read rather than as a special case. `WHERE id IN ('a','a')`
+     returns one row, so two of the same id is a length of 2 against a read of
+     1. Pinned by a test rather than left as reasoning, because the "rows nobody
+     claimed are removed" pass below trusts this: an `ids` list longer than the
+     rows it names would let that pass delete the difference.
+
+     **The three writes below are not atomic**, and that is the house pattern
+     rather than an oversight — nothing in `src/worker/` uses `batch()` or a
+     transaction, and D1's own batching would mean rebuilding this handler
+     around a statement list. What a partial failure leaves behind is a
+     *coherent* entry rather than a torn one, because the order is chosen for
+     it: removals first, then edits, then additions. Fail after the DELETE and
+     the entry has lost the items the user removed and kept everything else;
+     fail mid-UPDATE and some rows carry the new numbers and some the old; fail
+     before the INSERT and the added food is simply missing. In every case the
+     day still sums, `foldMeals` still sees one meal, and the fix is to open the
+     sheet again — which is this issue's whole point. Nothing is destroyed that
+     `logged_at` needed, because `logged_at` is never written. */
+  if (stored.length !== ids.length) return c.json({ error: "not_found" }, 404);
+
+  const entry = stored[0] as (typeof stored)[number];
+  if (stored.some((r) => r.logged_at !== entry.logged_at || r.meal_slot !== entry.meal_slot)) {
+    return c.json({ error: "mixed_entry" }, 400);
+  }
+
+  const byId = new Map(stored.map((r) => [r.id, r]));
+  const claimed = new Set<string>();
+  const now = new Date().toISOString();
+  const updates: { id: string; set: RowEdit }[] = [];
+  const inserts = [];
+
+  for (const item of body.items) {
+    const name = typeof item?.name === "string" ? item.name.trim().slice(0, 120) : "";
+    // The same four validators POST writes with, so the two routes cannot
+    // disagree about what a kilocalorie is (#86). They are also what makes the
+    // `edited` comparison below sound: it compares against the value that will
+    // be *written*, not against the one that arrived.
+    const kcal = energy(item?.kcal);
+    const protein = grams(item?.protein_g);
+    const carbs = grams(item?.carbs_g);
+    const fat = grams(item?.fat_g);
+    if (!name || kcal === null || protein === null || carbs === null || fat === null) {
+      return c.json({ error: "invalid_item" }, 400);
+    }
+
+    /* No id: an item being ADDED to a saved meal (#60).
+     *
+     * It is #16's blank recovery row with a meal already around it — nothing
+     * read it, so it stores a null confidence, null `ai_*` and no portion, and
+     * `edited` is 0 because there was nothing to override. `source` is `text`
+     * rather than the entry's: the meal was photographed, this food was typed,
+     * and claiming otherwise would put a hand-typed row into #75's
+     * estimate-quality analysis as though a reader had proposed it. It gets no
+     * `photo_key` for the same reason — the photo does not show it — and the
+     * timeline still draws the meal's thumb, which comes from whichever row
+     * carries the key rather than from all of them. */
+    if (item?.id === undefined) {
+      // A portion nobody read is the invented "1 serving" #58 refuses to draw.
+      if (item?.portion_qty !== undefined) return c.json({ error: "invalid_portion" }, 400);
+      inserts.push({
+        id: crypto.randomUUID(),
+        user_id: c.var.user.id,
+        logged_on: entry.logged_on,
+        logged_at: entry.logged_at,
+        meal_slot: mealSlot,
+        name,
+        kcal,
+        protein_g: protein,
+        carbs_g: carbs,
+        fat_g: fat,
+        source: "text" as const,
+        photo_key: null,
+        barcode: null,
+        confidence: null,
+        edited: 0,
+        ai_kcal: null,
+        ai_protein_g: null,
+        ai_carbs_g: null,
+        ai_fat_g: null,
+        portion_qty: null,
+        portion_unit: null,
+        ai_portion_qty: null,
+      });
+      continue;
+    }
+
+    const row = typeof item.id === "string" ? byId.get(item.id) : undefined;
+    // An id outside the entry, or the same row claimed twice. Either one would
+    // make the "rows not claimed are removed" pass below delete something the
+    // client never asked about.
+    if (!row || claimed.has(item.id)) return c.json({ error: "invalid_item_id" }, 400);
+    claimed.add(item.id);
+
+    /* The portion, and the two thirds of it that are not editable (#104/#58).
+     *
+     * `portion_unit` is a LABEL the reader chose and the sheet renders it as
+     * text, so there is nothing to edit; `ai_portion_qty` is what the reader
+     * counted and rewriting it would destroy the only record of the estimate
+     * this column exists for. Only the user's own count moves.
+     *
+     * The bound comes from the row's STORED unit (#109), never from the body:
+     * 200 g is honest and 200 slices is a slipped thumb, and the unit deciding
+     * that is the one already on the row. */
+    let portionQtyValue = row.portion_qty;
+    if (item.portion_qty !== undefined) {
+      if (row.portion_qty === null || row.portion_unit === null) {
+        return c.json({ error: "invalid_portion" }, 400);
+      }
+      const qty = portionQty(item.portion_qty, row.portion_unit);
+      if (qty === null) return c.json({ error: "invalid_portion" }, 400);
+      portionQtyValue = qty;
+    }
+
+    /* Did the user override the reader, or did they just say how much they
+     * ate? (#58, #60)
+     *
+     * **The macros always move when a portion moves**, which is what makes
+     * this two questions rather than one. The edit sheet rescales linearly
+     * from the stored row the moment the HOW MUCH field is touched — two
+     * slices at 360 kcal becomes four at 720 — so by the time the numbers
+     * arrive here, "I ate twice as much" and "the reader was 360 kcal out"
+     * look identical on the wire. Comparing macros alone therefore records
+     * every honest portion correction as an override, on the one column that
+     * says whether the reader needed correcting, and in the direction that
+     * makes the reader look worse than it is. It shipped that way for the
+     * length of one review and was found by driving the route.
+     *
+     * So the test is whether the new portion **explains** the new macros:
+     * recompute what the sheet's own rescale would have produced from the
+     * stored row at the new quantity, and treat an exact match as no
+     * correction at all. Anything else — a portion change *and* a hand-edit in
+     * the same save — is still a correction, which is right: the part that is
+     * not explained by the rescale is exactly the part the user typed.
+     *
+     * **`scaleMacros` is the sheet's own function**, in `src/shared/`, called
+     * by `setPortionQty` on the way out and by this on the way in (#86). That
+     * is not tidiness: an equality between two implementations of one rounding
+     * rule is an equality that fails by one, and a 1 kcal gap here is not
+     * cosmetic — it is an honest portion change filed as an override. One
+     * function means both sides run the same instructions on the same doubles,
+     * so the comparison can be exact with no tolerance. A tolerance would be
+     * the same lie in the other direction: a hand-edit inside the window
+     * recorded as a portion change.
+     *
+     * The name is outside all of this. Renaming a food is an override of what
+     * the reader said it was, whatever happened to the amount. */
+    const rescaled =
+      row.portion_qty !== null && portionQtyValue !== null && portionQtyValue !== row.portion_qty
+        ? scaleMacros(
+            {
+              kcal: row.kcal,
+              protein_g: row.protein_g,
+              carbs_g: row.carbs_g,
+              fat_g: row.fat_g,
+            },
+            row.portion_qty,
+            portionQtyValue,
+          )
+        : null;
+    const explained =
+      rescaled !== null &&
+      sameMacros(rescaled, { kcal, protein_g: protein, carbs_g: carbs, fat_g: fat });
+    const corrected =
+      name !== row.name ||
+      (!explained &&
+        (kcal !== row.kcal ||
+          protein !== row.protein_g ||
+          carbs !== row.carbs_g ||
+          fat !== row.fat_g));
+    const edited = row.edited === 1 || corrected ? 1 : 0;
+
+    /* A PATCH that changes nothing writes nothing, so `updated_at` goes on
+       meaning "this row last changed" rather than "somebody last opened the
+       sheet". The diff is free — `corrected` above already computes most of
+       it for `edited`. */
+    const same =
+      !corrected &&
+      row.meal_slot === mealSlot &&
+      row.portion_qty === portionQtyValue &&
+      row.edited === edited;
+    if (same) continue;
+
+    updates.push({
+      id: row.id,
+      set: {
+        meal_slot: mealSlot,
+        name,
+        kcal,
+        protein_g: protein,
+        carbs_g: carbs,
+        fat_g: fat,
+        portion_qty: portionQtyValue,
+        edited,
+        updated_at: now,
+      },
+    });
+  }
+
+  // Rows the item list no longer claims. This is #60's per-item delete, which
+  // #52 deferred to exactly here: the swipe removes a whole entry and has an
+  // undo, and removing one item of a three-item meal is this sheet's job.
+  const removed = stored.filter((r) => !claimed.has(r.id)).map((r) => r.id);
+
+  if (removed.length) {
+    await c.var.db
+      .deleteFrom("food_logs")
+      .where("user_id", "=", c.var.user.id)
+      .where("id", "in", removed)
+      .execute();
+  }
+  for (const u of updates) {
+    await c.var.db
+      .updateTable("food_logs")
+      .set(u.set)
+      .where("user_id", "=", c.var.user.id)
+      .where("id", "=", u.id)
+      .execute();
+  }
+  if (inserts.length) {
+    await c.var.db.insertInto("food_logs").values(inserts).execute();
+  }
+
+  /* Read back by id rather than by the group key: these are exactly the rows
+     this request left behind, where `logged_at = ? AND meal_slot = ?` would
+     also sweep in anything else that happened to land on the same instant.
+
+     `logged_at asc` is POST's ORDER BY, and inside one entry it is a tie — so
+     the row order here is the plan's, not a promise. That is fine and is worth
+     saying rather than leaving to be discovered: the timeline's own order
+     comes from `/api/day`, which re-reads on every mount (#48) through the
+     `(user_id, logged_on)` index and therefore hands the fold its rows in
+     table order — surviving rows where they were, added rows last. Measured
+     against local D1, not assumed. Nothing renders *this* response's order. */
+  const kept = [...claimed, ...inserts.map((r) => r.id)];
+  const logs = await c.var.db
+    .selectFrom("food_logs")
+    .selectAll()
+    .where("user_id", "=", c.var.user.id)
+    .where("id", "in", kept)
+    .orderBy("logged_at", "asc")
+    .execute();
+
+  return c.json<FoodLogsUpdated>({ logs });
 });
 
 export default foodLogs;

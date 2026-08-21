@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { INTENT_PX, claimAxis, commits } from "./gesture";
+import { INTENT_PX, claimAxis, commits, tapped } from "./gesture";
 
 /** The rule two drags share (#52, #102).
  *
@@ -71,5 +71,47 @@ describe("whether a released drag commits (#52, #102)", () => {
   /** Nothing has been travelled yet, which is what a tap looks like. */
   it("does not commit a finger that never moved", () => {
     expect(commits(0, 64)).toBe(false);
+  });
+});
+
+/** The third reading of one touch (#60): tap, as opposed to swipe or scroll.
+ *
+ *  Pinned here for `claimAxis`' reason exactly. `swipe.ts` now has to tell
+ *  three things apart on one surface, and the two clauses below each fail
+ *  silently in a way that still renders: drop the axis clause and every
+ *  swipe-to-delete also opens the editor; drop the `revealed` clause and the
+ *  tap that dismisses an armed trash can buries it under a modal sheet.
+ */
+describe("whether a finished sequence was a tap (#60)", () => {
+  /** The whole case. `claimAxis` has already applied `INTENT_PX`, so a tap is
+   *  precisely the sequence neither drag claimed. */
+  it("is a tap when no axis was ever claimed", () => {
+    expect(tapped({ axis: "none", revealed: false })).toBe(true);
+  });
+
+  /** A swipe-to-reveal. The browser still fires a click after this, which is
+   *  why the answer cannot be read off one. */
+  it("is not a tap once the horizontal claimed it", () => {
+    expect(tapped({ axis: "x", revealed: false })).toBe(false);
+  });
+
+  /** A scroll. The swipe has already stood down by here; this says the tap
+   *  does not pick the sequence up on its way out. */
+  it("is not a tap once the vertical claimed it", () => {
+    expect(tapped({ axis: "y", revealed: false })).toBe(false);
+  });
+
+  /** The narrow exemption, and deliberately narrower than #97's reversal: this
+   *  tap landed on the very row whose delete control is showing, which is the
+   *  "get me out of this" reflex rather than an aim at anything. */
+  it("is spent closing the row when the row was already revealed", () => {
+    expect(tapped({ axis: "none", revealed: true })).toBe(false);
+  });
+
+  /** Belt and braces on the combination — a drag that *ends* on an open row is
+   *  refused by both clauses, and a rule that only happened to work because
+   *  one of them fired would pass every case above. */
+  it("refuses a drag on an already-revealed row twice over", () => {
+    expect(tapped({ axis: "x", revealed: true })).toBe(false);
   });
 });

@@ -83,6 +83,14 @@ if (!routes) {
         // one own-width past the row's right edge, which at 375 is 10px past
         // the viewport.
         "/#swiped",
+        // #60's edit sheet, opened on the day's LARGEST entry. It is the
+        // tallest sheet the app draws — a three-item meal has three rows, a
+        // totals line and a save button where the confirm sheet has the same
+        // plus nothing above it — and the issue names this check by name: the
+        // totals row and the save button have to survive at 375. It is also
+        // the only sheet whose height comes from stored data rather than from
+        // a fixture, so what it measures is whatever is actually logged.
+        "/#editing",
         "/trends",
         // #22's staged empty states. They aren't cosmetic variants — each
         // swaps a chart for a paragraph, which is a different layout, and the

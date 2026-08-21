@@ -3,11 +3,15 @@ import { Hono } from "hono";
 import { beforeEach, describe, expect, it } from "vitest";
 import type {
   DayResponse,
+  FoodLog,
   FoodLogItemInput,
   FoodLogsCreated,
+  FoodLogsUpdated,
   RecentMeal,
   RecentsResponse,
 } from "../../shared/api";
+import { foldMeals } from "../../shared/meals";
+import { scaleMacros } from "../../shared/portion";
 import { createDb } from "../db";
 import type { AppEnv } from "../types";
 import day from "./day";
@@ -840,5 +844,752 @@ describe("GET /api/food-logs/recent — how far back it reads (#117)", () => {
     await fillRows(20);
     const { meals } = await (await recents()).json<RecentsResponse>();
     expect(meals.map((m) => m.name)).toEqual(["Filler, more filler, yet more"]);
+  });
+});
+
+/* ── PATCH /api/food-logs — reopening a saved entry (#60) ─────────────────── */
+
+/** The half of #60 that no screenshot reaches.
+ *
+ *  The edit sheet is a surface and can be shot; what cannot be shot is that
+ *  reopening a meal leaves `logged_on` where it was, that a slot change is not
+ *  an override of anything the AI said, and that `confidence` and the four
+ *  `ai_*` macros — the columns migration 0006 says can never be backfilled —
+ *  come through untouched. Every one of those failures produces a perfectly
+ *  well-formed row.
+ *
+ *  Against real D1 rather than a fixture, because most of these are claims
+ *  about what is IN the column afterwards, and half of them are claims about
+ *  columns the request never mentions.
+ */
+const patch = (body: unknown) =>
+  app.fetch(
+    new Request("https://fuel.debrief.run/api/food-logs", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    }),
+    env,
+  );
+
+const AT = "2026-08-10T18:30:00.000Z";
+
+/** Save a meal and hand back its rows keyed by name.
+ *
+ *  Keyed rather than indexed because a save's rows share one `logged_at`, so
+ *  the route's `ORDER BY logged_at` is a tie and the array order is the query
+ *  plan's. A test that read `logs[0]` would be asserting against whichever row
+ *  SQLite happened to hand back first, which is exactly the kind of pass that
+ *  survives the code being wrong.
+ */
+async function saveEntry(over: Record<string, unknown> = {}) {
+  const res = await save(meal({ logged_at: AT, ...over }));
+  if (res.status !== 201) throw new Error(`fixture save failed: ${res.status}`);
+  const { logs } = await res.json<FoodLogsCreated>();
+  return {
+    logs,
+    ids: logs.map((l) => l.id),
+    byName: new Map(logs.map((l) => [l.name, l])),
+  };
+}
+
+/** The three-item meal the edit sheet is actually about. */
+const THREE = [
+  item({ name: "Grilled chicken breast", kcal: 280, protein_g: 52, carbs_g: 0, fat_g: 6, confidence: 0.9 }),
+  item({ name: "Jasmine rice", kcal: 210, protein_g: 4, carbs_g: 45, fat_g: 0, confidence: 0.6 }),
+  item({ name: "Steamed broccoli", kcal: 55, protein_g: 4, carbs_g: 11, fat_g: 1, confidence: 0.85 }),
+];
+
+/** A row with a portion, whose macros are not all round numbers — 12.3 g of
+ *  protein is what makes the down-scale below round rather than divide. */
+const PIZZA = item({
+  name: "Pizza",
+  kcal: 360,
+  protein_g: 12.3,
+  carbs_g: 44,
+  fat_g: 14,
+  confidence: 0.7,
+  // the reader agreed, so nothing about this row is an override before the
+  // PATCH — otherwise `edited` would already be 1 and the assertions below
+  // would be reading the fixture rather than the route
+  ai_kcal: 360,
+  ai_protein_g: 12.3,
+  ai_carbs_g: 44,
+  ai_fat_g: 14,
+  portion_qty: 2,
+  portion_unit: "slices",
+  ai_portion_qty: 2,
+});
+
+/** What `EditMealSheet` sends after HOW MUCH is moved to `qty`.
+ *
+ *  **Through `scaleMacros`, deliberately, and it is not the test agreeing with
+ *  itself.** The route does not call this to decide anything — it recomputes
+ *  from the *stored* row, which is a different input reached by a different
+ *  path. What this stands in for is the client, which really does call this
+ *  function (`setPortionQty`); writing the expected figures out by hand here
+ *  would be testing a request no sheet produces, which is exactly how the old
+ *  portion test managed to be green against a broken route. The figures
+ *  themselves are asserted literally above (720 / 28 / 88 / 28, and 90 on the
+ *  way down), so a `scaleMacros` that started returning nonsense fails there. */
+function scaled(row: FoodLog, qty: number) {
+  const m = scaleMacros(
+    { kcal: row.kcal, protein_g: row.protein_g, carbs_g: row.carbs_g, fat_g: row.fat_g },
+    row.portion_qty as number,
+    qty,
+  );
+  if (!m) throw new Error("fixture: row has no portion to scale from");
+  return m;
+}
+
+/** Turn a stored row into the item the sheet would send back unchanged. Only
+ *  the six editable fields — everything else is deliberately unsayable on the
+ *  wire (see `FoodLogItemEdit`), and a helper that sent more would be testing a
+ *  request the client cannot make. */
+const asIs = (row: FoodLog) => ({
+  id: row.id,
+  name: row.name,
+  kcal: row.kcal,
+  protein_g: row.protein_g,
+  carbs_g: row.carbs_g,
+  fat_g: row.fat_g,
+  ...(row.portion_qty !== null ? { portion_qty: row.portion_qty } : {}),
+});
+
+const OTHER = "food-logs-other-user";
+const OTHER_ROW = "other-row";
+
+/** A row belonging to somebody else, written with raw SQL because the stub
+ *  above only ever authenticates as `USER` — and the claim under test is about
+ *  the WHERE clause, not about how the row got there. */
+async function seedOtherUsersRow() {
+  await env.DB.prepare("DELETE FROM users WHERE id = ?").bind(OTHER).run();
+  await env.DB.prepare(
+    "INSERT INTO users (id, name, email, emailVerified, createdAt, updatedAt) VALUES (?, ?, ?, 0, ?, ?)",
+  )
+    .bind(OTHER, "Other", `${OTHER}@example.com`, AT, AT)
+    .run();
+  await env.DB.prepare(
+    `INSERT INTO food_logs (id, user_id, logged_on, logged_at, meal_slot, name, kcal, protein_g, carbs_g, fat_g, source, confidence, edited)
+     VALUES (?, ?, '2026-08-10', ?, 'dinner', 'Their dinner', 700, 40, 50, 20, 'text', 0.8, 0)`,
+  )
+    .bind(OTHER_ROW, OTHER, AT)
+    .run();
+}
+
+/** Read one row straight out of D1 — the response body is this route's own
+ *  account of what it did, and half of these assertions are about whether that
+ *  account is true. */
+async function storedRow(id: string) {
+  return await env.DB.prepare("SELECT * FROM food_logs WHERE id = ?").bind(id).first<FoodLog>();
+}
+
+describe("PATCH /api/food-logs — the entry it may touch (#60)", () => {
+  /** The rule every route in this app carries, on the statement rather than in
+   *  front of it. The ids come from the request, so a "does this belong to
+   *  them" read followed by an unscoped write is two statements that can
+   *  disagree — and here the disagreement rewrites someone else's dinner. */
+  /** **Two `it`s for one request, deliberately.** The status and the state of
+   *  the row afterwards are separate facts, and an assertion sitting after a
+   *  failed one never runs — so a single test would report "expected 404, got
+   *  200" and say *nothing at all* about whether someone else's dinner had
+   *  just been overwritten, which is the half that matters. Verified: with the
+   *  scope removed from the SELECT, the one-test version reported only the
+   *  status and left two assertions unexecuted. */
+  it("answers 404 for another user's row", async () => {
+    await seedOtherUsersRow();
+    const res = await patch({
+      ids: [OTHER_ROW],
+      meal_slot: "breakfast",
+      items: [{ id: OTHER_ROW, name: "Mine now", kcal: 1, protein_g: 0, carbs_g: 0, fat_g: 0 }],
+    });
+    expect(res.status).toBe(404);
+  });
+
+  it("leaves another user's row exactly as it was", async () => {
+    await seedOtherUsersRow();
+    await patch({
+      ids: [OTHER_ROW],
+      meal_slot: "breakfast",
+      items: [{ id: OTHER_ROW, name: "Mine now", kcal: 1, protein_g: 0, carbs_g: 0, fat_g: 0 }],
+    });
+    const after = await storedRow(OTHER_ROW);
+    expect(after).toMatchObject({ name: "Their dinner", kcal: 700, meal_slot: "dinner", user_id: OTHER });
+  });
+
+  /** A short read is what a stale client looks like, and rewriting the group
+   *  from a stale list would silently drop whatever the client could not see. */
+  it("refuses when one of the ids resolves to nothing", async () => {
+    const { logs, ids } = await saveEntry({ items: THREE });
+    const res = await patch({
+      ids: [...ids, "no-such-row"],
+      meal_slot: "dinner",
+      items: logs.map(asIs),
+    });
+    expect(res.status).toBe(404);
+  });
+
+  it("writes nothing when one of the ids resolves to nothing", async () => {
+    const { logs, ids } = await saveEntry({ items: THREE });
+    await patch({ ids: [...ids, "no-such-row"], meal_slot: "dinner", items: logs.map(asIs) });
+    expect(await rowCount()).toBe(3);
+  });
+
+  /** Two meals in one list would be merged into one, and no undo covers that.
+   *  `foldMeals` groups on `logged_at|meal_slot`, so "one entry" is exactly
+   *  what this checks. */
+  it("refuses a list that spans two entries", async () => {
+    const a = await saveEntry({ items: [item({ name: "Breakfast thing" })] });
+    const b = await saveEntry({
+      logged_at: "2026-08-10T20:00:00.000Z",
+      items: [item({ name: "Dinner thing" })],
+    });
+    const res = await patch({
+      ids: [...a.ids, ...b.ids],
+      meal_slot: "dinner",
+      items: [...a.logs, ...b.logs].map(asIs),
+    });
+    expect(res.status).toBe(400);
+    expect((await res.json<{ error: string }>()).error).toBe("mixed_entry");
+  });
+
+  /** An id outside the entry would make the "rows nobody claimed are removed"
+   *  pass delete a row the client never mentioned. */
+  it("refuses an item claiming a row outside the entry", async () => {
+    const a = await saveEntry({ items: [item({ name: "Mine" })] });
+    const b = await saveEntry({
+      logged_at: "2026-08-10T20:00:00.000Z",
+      items: [item({ name: "Also mine, elsewhere" })],
+    });
+    const res = await patch({
+      ids: a.ids,
+      meal_slot: "dinner",
+      items: [{ ...asIs(a.logs[0] as FoodLog), id: b.ids[0] }],
+    });
+    expect(res.status).toBe(400);
+    expect((await res.json<{ error: string }>()).error).toBe("invalid_item_id");
+  });
+
+  /** **A duplicated id is caught by the length comparison, not by a separate
+   *  check**, and that is load-bearing enough to be executable rather than
+   *  reasoned: `WHERE id IN ('a','a')` returns one row, so `stored.length` is
+   *  1 against an `ids.length` of 2 and the request is refused. If it were
+   *  not, the entry would be rewritten from an item list that could claim
+   *  fewer rows than `ids` names, and the "rows nobody claimed are removed"
+   *  pass would delete the difference. */
+  it("refuses a duplicated id", async () => {
+    const { logs, ids } = await saveEntry({ items: [item({ name: "Only one" })] });
+    const res = await patch({
+      ids: [ids[0] as string, ids[0] as string],
+      meal_slot: "dinner",
+      items: [asIs(logs[0] as FoodLog)],
+    });
+    expect(res.status).toBe(404);
+  });
+
+  it("still has the entry after a duplicated id is refused", async () => {
+    const { logs, ids } = await saveEntry({ items: [item({ name: "Only one" })] });
+    await patch({
+      ids: [ids[0] as string, ids[0] as string],
+      meal_slot: "dinner",
+      items: [asIs(logs[0] as FoodLog)],
+    });
+    expect(await rowCount()).toBe(1);
+  });
+
+  it("refuses the same row claimed by two items", async () => {
+    const { logs, ids } = await saveEntry({ items: [item({ name: "Only one" })] });
+    const one = asIs(logs[0] as FoodLog);
+    const res = await patch({ ids, meal_slot: "dinner", items: [one, { ...one, name: "Copy" }] });
+    expect(res.status).toBe(400);
+    expect((await res.json<{ error: string }>()).error).toBe("invalid_item_id");
+  });
+});
+
+describe("PATCH /api/food-logs — what an edit may never move (#60)", () => {
+  /** #44's set-once rule, and the reason the day a meal belongs to is not
+   *  recomputed: correcting last night's dinner at 00:20 must not move it to
+   *  today. There is no field on the wire that could ask for this — the test is
+   *  that nothing derives it either. */
+  it("leaves logged_on and logged_at exactly where they were", async () => {
+    const { logs, ids } = await saveEntry({ items: THREE });
+    const res = await patch({
+      ids,
+      meal_slot: "breakfast",
+      items: logs.map((l) => ({ ...asIs(l), kcal: l.kcal + 5 })),
+    });
+    expect(res.status).toBe(200);
+    for (const l of (await res.json<FoodLogsUpdated>()).logs) {
+      expect(l.logged_on).toBe("2026-08-10");
+      expect(l.logged_at).toBe(AT);
+    }
+  });
+
+  /** `logged_at` is `foldMeals`' group key. A route that re-stamped it would
+   *  split one meal into two timeline entries, or merge it into a neighbour —
+   *  so this asserts on the fold rather than on the column. */
+  it("still folds to ONE timeline entry afterwards", async () => {
+    const { logs, ids } = await saveEntry({ items: THREE });
+    await patch({ ids, meal_slot: "lunch", items: logs.map(asIs) });
+    const body = await (await app.fetch(new Request("https://fuel.debrief.run/api/day/2026-08-10"), env)).json<DayResponse>();
+    expect(foldMeals(body.logs)).toHaveLength(1);
+  });
+
+  /** `photo_key`, `barcode` and `source` describe how the meal was captured.
+   *  Retyping its numbers does not retroactively make a photographed meal a
+   *  typed one. */
+  it("keeps photo_key, barcode and source through an edit", async () => {
+    const { logs, ids } = await saveEntry({
+      source: "barcode",
+      barcode: "748927022728",
+      photo_key: `${USER}/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee.jpg`,
+      items: [item({ name: "Whey, chocolate" })],
+    });
+    const res = await patch({
+      ids,
+      meal_slot: "snack",
+      items: [{ ...asIs(logs[0] as FoodLog), kcal: 130 }],
+    });
+    expect(res.status).toBe(200);
+    const [row] = (await res.json<FoodLogsUpdated>()).logs;
+    expect(row).toMatchObject({
+      source: "barcode",
+      barcode: "748927022728",
+      photo_key: `${USER}/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee.jpg`,
+      kcal: 130,
+    });
+  });
+
+  /** **Preserved, never nulled.** An item whose macros the user has replaced
+   *  still has a meaningful record of what the read *claimed* — that is the
+   *  whole of #75's question, and `edited` is the flag that says the estimate
+   *  was overridden. Nulling it would destroy the only statement of how sure
+   *  the reader was, on exactly the rows where it is most interesting. */
+  it("keeps confidence on a row whose numbers were replaced", async () => {
+    const { logs, ids } = await saveEntry({ items: [item({ name: "Tofu", confidence: 0.45 })] });
+    const res = await patch({
+      ids,
+      meal_slot: "dinner",
+      items: [{ ...asIs(logs[0] as FoodLog), kcal: 120, protein_g: 14 }],
+    });
+    const [row] = (await res.json<FoodLogsUpdated>()).logs;
+    expect(row?.confidence).toBe(0.45);
+    expect(row?.edited).toBe(1);
+  });
+
+  /** The four columns migration 0006 says can never be backfilled. An edit is
+   *  precisely the moment they become interesting — the row now records what
+   *  the reader said AND what it actually was — so overwriting them with the
+   *  new figures would delete the answer at the moment the question arises. */
+  it("keeps the reader's own numbers, so the pair stays subtractable", async () => {
+    const { logs, ids } = await saveEntry({ items: [item({ name: "Fish sticks" })] });
+    const res = await patch({
+      ids,
+      meal_slot: "dinner",
+      items: [{ ...asIs(logs[0] as FoodLog), kcal: 180, protein_g: 20, carbs_g: 10, fat_g: 8 }],
+    });
+    const [row] = (await res.json<FoodLogsUpdated>()).logs;
+    expect(row).toMatchObject({ kcal: 180, protein_g: 20, carbs_g: 10, fat_g: 8 });
+    expect(row).toMatchObject({ ai_kcal: 240, ai_protein_g: 15, ai_carbs_g: 22, ai_fat_g: 11 });
+  });
+
+  /** Surviving rows keep their identity, so `created_at` still means "when
+   *  this food was logged" rather than "when the sheet was last saved". A
+   *  delete-and-reinsert implementation renders identically and fails here. */
+  it("edits the row in place rather than replacing it", async () => {
+    const { logs, ids } = await saveEntry({ items: [item({ name: "In place" })] });
+    const before = logs[0] as FoodLog;
+    /* A real millisecond, because `updated_at` is stamped from the wall clock
+       and the column holds milliseconds: on a fast machine the save and the
+       edit land inside the same one, and the last assertion below fails for a
+       reason that has nothing to do with the route. Caught on the first full
+       run after the file was written — the two timestamps were equal to the
+       digit. A test whose result depends on how fast the laptop is gets
+       deleted, so the wait is the fix rather than a weaker assertion. */
+    await new Promise((r) => setTimeout(r, 5));
+    const res = await patch({ ids, meal_slot: "dinner", items: [{ ...asIs(before), kcal: 300 }] });
+    const [after] = (await res.json<FoodLogsUpdated>()).logs;
+    expect(after?.id).toBe(before.id);
+    expect(after?.created_at).toBe(before.created_at);
+    expect(after?.updated_at).not.toBe(before.updated_at);
+  });
+
+  /** `updated_at` goes on meaning "this row last changed" rather than
+   *  "somebody last opened the sheet". */
+  it("writes nothing at all when the sheet is saved unchanged", async () => {
+    const { logs, ids } = await saveEntry({ items: THREE });
+    const res = await patch({ ids, meal_slot: "dinner", items: logs.map(asIs) });
+    expect(res.status).toBe(200);
+    for (const l of (await res.json<FoodLogsUpdated>()).logs) {
+      const before = logs.find((o) => o.id === l.id);
+      expect(l.updated_at).toBe(before?.updated_at);
+    }
+  });
+});
+
+describe("PATCH /api/food-logs — what `edited` means (#60)", () => {
+  /** The pre-save meaning, extended: the user overrode the AI's numbers. */
+  it("is set by a numeric change", async () => {
+    const { logs, ids } = await saveEntry({ items: [item({ name: "Corrected" })] });
+    const res = await patch({ ids, meal_slot: "dinner", items: [{ ...asIs(logs[0] as FoodLog), kcal: 199 }] });
+    expect((await res.json<FoodLogsUpdated>()).logs[0]?.edited).toBe(1);
+  });
+
+  it("is set by a name change, the way the confirm sheet counts one", async () => {
+    const { logs, ids } = await saveEntry({ items: [item({ name: "Fish sticks" })] });
+    const res = await patch({
+      ids,
+      meal_slot: "dinner",
+      items: [{ ...asIs(logs[0] as FoodLog), name: "Tofu" }],
+    });
+    expect((await res.json<FoodLogsUpdated>()).logs[0]?.edited).toBe(1);
+  });
+
+  /** **A slot is not something the AI said.** This is the case the issue calls
+   *  out by name, and the one a client-supplied `edited` would get wrong
+   *  silently. */
+  it("is NOT set by a slot-only change", async () => {
+    const { logs, ids } = await saveEntry({ items: THREE });
+    const res = await patch({ ids, meal_slot: "breakfast", items: logs.map(asIs) });
+    for (const l of (await res.json<FoodLogsUpdated>()).logs) {
+      expect(l.meal_slot).toBe("breakfast");
+      expect(l.edited).toBe(0);
+    }
+  });
+
+  /** #58 is explicit that eating four slices instead of two overrides nothing —
+   *  the reader was right about a slice — and `ai_portion_qty` exists precisely
+   *  because `edited` must not answer this question.
+   *
+   *  **The version of this test that only moved `portion_qty` was passing while
+   *  the route was wrong**, which is worth recording as its own lesson. The
+   *  edit sheet rescales every macro the instant HOW MUCH is touched, so a
+   *  request carrying a new quantity beside *unchanged* macros is one no client
+   *  can produce — the test was green because it described a state the app
+   *  never reaches. `scaled()` below sends what the sheet actually sends.
+   *
+   *  Found by driving the route, not by reading it: `2 → 4` slices came back
+   *  `edited = 1`, on a row whose name was identical and whose 720 kcal was
+   *  exactly 2× the stored 360. */
+  it("is NOT set by a portion change, which rescales every macro with it", async () => {
+    const { logs, ids } = await saveEntry({ items: [PIZZA] });
+    const stored = logs[0] as FoodLog;
+    const res = await patch({
+      ids,
+      meal_slot: "dinner",
+      items: [{ ...asIs(stored), ...scaled(stored, 4), portion_qty: 4 }],
+    });
+    expect(res.status).toBe(200);
+    const [row] = (await res.json<FoodLogsUpdated>()).logs;
+    // the rescale did land — a route that ignored the macros would also pass
+    // the `edited` assertion below, and pass it for the wrong reason
+    expect(row).toMatchObject({ portion_qty: 4, kcal: 720, protein_g: 24.6, carbs_g: 88, fat_g: 28 });
+  });
+
+  it("leaves `edited` at 0 after a portion-only change", async () => {
+    const { logs, ids } = await saveEntry({ items: [PIZZA] });
+    const stored = logs[0] as FoodLog;
+    const res = await patch({
+      ids,
+      meal_slot: "dinner",
+      items: [{ ...asIs(stored), ...scaled(stored, 4), portion_qty: 4 }],
+    });
+    expect((await res.json<FoodLogsUpdated>()).logs[0]?.edited).toBe(0);
+  });
+
+  /** Scaling DOWN, because a halving rounds where a doubling does not: 2 → 4
+   *  slices is exact arithmetic on every figure, where 2 → 1 turns 12.3 g of
+   *  protein into 6.15 and `round1` has to land it on 6.2. That is the only
+   *  figure in this file whose value depends on *which* rounding the two sides
+   *  use, so it is the direction that breaks first if they ever stop sharing
+   *  `scaleMacros`. */
+  it("leaves `edited` at 0 when the portion goes down and the figures round", async () => {
+    const { logs, ids } = await saveEntry({ items: [PIZZA] });
+    const stored = logs[0] as FoodLog;
+    const res = await patch({
+      ids,
+      meal_slot: "dinner",
+      items: [{ ...asIs(stored), ...scaled(stored, 1), portion_qty: 1 }],
+    });
+    const [row] = (await res.json<FoodLogsUpdated>()).logs;
+    expect(row).toMatchObject({ portion_qty: 1, kcal: 180, protein_g: 6.2, edited: 0 });
+  });
+
+  /** **The inverse, and the reason a tolerance was refused.** A portion change
+   *  AND a hand-edit in one save is still a correction: the part the rescale
+   *  does not explain is exactly the part the user typed. One kilocalorie off
+   *  the rescaled figure is enough, because with both sides calling
+   *  `scaleMacros` the only way to be one off is to have typed it. */
+  it("IS set when a portion change is accompanied by a hand-edit", async () => {
+    const { logs, ids } = await saveEntry({ items: [PIZZA] });
+    const stored = logs[0] as FoodLog;
+    const rescaled = scaled(stored, 4);
+    const res = await patch({
+      ids,
+      meal_slot: "dinner",
+      items: [{ ...asIs(stored), ...rescaled, kcal: rescaled.kcal + 1, portion_qty: 4 }],
+    });
+    expect((await res.json<FoodLogsUpdated>()).logs[0]?.edited).toBe(1);
+  });
+
+  /** And a rename is an override whatever the amount did — the reader was wrong
+   *  about *what it was*, which no quantity explains. */
+  it("IS set when a portion change is accompanied by a rename", async () => {
+    const { logs, ids } = await saveEntry({ items: [PIZZA] });
+    const stored = logs[0] as FoodLog;
+    const res = await patch({
+      ids,
+      meal_slot: "dinner",
+      items: [{ ...asIs(stored), ...scaled(stored, 4), name: "Calzone", portion_qty: 4 }],
+    });
+    expect((await res.json<FoodLogsUpdated>()).logs[0]?.edited).toBe(1);
+  });
+
+  /** A hand-edit with NO portion in play at all — the case the fix must not
+   *  have weakened, and the one every other `edited` assertion here rests on. */
+  it("IS set by a hand-edit on a row that has a portion and did not move it", async () => {
+    const { logs, ids } = await saveEntry({ items: [PIZZA] });
+    const stored = logs[0] as FoodLog;
+    const res = await patch({
+      ids,
+      meal_slot: "dinner",
+      items: [{ ...asIs(stored), kcal: 400 }],
+    });
+    expect((await res.json<FoodLogsUpdated>()).logs[0]?.edited).toBe(1);
+  });
+
+  /** Un-setting it would claim the reader had been agreed with, on a row where
+   *  somebody had already said otherwise. */
+  it("stays set on a row that was already edited", async () => {
+    const { logs, ids } = await saveEntry({ items: [item({ name: "Already", edited: true, kcal: 300 })] });
+    expect(logs[0]?.edited).toBe(1);
+    const res = await patch({ ids, meal_slot: "dinner", items: [asIs(logs[0] as FoodLog)] });
+    expect((await res.json<FoodLogsUpdated>()).logs[0]?.edited).toBe(1);
+  });
+});
+
+describe("PATCH /api/food-logs — the portion (#60, #104)", () => {
+  it("round-trips the user's count and leaves the unit alone", async () => {
+    const { logs, ids } = await saveEntry({
+      items: [item({ name: "Chicken", portion_qty: 200, portion_unit: "g", ai_portion_qty: 100 })],
+    });
+    const res = await patch({
+      ids,
+      meal_slot: "dinner",
+      items: [{ ...asIs(logs[0] as FoodLog), portion_qty: 250 }],
+    });
+    const [row] = (await res.json<FoodLogsUpdated>()).logs;
+    expect(row).toMatchObject({ portion_qty: 250, portion_unit: "g", ai_portion_qty: 100 });
+  });
+
+  /** The bound follows the STORED unit (#109), never the body's — 250 g is
+   *  Tuesday and 250 slices is a slipped thumb, and the label that decides
+   *  which is already on the row. */
+  it("accepts a measured qty a counted ceiling would refuse", async () => {
+    const { logs, ids } = await saveEntry({
+      items: [item({ name: "Chicken", portion_qty: 200, portion_unit: "g", ai_portion_qty: 200 })],
+    });
+    const res = await patch({
+      ids,
+      meal_slot: "dinner",
+      items: [{ ...asIs(logs[0] as FoodLog), portion_qty: 900 }],
+    });
+    expect(res.status).toBe(200);
+    expect((await res.json<FoodLogsUpdated>()).logs[0]?.portion_qty).toBe(900);
+  });
+
+  it("refuses a counted qty past the counted ceiling", async () => {
+    const { logs, ids } = await saveEntry({
+      items: [item({ name: "Pizza", portion_qty: 2, portion_unit: "slices", ai_portion_qty: 2 })],
+    });
+    const res = await patch({
+      ids,
+      meal_slot: "dinner",
+      items: [{ ...asIs(logs[0] as FoodLog), portion_qty: 900 }],
+    });
+    expect(res.status).toBe(400);
+    expect((await res.json<{ error: string }>()).error).toBe("invalid_portion");
+  });
+
+  /** A portion nobody read is #58's invented "1 serving". The sheet draws no
+   *  control for such a row; this is the refusal underneath it. */
+  it("refuses a portion on a row that never had one", async () => {
+    const { logs, ids } = await saveEntry({ items: [item({ name: "Had lunch out" })] });
+    const res = await patch({
+      ids,
+      meal_slot: "dinner",
+      items: [{ ...asIs(logs[0] as FoodLog), portion_qty: 3 }],
+    });
+    expect(res.status).toBe(400);
+    expect((await res.json<{ error: string }>()).error).toBe("invalid_portion");
+  });
+
+  it("leaves a stored portion alone when the body omits it", async () => {
+    const { logs, ids } = await saveEntry({
+      items: [item({ name: "Pizza", portion_qty: 2, portion_unit: "slices", ai_portion_qty: 2 })],
+    });
+    const bare = { ...asIs(logs[0] as FoodLog), kcal: 999 };
+    delete (bare as { portion_qty?: number }).portion_qty;
+    const res = await patch({ ids, meal_slot: "dinner", items: [bare] });
+    const [row] = (await res.json<FoodLogsUpdated>()).logs;
+    expect(row).toMatchObject({ portion_qty: 2, portion_unit: "slices", ai_portion_qty: 2, kcal: 999 });
+  });
+});
+
+describe("PATCH /api/food-logs — removing and adding items (#60)", () => {
+  /** #52 deferred per-item deletion to exactly here. */
+  it("removes the rows the item list no longer claims", async () => {
+    const { logs, ids } = await saveEntry({ items: THREE });
+    const keep = logs.filter((l) => l.name !== "Jasmine rice");
+    const res = await patch({ ids, meal_slot: "dinner", items: keep.map(asIs) });
+    expect(res.status).toBe(200);
+    expect((await res.json<FoodLogsUpdated>()).logs).toHaveLength(2);
+    expect(await rowCount()).toBe(2);
+  });
+
+  /** **The refusal design call 3 is about.** Emptying an entry is a delete, and
+   *  #52's swipe is the delete — it has an undo toast and a restore path. A
+   *  PATCH that emptied one would be a second delete with no way back. */
+  it("refuses an empty item list", async () => {
+    const { ids } = await saveEntry({ items: THREE });
+    const res = await patch({ ids, meal_slot: "dinner", items: [] });
+    expect(res.status).toBe(400);
+    expect((await res.json<{ error: string }>()).error).toBe("items_required");
+  });
+
+  /** Separated from the refusal above for the isolation pair's reason: this is
+   *  the assertion about the entry still existing, and in the one-test version
+   *  it never ran — a mutation that accepted the empty list reported a status
+   *  and stayed silent about the three rows it had just deleted. */
+  it("still has the entry after an empty item list is refused", async () => {
+    const { ids } = await saveEntry({ items: THREE });
+    await patch({ ids, meal_slot: "dinner", items: [] });
+    expect(await rowCount()).toBe(3);
+  });
+
+  it("refuses a basket past the cap POST already refuses", async () => {
+    const { logs, ids } = await saveEntry({ items: [item({ name: "One" })] });
+    const extra = Array.from({ length: 20 }, (_, i) => ({
+      name: `Added ${i}`,
+      kcal: 10,
+      protein_g: 0,
+      carbs_g: 0,
+      fat_g: 0,
+    }));
+    const res = await patch({ ids, meal_slot: "dinner", items: [asIs(logs[0] as FoodLog), ...extra] });
+    expect(res.status).toBe(400);
+    expect((await res.json<{ error: string }>()).error).toBe("items_required");
+  });
+
+  /** An added row is #16's blank recovery row with a meal already around it:
+   *  nothing read it, so it carries no confidence, no `ai_*` and no portion,
+   *  and `source` is `text` rather than the entry's — the meal was
+   *  photographed, this food was typed. */
+  it("adds a row with no provenance it did not earn", async () => {
+    const { logs, ids } = await saveEntry({
+      source: "photo",
+      photo_key: `${USER}/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee.jpg`,
+      items: [item({ name: "Photographed plate" })],
+    });
+    const res = await patch({
+      ids,
+      meal_slot: "dinner",
+      items: [asIs(logs[0] as FoodLog), { name: "Olive oil", kcal: 90, protein_g: 0, carbs_g: 0, fat_g: 10 }],
+    });
+    expect(res.status).toBe(200);
+    const added = (await res.json<FoodLogsUpdated>()).logs.find((l) => l.name === "Olive oil");
+    expect(added).toMatchObject({
+      source: "text",
+      photo_key: null,
+      barcode: null,
+      confidence: null,
+      edited: 0,
+      ai_kcal: null,
+      portion_qty: null,
+      portion_unit: null,
+      ai_portion_qty: null,
+    });
+  });
+
+  /** The added row joins the entry, which means taking its instant and its day
+   *  — the only way `foldMeals` will ever put it in the same meal. */
+  it("joins the added row to the entry rather than starting a new one", async () => {
+    const { logs, ids } = await saveEntry({ items: [item({ name: "First" })] });
+    await patch({
+      ids,
+      meal_slot: "dinner",
+      items: [asIs(logs[0] as FoodLog), { name: "Second", kcal: 50, protein_g: 1, carbs_g: 2, fat_g: 3 }],
+    });
+    const body = await (await app.fetch(new Request("https://fuel.debrief.run/api/day/2026-08-10"), env)).json<DayResponse>();
+    const folded = foldMeals(body.logs);
+    expect(folded).toHaveLength(1);
+    expect(folded[0]?.rows).toHaveLength(2);
+    expect(folded[0]?.name).toBe("First, second");
+  });
+
+  it("refuses a portion on an added row, which nothing read", async () => {
+    const { logs, ids } = await saveEntry({ items: [item({ name: "First" })] });
+    const res = await patch({
+      ids,
+      meal_slot: "dinner",
+      items: [
+        asIs(logs[0] as FoodLog),
+        { name: "Invented", kcal: 50, protein_g: 1, carbs_g: 2, fat_g: 3, portion_qty: 2 },
+      ],
+    });
+    expect(res.status).toBe(400);
+    expect((await res.json<{ error: string }>()).error).toBe("invalid_portion");
+  });
+
+  it("refuses an item with no name, and writes nothing when it does", async () => {
+    const { logs, ids } = await saveEntry({ items: THREE });
+    const res = await patch({
+      ids,
+      meal_slot: "dinner",
+      items: [...logs.map(asIs), { name: "   ", kcal: 10, protein_g: 0, carbs_g: 0, fat_g: 0 }],
+    });
+    expect(res.status).toBe(400);
+    expect((await res.json<{ error: string }>()).error).toBe("invalid_item");
+    expect(await rowCount()).toBe(3);
+  });
+
+  it("refuses a kcal past the ceiling POST refuses", async () => {
+    const { logs, ids } = await saveEntry({ items: [item({ name: "One" })] });
+    const res = await patch({
+      ids,
+      meal_slot: "dinner",
+      items: [{ ...asIs(logs[0] as FoodLog), kcal: 99_000 }],
+    });
+    expect(res.status).toBe(400);
+    expect((await res.json<{ error: string }>()).error).toBe("invalid_item");
+  });
+
+  it("refuses a meal slot outside the four", async () => {
+    const { logs, ids } = await saveEntry({ items: [item({ name: "One" })] });
+    const res = await patch({ ids, meal_slot: "brunch", items: [asIs(logs[0] as FoodLog)] });
+    expect(res.status).toBe(400);
+  });
+
+  /** A removal and an addition in one save, which is what actually happens when
+   *  somebody corrects a meal — and the case where a route that deleted before
+   *  it validated would already have destroyed a row. */
+  it("removes, edits and adds in one request, or does none of it", async () => {
+    const { logs, ids } = await saveEntry({ items: THREE });
+    const chicken = logs.find((l) => l.name === "Grilled chicken breast") as FoodLog;
+    const rice = logs.find((l) => l.name === "Jasmine rice") as FoodLog;
+    const res = await patch({
+      ids,
+      meal_slot: "dinner",
+      items: [
+        { ...asIs(chicken), kcal: 310 },
+        asIs(rice),
+        { name: "Olive oil", kcal: 90, protein_g: 0, carbs_g: 0, fat_g: 10 },
+      ],
+    });
+    expect(res.status).toBe(200);
+    const names = (await res.json<FoodLogsUpdated>()).logs.map((l) => l.name).sort();
+    expect(names).toEqual(["Grilled chicken breast", "Jasmine rice", "Olive oil"]);
+    expect(await rowCount()).toBe(3);
+    expect((await storedRow(chicken.id))?.kcal).toBe(310);
   });
 });

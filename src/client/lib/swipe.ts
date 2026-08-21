@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { claimAxis, commits } from "./gesture";
+import { claimAxis, commits, tapped } from "./gesture";
 
 /** Swipe-left-to-reveal, on pointer events and no library (#52).
  *
@@ -88,7 +88,25 @@ export type SwipeState = {
   dragging: boolean;
 };
 
-export function useSwipeToReveal(open: boolean, onOpenChange: (open: boolean) => void) {
+/** @param onTap fired when the sequence turns out to have been a tap on the
+ *  row rather than a drag of it (#60) — see `tapped` in `gesture.ts` for both
+ *  clauses. Optional, because a swipeable row that does nothing on tap is a
+ *  legitimate shape and was this hook's only shape until #60.
+ *
+ *  **It fires from pointerup, not from a click handler**, and that is the whole
+ *  reason the hook grew a callback instead of the row growing an `onClick`. A
+ *  click still arrives after a captured horizontal drag, and by the time it
+ *  does this hook has already cleared the state that could tell the two apart —
+ *  so a click handler would have to reconstruct the gesture's outcome from a
+ *  ref, i.e. keep a second copy of what `start.current` already knows. Firing
+ *  where the state is live means there is nothing to keep in step. What that
+ *  costs is the keyboard, which pointer events do not reach; `SwipeToDelete`
+ *  pays it with a real button, the same way #52 pays for the delete. */
+export function useSwipeToReveal(
+  open: boolean,
+  onOpenChange: (open: boolean) => void,
+  onTap?: () => void,
+) {
   /** The offset while a finger is down, and null the rest of the time — at
    *  which point the offset is simply what `open` implies. Two ways to be
    *  open would be two things to keep in step. */
@@ -98,6 +116,11 @@ export function useSwipeToReveal(open: boolean, onOpenChange: (open: boolean) =>
     y: number;
     axis: "none" | "x" | "y";
     base: number;
+    /** Whether the row was already revealed when the finger went down (#60).
+     *  Read at pointerdown rather than at pointerup because `open` is the
+     *  question the tap is about: a tap that *started* on an open row is the
+     *  one spent closing it, and by pointerup the prop may already have moved. */
+    wasOpen: boolean;
     /** The live offset, mirrored here because pointerup has to *decide* on it
      *  and React state is a render behind. The old cut read it inside a
      *  `setState` updater and called `onOpenChange` from there — a parent
@@ -111,7 +134,7 @@ export function useSwipeToReveal(open: boolean, onOpenChange: (open: boolean) =>
       // Mouse and pen only when it's a real press; a hover must not arm this.
       if (e.pointerType === "mouse" && e.buttons !== 1) return;
       const base = open ? -REVEAL_PX : 0;
-      start.current = { x: e.clientX, y: e.clientY, axis: "none", base, offset: base };
+      start.current = { x: e.clientX, y: e.clientY, axis: "none", base, offset: base, wasOpen: open };
     },
     [open],
   );
@@ -142,11 +165,20 @@ export function useSwipeToReveal(open: boolean, onOpenChange: (open: boolean) =>
     setDrag(next);
   }, []);
 
-  const onPointerUp = useCallback(
-    (e: React.PointerEvent) => {
+  const release = useCallback(
+    (e: React.PointerEvent, wasReleased: boolean) => {
       const from = start.current;
       start.current = null;
-      if (!from || from.axis !== "x") return;
+      if (!from) return;
+      if (from.axis !== "x") {
+        /* Not a drag of this row. It is a **tap** if the sequence ended by
+           being released — a pointercancel is the system taking the touch away
+           (a call arrives, iOS starts its back-swipe), which is not a person
+           choosing anything, and firing a tap there would open an editor
+           nobody asked for. */
+        if (wasReleased && tapped({ axis: from.axis, revealed: from.wasOpen })) onTap?.();
+        return;
+      }
       if (e.currentTarget.hasPointerCapture(e.pointerId)) {
         e.currentTarget.releasePointerCapture(e.pointerId);
       }
@@ -156,8 +188,11 @@ export function useSwipeToReveal(open: boolean, onOpenChange: (open: boolean) =>
       // a rightward drag to 0.
       onOpenChange(commits(-from.offset, COMMIT_PX));
     },
-    [onOpenChange],
+    [onOpenChange, onTap],
   );
+
+  const onPointerUp = useCallback((e: React.PointerEvent) => release(e, true), [release]);
+  const onPointerCancel = useCallback((e: React.PointerEvent) => release(e, false), [release]);
 
   const state: SwipeState = {
     progress: revealProgress(drag ?? (open ? -REVEAL_PX : 0)),
@@ -171,7 +206,7 @@ export function useSwipeToReveal(open: boolean, onOpenChange: (open: boolean) =>
       onPointerDown,
       onPointerMove,
       onPointerUp,
-      onPointerCancel: onPointerUp,
+      onPointerCancel,
     },
   };
 }

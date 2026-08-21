@@ -255,6 +255,71 @@ export type FoodLogCreate = {
 /** POST /api/food-logs response: the created rows. */
 export type FoodLogsCreated = { logs: FoodLog[] };
 
+/** One item of a PATCH from the edit sheet (#60).
+ *
+ *  **What is missing from this type is the design.** A saved row carries eight
+ *  fields nobody may edit after the fact — `logged_on`, `logged_at`, `source`,
+ *  `photo_key`, `barcode`, `confidence` and the four `ai_*` macros — and the
+ *  cheapest way to guarantee that is to make them *unsayable* rather than to
+ *  write a route that remembers to ignore them. So the edit surface is name,
+ *  four macros and a portion count, and every survival claim in #60 is
+ *  structural: there is no field on the wire that could carry the alternative.
+ *
+ *  - `logged_on` and `logged_at` are set once (#44). `logged_at` is also
+ *    `foldMeals`' group key, so moving it splits an entry or silently merges it
+ *    into another one.
+ *  - `source`, `photo_key` and `barcode` describe **how the meal was
+ *    captured**. Retyping the numbers afterwards does not make a photographed
+ *    meal a typed one.
+ *  - `confidence` is a record of what the read claimed, exactly like `ai_kcal`.
+ *    An edited row does not lose it — `edited` is the flag that says the user
+ *    overrode the estimate, and nulling the confidence would destroy the only
+ *    statement of how sure the reader was, which is the pair #75 exists to
+ *    analyse.
+ *  - `edited` is derived by the route, never sent. It is the one field a client
+ *    could get wrong in a way nothing would catch, and the server is the side
+ *    holding the previous numbers.
+ *
+ *  Setting a portion is not editing one, either: `portion_unit` and
+ *  `ai_portion_qty` stay as stored, and a row the reader gave no portion has no
+ *  control and cannot grow one — inventing "1 serving" is what #58 refuses. */
+export type FoodLogItemEdit = {
+  /** The row this item is, or **omitted for an item being added** to the meal
+   *  (#60). An added row is #16's blank row by another name: nothing read it,
+   *  so it stores a null confidence, null `ai_*` and no portion. */
+  id?: string;
+  name: string;
+  kcal: number;
+  protein_g: number;
+  carbs_g: number;
+  fat_g: number;
+  /** The user's count for a row that already has a stored portion — "4" in
+   *  *4 slices*. Omitted otherwise, and refused on a row with none. */
+  portion_qty?: number;
+};
+
+/** PATCH /api/food-logs body (#60): reopen one saved timeline entry.
+ *
+ *  **`ids` is the entry, not a filter.** One meal is every row sharing a
+ *  `logged_at` instant (#10), so the client sends the id list it already holds
+ *  from `/api/day` — the same shape #52's DELETE uses. Every id must resolve to
+ *  a row this user owns and they must all belong to one entry; a list spanning
+ *  two meals would merge them, which is a data loss no undo covers. */
+export type FoodLogUpdate = {
+  ids: string[];
+  /** Editable, and a slot-only change deliberately does **not** set `edited`:
+   *  a slot is not something the AI said. */
+  meal_slot: MealSlot;
+  /** At least one, at most 20 — POST's own bounds. **An empty list is
+   *  refused**: emptying an entry is a delete, and #52's swipe is the delete,
+   *  with an undo toast behind it. A PATCH that emptied one would be a second
+   *  delete with no way back. */
+  items: FoodLogItemEdit[];
+};
+
+/** PATCH /api/food-logs response: the entry as it now stands. */
+export type FoodLogsUpdated = { logs: FoodLog[] };
+
 /** A starred meal (#12). */
 export type Favorite = {
   id: string;

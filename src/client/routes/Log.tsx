@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import type {
   AnalyzeResponse,
@@ -10,6 +10,7 @@ import type {
   RecentsResponse,
 } from "../../shared/api";
 import { CameraStage } from "../components/CameraStage";
+import { ItemRow } from "../components/ItemRow";
 import { LogModes, type LogMode } from "../components/LogModes";
 import { NumericField } from "../components/NumericField";
 import { Picks } from "../components/Picks";
@@ -18,9 +19,9 @@ import { ApiError, api, useApi } from "../lib/api";
 import { releaseCamera } from "../lib/camera";
 import { deviceTimezone, localDay, mealSlotFor } from "../lib/day";
 import { fmtInt } from "../lib/format";
-import { FOOD_LIMITS, type NumericRule, portionQtyRule } from "../lib/numeric";
+import { FOOD_LIMITS } from "../lib/numeric";
 import { type Pick, favoriteDraft, favoriteNamed, mergePicks } from "../lib/picks";
-import { type EditableItem, editable, portionLabel, savedGrams, savedPortion, setPortionQty } from "../lib/portion";
+import { type EditableItem, editable, savedGrams, savedPortion, setPortionQty } from "../lib/portion";
 import { SHEET_HANDLE_ATTR, useDragToDismiss } from "../lib/sheet-drag";
 
 /** The log flow: capture → editable confirm sheet → saved.
@@ -888,6 +889,7 @@ export function Log() {
                 key={i}
                 item={item}
                 manual={read.manual !== undefined}
+                source={read.source}
                 editing={editing === i}
                 onToggle={() => setEditing(editing === i ? null : i)}
                 onChange={(patch) => update(i, patch)}
@@ -923,195 +925,6 @@ export function Log() {
         </div>
       )}
     </>
-  );
-}
-
-function ItemRow({
-  item,
-  manual,
-  editing,
-  onToggle,
-  onChange,
-  onPortion,
-}: {
-  item: EditableItem;
-  /** #16's blank row — nothing read it, so there is nothing to report about it. */
-  manual: boolean;
-  editing: boolean;
-  onToggle: () => void;
-  onChange: (patch: Partial<AnalyzedItem>) => void;
-  /** #58. Never fires for a row the reader gave no portion — that row draws
-   *  no control at all rather than one over an invented "1 serving". */
-  onPortion: (qty: number) => void;
-}) {
-  // low confidence gets the sketch's CHECK treatment (accent badge + open row)
-  const low = item.confidence !== null && item.confidence < 0.75;
-  // null confidence means nothing estimated it — a barcode's exact match (#15)
-  const exact = !manual && item.confidence === null;
-  const portion = manual ? null : portionLabel(item.portion);
-  // One id per rendered row, so the portion field's <label> points at its own
-  // input and not at the row above it. `useId` rather than the map index: the
-  // index is a render-order fact, and a11y wiring that depends on sibling
-  // order is the kind that breaks silently when the sheet grows a sort.
-  const qtyId = useId();
-
-  return (
-    <div className={low || editing ? "item check" : "item"}>
-      {/* **The numbers are inside the button** (#98). They used to be a
-          *sibling* of it, so the calorie figure and the macro line — the one
-          region a person reaches for when they want to change a number — did
-          nothing at all, while the sheet's own copy two lines above said "tap
-          anything to change it".
-
-          Structure rather than a handler on `.item`, because the constraint
-          here is that `.item-edit` lives in the same container: a container
-          click handler has to *guard* against every tap inside the open
-          editor, and that guard is a rule someone can get wrong later. Moving
-          the numbers in instead leaves the editor a **sibling of the button,
-          never a descendant**, so a tap on a field cannot reach this onClick
-          in the first place — there is nothing to guard. Same reason
-          `.item-hit` is still one real `<button>` with `aria-expanded`: the
-          pointer target grew, the control did not change.
-
-          `.item-text` exists so the button's grid is two cells and not four:
-          the name and the label under it are one block in the left cell, the
-          way they were when the button was the left cell. Without it the kcal
-          figure spans two rows and grid hands its spare height to both of
-          them, which moves the label. */}
-      <button className="item-hit" onClick={onToggle} aria-expanded={editing}>
-        <span className="item-text">
-          <span className="name">
-            {item.name || (manual ? "Untitled" : "")}
-            {low && <span className="badge">CHECK</span>}
-          </span>
-          {/* The portion leads and the confidence signal follows it (#58).
-              Both, not one: the amount is what people check first, and
-              dropping "BEST GUESS — TAP TO ADJUST" to make room would remove
-              the only thing on the collapsed row that says a number is
-              uncertain. The pair is what gets measured at 375 — the sheet's
-              totals row and save button must stay on screen with a row
-              open. */}
-          <span className="portion">
-            {portion && <span className="qty">{portion}</span>}
-            {manual
-              ? "TYPE WHAT YOU ATE"
-              : exact
-                ? "FROM THE BARCODE"
-                : low
-                  ? "BEST GUESS — TAP TO ADJUST"
-                  : `CONFIDENCE ${Math.round((item.confidence ?? 0) * 100)}%`}
-          </span>
-        </span>
-        <span className="kcal">
-          {fmtInt(item.calories)}
-          <small>
-            {Math.round(item.protein_g)}P · {Math.round(item.carbs_g)}C · {Math.round(item.fat_g)}F
-          </small>
-        </span>
-      </button>
-
-      {editing && (
-        <div className="item-edit">
-          <label>
-            NAME
-            <input
-              type="text"
-              value={item.name}
-              onChange={(e) => onChange({ name: e.target.value })}
-            />
-          </label>
-          {/* #58's control, inside the open row rather than on the collapsed
-              one. The collapsed sheet has to stay compact at 375 — three rows,
-              a totals line and the save button — and a stepper per row is
-              three more controls competing with the one tap that opens a row.
-              Above the four macro fields on purpose: it is the thing that
-              *moves* them, so reading top-to-bottom is cause then effect.
-              `live`, like every other field on this sheet: the row's own kcal
-              and the footer total rescale as you type.
-
-              **The bound follows the unit** (#109): `portionQtyRule`, never
-              `FOOD_LIMITS.portion_qty` directly. 100 is a generous ceiling for
-              a row counted in slices and a wrong one for a row measured in
-              grams, and spreading the counted rule onto both is what stored
-              200 g of chicken as 100 g. The clamp itself stays — a field
-              somebody is typing in is where a clamp is *visible*, which is the
-              #95/#96 typo-catcher pattern; what #109 forbids is rewriting a
-              wire value nobody can see. */}
-          {item.portion && (
-            <div className="item-portion">
-              <label htmlFor={qtyId}>HOW MUCH</label>
-              <NumericField
-                id={qtyId}
-                value={item.portion.qty}
-                onCommit={onPortion}
-                live
-                {...portionQtyRule(item.portion.unit)}
-              />
-              <span className="mono">{item.portion.unit.toUpperCase()}</span>
-            </div>
-          )}
-          {/* All four are `live`: the footer total and the row's own kcal read
-              off them, and a sheet whose total only catches up when you tap
-              away reads as broken. Bounds and decimals both come from
-              FOOD_LIMITS — three of these rows are the same rule, and stating
-              it three times is how the four fields drifted apart last time. */}
-          <div className="item-edit-nums">
-            <NumField
-              label="KCAL"
-              value={item.calories}
-              rule={FOOD_LIMITS.kcal}
-              onChange={(calories) => onChange({ calories })}
-            />
-            <NumField
-              label="PROTEIN"
-              value={item.protein_g}
-              rule={FOOD_LIMITS.macro_g}
-              onChange={(protein_g) => onChange({ protein_g })}
-            />
-            <NumField
-              label="CARBS"
-              value={item.carbs_g}
-              rule={FOOD_LIMITS.macro_g}
-              onChange={(carbs_g) => onChange({ carbs_g })}
-            />
-            <NumField
-              label="FAT"
-              value={item.fat_g}
-              rule={FOOD_LIMITS.macro_g}
-              onChange={(fat_g) => onChange({ fat_g })}
-            />
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-/** The sheet's own wrapper: the label cell of `.item-edit-nums`, around the
- *  shared field. Nothing but layout lives here — the commit rule, the clamp and
- *  what an empty field means are all `NumericField`'s, so the four macros and
- *  the portion field can't drift apart the way they had (#95).
- *
- *  It takes a whole `NumericRule` rather than a `decimals` prop and a hardcoded
- *  `min={0}`, because that hardcode was the last place on this screen still
- *  deciding a bound for itself — and it decided the same wrong thing four
- *  times, silently, by having no ceiling to state. */
-function NumField({
-  label,
-  value,
-  rule,
-  onChange,
-}: {
-  label: string;
-  value: number;
-  rule: NumericRule;
-  onChange: (n: number) => void;
-}) {
-  return (
-    <label>
-      {label}
-      <NumericField value={value} onCommit={onChange} live {...rule} />
-    </label>
   );
 }
 

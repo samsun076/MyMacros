@@ -2145,6 +2145,55 @@ section {
   gap: 8px;
 }
 
+/* #60's per-item delete, at the bottom of the open editor. It is the one
+   control in there that cannot be typed over afterwards, so it goes last —
+   below the numbers rather than beside the name, where a thumb reaching for
+   NAME would find it. The hint wraps under the button on a narrow screen
+   rather than beside it: at 375 the sentence is two lines and squeezing it
+   into a column next to a control would clip it. */
+.item-remove {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+  margin-top: 10px;
+}
+
+/* The only red text in the sheet, and it is sign-carrying and labelled —
+   build rule 9. Not --accent: rule 8 spends that on the focus macro, and Night
+   Athletic switches it live, so a destructive control built on it would turn
+   gold when somebody changed their accent. */
+.item-remove .btn-text.danger {
+  color: var(--danger);
+}
+
+.item-remove .btn-text:disabled {
+  color: var(--ink-muted);
+  opacity: 0.7;
+  cursor: default;
+}
+
+.item-remove .opt-hint {
+  flex: 1 1 100%;
+  font-size: 11px;
+}
+
+/* Adding a row to a saved meal (#60). Sits between the last item and the
+   totals rule, in the gap `.item`'s bottom border already leaves — so it reads
+   as the end of the list rather than as part of the footer, which is where the
+   *whole meal's* controls live. */
+.sheet-add {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+  margin-top: 10px;
+}
+
+.sheet-add .opt-hint {
+  font-size: 11px;
+}
+
 .sheet-foot {
   margin-top: 8px;
   padding-top: 14px;
@@ -2197,6 +2246,14 @@ section {
 .save:disabled {
   opacity: 0.55;
   cursor: default;
+}
+
+/* Why the save is refused, under the save (#60). The button says nothing about
+   it — a disabled control that explains itself inside its own label is a label
+   that changes as you type. */
+.sheet-foot .opt-hint {
+  margin-top: 8px;
+  font-size: 11.5px;
 }
 
 /* ── passkeys ─────────────────────────────────────────────── */

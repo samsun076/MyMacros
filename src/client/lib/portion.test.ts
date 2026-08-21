@@ -1,7 +1,16 @@
 import { describe, expect, it } from "vitest";
-import type { AnalyzedItem } from "../../shared/api";
+import type { AnalyzedItem, FoodLog } from "../../shared/api";
 import { FOOD_LIMITS, isMeasuredPortionUnit, portionQtyRule } from "./numeric";
-import { type EditableItem, editable, portionLabel, savedGrams, savedPortion, setPortionQty } from "./portion";
+import {
+  type EditableItem,
+  blankItem,
+  editable,
+  editableFromLog,
+  portionLabel,
+  savedGrams,
+  savedPortion,
+  setPortionQty,
+} from "./portion";
 
 /** #58. The property this file exists for is **drift**, and it is the one a
  *  screenshot and a single tap both miss: a rescale that starts from the
@@ -338,5 +347,121 @@ describe("portionLabel", () => {
   it("says nothing at all when there is no portion", () => {
     expect(portionLabel(null)).toBeNull();
     expect(portionLabel(undefined)).toBeNull();
+  });
+});
+
+/** A stored row, reopened (#60).
+ *
+ *  The property here is the one a screenshot cannot see and one tap cannot
+ *  either: a row seeded with the wrong `base` renders identically and only
+ *  misbehaves when the portion control is touched, by which point the number
+ *  it has multiplied is a number the user already saved.
+ */
+const SAVED: FoodLog = {
+  id: "row-1",
+  user_id: "u",
+  logged_on: "2026-08-21",
+  logged_at: "2026-08-21T18:30:00.000Z",
+  meal_slot: "dinner",
+  name: "Chicken breast, cooked",
+  kcal: 330,
+  protein_g: 62,
+  carbs_g: 0,
+  fat_g: 7.2,
+  source: "text",
+  photo_key: null,
+  barcode: null,
+  confidence: 0.85,
+  edited: 0,
+  ai_kcal: 165,
+  ai_protein_g: 31,
+  ai_carbs_g: 0,
+  ai_fat_g: 3.6,
+  // saved at 200 g, where the reader had counted 100 — the pair that separates
+  // a right implementation from a wrong one
+  portion_qty: 200,
+  portion_unit: "g",
+  ai_portion_qty: 100,
+  notes: null,
+  created_at: "2026-08-21T18:30:00.000Z",
+  updated_at: "2026-08-21T18:30:00.000Z",
+};
+
+describe("editableFromLog (#60)", () => {
+  it("shows the saved numbers, not the reader's", () => {
+    const it0 = editableFromLog(SAVED);
+    expect(it0.calories).toBe(330);
+    expect(it0.protein_g).toBe(62);
+  });
+
+  it("shows the saved portion, not the one the reader counted", () => {
+    expect(editableFromLog(SAVED).portion).toEqual({ qty: 200, unit: "g" });
+  });
+
+  /** **The assertion this whole block exists for.** `base` is the divisor, and
+   *  what the saved macros describe is the saved qty. Seeding it from
+   *  `ai_portion_qty` would make 200 → 200 a doubling. */
+  it("rescales from the SAVED quantity, so a no-op is a no-op", () => {
+    const same = setPortionQty(editableFromLog(SAVED), 200);
+    expect(same.calories).toBe(330);
+    expect(same.protein_g).toBe(62);
+  });
+
+  it("halves from the saved quantity, not from the reader's", () => {
+    const half = setPortionQty(editableFromLog(SAVED), 100);
+    expect(half.calories).toBe(165);
+    expect(half.protein_g).toBe(31);
+  });
+
+  it("keeps the confidence the read reported", () => {
+    expect(editableFromLog(SAVED).confidence).toBe(0.85);
+  });
+
+  /** Null is "nothing estimated this" and stays null — a favorite re-log, or a
+   *  row #60 itself added. The row's note is what changes, not the value. */
+  it("keeps a null confidence null", () => {
+    expect(editableFromLog({ ...SAVED, confidence: null }).confidence).toBeNull();
+  });
+
+  /** All three portion columns or none (#104). A row with none draws no
+   *  control rather than one over an invented "1 serving". */
+  it("gives a row with no stored portion no portion at all", () => {
+    const bare = editableFromLog({ ...SAVED, portion_qty: null, portion_unit: null, ai_portion_qty: null });
+    expect(bare.portion).toBeNull();
+  });
+
+  /** A half-populated row is a shape the save route cannot write, so the only
+   *  way to meet one is a hand-edited table — and inventing the missing half
+   *  is worse than drawing no control. */
+  it("refuses to invent a unit for a qty that has none", () => {
+    expect(editableFromLog({ ...SAVED, portion_unit: null }).portion).toBeNull();
+  });
+
+  it("refuses to invent a qty for a unit that has none", () => {
+    expect(editableFromLog({ ...SAVED, portion_qty: null }).portion).toBeNull();
+  });
+
+  /** A row with no portion cannot grow one by being scaled — the sheet draws
+   *  no control for it, and this is the same refusal one level down. */
+  it("leaves a portionless row alone when something tries to scale it", () => {
+    const bare = editableFromLog({ ...SAVED, portion_qty: null, portion_unit: null });
+    expect(setPortionQty(bare, 4)).toEqual(bare);
+  });
+});
+
+describe("blankItem (#60)", () => {
+  /** #16's blank row by another name. Nothing read it, so there is nothing to
+   *  report about it and nothing to scale it from. */
+  it("has no confidence, because nothing estimated it", () => {
+    expect(blankItem().confidence).toBeNull();
+  });
+
+  it("has no portion, because nothing counted it", () => {
+    expect(blankItem().portion ?? null).toBeNull();
+  });
+
+  it("starts at zero on every macro", () => {
+    const b = blankItem();
+    expect([b.calories, b.protein_g, b.carbs_g, b.fat_g]).toEqual([0, 0, 0, 0]);
   });
 });

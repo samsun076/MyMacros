@@ -1,6 +1,6 @@
-/** The rule two drags share, stated once (#52, #102).
+/** The rules this app's drags share, stated once (#52, #102, #60).
  *
- *  There are now two gestures on this app's screens and they are mirror images
+ *  There are two *drags* on this app's screens and they are mirror images
  *  of each other: swipe a timeline row **left** to reveal delete (`swipe.ts`),
  *  drag the picks panel **down** to dismiss it (`sheet-drag.ts`). Both live on
  *  a surface whose *other* axis is a scroll, so both have the same problem —
@@ -18,6 +18,10 @@
  *  which is #86's defect, and the kind that rots quietly: raise the intent
  *  threshold in one file and the other gesture goes on claiming at 8px with
  *  nothing to fail.
+ *
+ *  #60 adds a third reading of one touch — a **tap** on a swipeable row — and
+ *  `tapped` at the bottom is where that arbitration lives, for the same reason
+ *  and not a new one.
  */
 
 /** How far before either gesture commits to an axis. Below Apple's ~10pt,
@@ -68,4 +72,37 @@ export function claimAxis(dx: number, dy: number): Axis {
  */
 export function commits(travelled: number, threshold: number): boolean {
   return travelled >= threshold;
+}
+
+/** Is this finished pointer sequence a **tap** on whatever is underneath, or
+ *  was it the drag's? (#60)
+ *
+ *  Here for the same reason `claimAxis` is: it is the third statement of "which
+ *  gesture owns this touch" on one surface, and the first two already live
+ *  together. #60 puts a tap on the timeline row that #52 made swipeable, so
+ *  every touch on that row now has three possible readings — scroll, swipe,
+ *  tap — and the tap is the one with no threshold of its own. It is what is
+ *  left when neither of the others claimed the sequence.
+ *
+ *  **Both clauses are refusals, and neither is optional.**
+ *
+ *  `axis === "none"` is what separates a tap from a drag. It is not a distance
+ *  test — `claimAxis` has already applied `INTENT_PX` and, on a vertical claim,
+ *  the swipe has already stood down for the rest of the touch. So a tap is
+ *  precisely a sequence that never got far enough to mean anything else, and
+ *  the slop a real thumb carries is `INTENT_PX`'s, stated once. Reading a
+ *  *click* instead would be the trap this avoids: a browser still fires one
+ *  after a captured horizontal drag, so a swipe that reveals the delete control
+ *  would also open the editor.
+ *
+ *  `revealed` is the row already showing its delete control when the finger
+ *  went down. That tap is spent closing it. This is deliberately narrower than
+ *  #97's reversal, which is about taps landing *elsewhere* — the log button,
+ *  the undo toast — and says they should go through. Here the tap lands on the
+ *  very surface the drawer is on, which is the "get me out of this" reflex
+ *  #97's original argument described correctly and then over-applied. Opening a
+ *  modal editor from it would bury an armed trash can behind a sheet.
+ */
+export function tapped(gesture: { axis: Axis; revealed: boolean }): boolean {
+  return gesture.axis === "none" && !gesture.revealed;
 }

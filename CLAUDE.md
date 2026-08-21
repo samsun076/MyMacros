@@ -151,6 +151,16 @@ and `/trends#sparse` (#22), both DEV-gated — they build a real `TrendsResponse
 `buildTrends` over fabricated inputs, so a stage can't drift into a shape the route would
 never produce.
 
+Today adds `/#swiped` (#52 — the newest row already revealed) and `/#editing` (#60 — the
+edit sheet open on the day's **largest** entry), both DEV-gated. `#editing` picks the
+largest rather than the newest deliberately: newest is usually a one-item meal, which is
+the short sheet and proves nothing, and the state worth measuring is the tall one whose
+totals row and save button have to survive at 375. **A stage that shoots the easy case is
+worse than no stage**, because it produces a PNG that looks like evidence. Neither injects
+data — they open over the signed-in user's real rows — so `#editing`'s height depends on
+what is actually logged, which is a weaker determinism than `/log#confirm`'s and worth
+knowing before reading one of its PNGs. `/#editing` is in `verify:viewport`'s route list.
+
 **shot-matrix names its output from the hash**, so `/trends#empty` writes
 `app-trends-empty@*.png` and hash stages do *not* overwrite each other. Copying files
 aside afterwards clobbers the correctly-named output.
@@ -439,9 +449,26 @@ kept here so the deliberate cases aren't re-litigated and the rest aren't redisc
 target) · `macroTargets` (protein/carbs/fat grams) · `currentTrendWeightKg` /
 `trendWeightKg` (what someone weighs now) · `earnedKcal` · `foldMeals` (what counts as
 one meal) · `ACTIVITY_FACTORS` · `PROTEIN_G_PER_KG` · `ATHLETE_PROFILES` ·
-`KCAL_PER_KG` · `TREND_WINDOW_DAYS` · `MIN_LOGGED_SHARE` · `STALE_AFTER_HOURS`. All in
+`KCAL_PER_KG` · `TREND_WINDOW_DAYS` · `MIN_LOGGED_SHARE` · `STALE_AFTER_HOURS` ·
+`scaleMacros` (what a portion change does to the numbers beside it). All in
 `src/shared/`, all reached by both the client preview and the Worker, which is the whole
 reason that directory exists.
+
+**`scaleMacros` is the first of those where an EXACT agreement is load-bearing, not
+merely tidy** (#60). `PATCH /api/food-logs` decides whether a macro change was a
+correction by asking whether the portion change already explains it — the sheet rescales
+before sending, so by the time the numbers reach the Worker the only way to tell "four
+slices" from "the reader was 80 kcal out" is to recompute what the rescale *would* have
+produced and compare. Two implementations rounding even slightly differently would
+return `edited = 1` on an honest portion change, which is a false statement about the
+one column recording whether the reader needed correcting. **This shipped wrong in
+#60's first cut and was caught by driving the route, not by reading it** — the route's
+own docstring asserted the correct behaviour beside code that did the opposite, which is
+the "comments are not executed" failure one level up from a stale literal. Note the
+contrast with `FOOD_LIMITS` and `MEASURED_PORTION_UNITS`, which stay carried-and-restated
+on purpose: those are bounds each side enforces *independently*, where this is an
+equality each side has to *reproduce*. `setGrams` in `Log.tsx` is still a third statement
+of the same rule at read scale, left alone because #15/#107 keep those paths apart.
 
 **One more single source, and it is the first that is client-only.** `claimAxis` ·
 `commits` · `INTENT_PX`, in `src/client/lib/gesture.ts` (#102). Two gestures now share

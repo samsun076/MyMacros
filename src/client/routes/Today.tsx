@@ -14,6 +14,7 @@ import {
   pushDeletion,
   withoutDeletion,
 } from "../lib/undo-queue";
+import { EditMealSheet } from "../components/EditMealSheet";
 import { InstallPrompt } from "../components/InstallPrompt";
 import { SwipeToDelete } from "../components/SwipeToDelete";
 import { useActiveMotifs } from "../motifs";
@@ -51,6 +52,30 @@ type LoggedToast = { slot: MealSlot; kcal: number; ms: number; edited: number };
 const STAGE_NEWEST = "stage:newest";
 const SWIPED_STAGE =
   import.meta.env.DEV && window.location.hash === "#swiped" ? STAGE_NEWEST : null;
+
+/** DEV-only: `/#editing` opens the edit sheet on the day's **largest** entry,
+ *  so the tall case can be screenshotted (#60).
+ *
+ *  Largest rather than newest, and that is the whole reason it needs a sentinel
+ *  of its own. The state worth measuring is the one #60's Verify section names
+ *  — three items, whose totals row and save button have to survive at 375 —
+ *  and "whatever was logged most recently" is usually one item, which is the
+ *  short sheet and proves nothing. A stage that shoots the easy case is worse
+ *  than no stage, because it produces a PNG that looks like evidence.
+ *
+ *  It injects **nothing**: the sheet opens over the signed-in user's real rows,
+ *  the way `/log#picks` opens over their real favourites. It is still DEV-gated
+ *  like `#swiped` rather than left open like `#picks`, because both of those
+ *  put the list into a state a *gesture* produces, and a URL that silently
+ *  arms an editor is a different promise from one that opens a list.
+ *
+ *  Ties go to the newest, and it is deterministic given the data — which is a
+ *  weaker claim than `/log#confirm`'s (that one carries its own meal). Seed
+ *  with `tools/seed-demo.mjs` and log one multi-item meal to reach the shape
+ *  this stage exists for. */
+const STAGE_LARGEST = "stage:largest";
+const EDITING_STAGE =
+  import.meta.env.DEV && window.location.hash === "#editing" ? STAGE_LARGEST : null;
 
 type Entry = {
   /** `logged_at|meal_slot` — `foldMeals`' own grouping key, so it names the
@@ -165,6 +190,17 @@ export function Today() {
      id this holds. */
   const [openRow, setOpenRow] = useState<string | null>(SWIPED_STAGE);
 
+  /* Which entry the edit sheet is open on, by the same `logged_at|meal_slot` id
+     the list keys on (#60).
+     
+     An id rather than the entry object, for the reason the delete queue holds
+     objects and this does not: the sheet is editing rows that still exist, so
+     the screen's own `entries` is the live copy and re-deriving from it on each
+     render means a refetch cannot leave the sheet showing a stale meal. #52's
+     queue is the opposite case — those rows are gone from the server, and the
+     held copy is the only one left. */
+  const [editingId, setEditingId] = useState<string | null>(EDITING_STAGE);
+
   /* Render order and header span, computed together (#80). `entries` stays
      chronological — that is what the span reads.
 
@@ -186,6 +222,22 @@ export function Today() {
      Closing the row replaces the sentinel, so the stage is a starting state
      rather than a mode you can't leave. */
   const openEntryId = openRow === STAGE_NEWEST ? (timeline.rows[0]?.id ?? null) : openRow;
+
+  /* The stage names a *shape* — "the entry with the most items" — which no id
+     can express until the day's rows have landed, so it is resolved here for
+     `STAGE_NEWEST`'s reason exactly: turning it into an id at mount would
+     resolve it against an empty list and the stage would render a closed
+     sheet. `reduce` keeps the first of a tie, and `timeline.rows` is already
+     newest-first (#80), so a tie is the newest. */
+  const editingEntry = useMemo(() => {
+    if (editingId === STAGE_LARGEST) {
+      return timeline.rows.reduce<Entry | null>(
+        (best, row) => (best === null || row.rows.length > best.rows.length ? row : best),
+        null,
+      );
+    }
+    return timeline.rows.find((e) => e.id === editingId) ?? null;
+  }, [editingId, timeline]);
 
   /* Macro targets, from the ADJUSTED total (sketch: 82 / 165 g) — but only
    * carbs and fat move with it now (#77).
@@ -384,6 +436,11 @@ export function Today() {
                         setOpenRow(null);
                         void del.remove(entry);
                       }}
+                      /* #60's entry point. Which taps reach here is decided in
+                         `gesture.ts` — a drag never does, and neither does the
+                         tap that dismisses this row's own delete drawer. The
+                         row does not need to know either rule. */
+                      onTap={() => setEditingId(entry.id)}
                     >
                     <div className="meal">
                       {entry.photoKey ? (
@@ -425,6 +482,27 @@ export function Today() {
             </div>
           )}
         </section>
+      )}
+
+      {/* #60. Keyed on the entry id so switching rows remounts the sheet — its
+          fields are seeded once from the rows, and a sheet that kept its state
+          across a change of subject would show one meal's numbers under
+          another meal's name.
+
+          A save re-reads the day rather than patching the list from the
+          response: `/api/day` is the one thing that recomputes totals, the
+          budget and the macro bars, and #48's refetch-on-mount policy is
+          already what makes "nothing recalculates elsewhere" true. */}
+      {editingEntry && (
+        <EditMealSheet
+          key={editingEntry.id}
+          entry={editingEntry}
+          onClose={() => setEditingId(null)}
+          onSaved={() => {
+            setEditingId(null);
+            reloadDay();
+          }}
+        />
       )}
 
       {/* Below the day, not above it (#24). An install card at the top of the

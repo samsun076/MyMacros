@@ -1,4 +1,5 @@
-import type { AnalyzedItem } from "../../shared/api";
+import type { AnalyzedItem, FoodLog } from "../../shared/api";
+import { scaleMacros } from "../../shared/portion";
 import { FOOD_LIMITS } from "./numeric";
 
 /** Scaling one item's portion on the confirm sheet (#58).
@@ -36,6 +37,60 @@ export function editable(item: AnalyzedItem): EditableItem {
   return { ...item, orig: item, base: item };
 }
 
+/** Turn a SAVED row back into a sheet row (#60).
+ *
+ *  The edit sheet opens on rows that are already in D1, so the same
+ *  `EditableItem` the confirm sheet edits has to be reconstructible from a
+ *  `food_logs` row. It is the inverse of the save, minus everything the save
+ *  recorded that an edit may not touch.
+ *
+ *  **`base` is the STORED item, not the reader's**, and the difference is the
+ *  whole of what this function decides. `base` is the divisor every rescale
+ *  works from, and what the stored macros describe is the stored
+ *  `portion_qty` — 330 kcal is what 200 g of this chicken *was*, whatever the
+ *  reader originally counted. Seeding it from `ai_portion_qty` instead would
+ *  scale 330 kcal as though it described the reader's count, so a row saved at
+ *  200 g and reopened would double the moment anybody touched the control.
+ *  The reader's own count is not lost by this — the route preserves
+ *  `ai_portion_qty` and the sheet never sends it.
+ *
+ *  **All three portion columns or nothing** (#104/#58). A row with only some of
+ *  them is a shape the save route cannot produce, and inventing a unit for a
+ *  qty — or a "1 serving" for a row that has neither — is exactly what #58
+ *  refuses. That row simply draws no portion control, the same as #16's blank
+ *  row and every favorite re-log.
+ *
+ *  Here rather than inside the sheet for #100's reason: a decision reachable
+ *  only by rendering a component is one the unit project cannot test, and this
+ *  one is invisible to a screenshot — the wrong `base` renders identically and
+ *  only misbehaves on the second tap. */
+export function editableFromLog(row: FoodLog): EditableItem {
+  const item: AnalyzedItem = {
+    name: row.name,
+    calories: row.kcal,
+    protein_g: row.protein_g,
+    carbs_g: row.carbs_g,
+    fat_g: row.fat_g,
+    confidence: row.confidence,
+    portion:
+      row.portion_qty !== null && row.portion_unit !== null
+        ? { qty: row.portion_qty, unit: row.portion_unit }
+        : null,
+  };
+  return editable(item);
+}
+
+/** The row #60's edit sheet ADDS to a saved meal: empty, and deliberately the
+ *  same empty as #16's recovery row.
+ *
+ *  No confidence and no portion, because nothing read it — which is also why
+ *  the PATCH route stores it with null `ai_*` and `source: "text"`. A blank row
+ *  that arrived with a portion control would be offering to scale a number
+ *  nobody has typed yet. */
+export function blankItem(): EditableItem {
+  return editable({ name: "", calories: 0, protein_g: 0, carbs_g: 0, fat_g: 0, confidence: null });
+}
+
 /** Rescale one item to `qty` of its own unit.
  *
  *  **A portion change is not a correction**, so `orig` moves with the scaled
@@ -58,16 +113,33 @@ export function setPortionQty(item: EditableItem, qty: number): EditableItem {
   if (!from || !item.portion) return item;
   if (!Number.isFinite(qty) || qty <= 0 || !Number.isFinite(from.qty) || from.qty <= 0) return item;
 
-  const scale = qty / from.qty;
+  /* The arithmetic itself lives in `src/shared/portion.ts` since #60, and not
+     for tidiness: `PATCH /api/food-logs` has to recompute exactly this to tell
+     "I ate four slices" from "the reader was 80 kcal out", and a comparison
+     between two implementations of one rounding rule is a comparison that
+     fails by one. Both sides now run the same instructions on the same
+     doubles. */
   const scaled: AnalyzedItem = {
     ...item.base,
-    calories: Math.round(item.base.calories * scale),
-    protein_g: round1(item.base.protein_g * scale),
-    carbs_g: round1(item.base.carbs_g * scale),
-    fat_g: round1(item.base.fat_g * scale),
+    ...macrosOf(scaleMacros(baseMacros(item.base), from.qty, qty)),
     portion: { qty, unit: from.unit },
   };
   return { ...scaled, orig: scaled, base: item.base };
+}
+
+/** `AnalyzedItem` spells energy `calories` and every column and wire field in
+ *  the app spells it `kcal`. These two map between them, in the one place the
+ *  sheet touches the shared scaling rule — a rename of the field on
+ *  `AnalyzedItem` is a bigger change than this issue, and an unmapped mismatch
+ *  would be a silent `NaN`. */
+function baseMacros(it: AnalyzedItem) {
+  return { kcal: it.calories, protein_g: it.protein_g, carbs_g: it.carbs_g, fat_g: it.fat_g };
+}
+
+function macrosOf(m: ReturnType<typeof scaleMacros>) {
+  return m === null
+    ? {}
+    : { calories: m.kcal, protein_g: m.protein_g, carbs_g: m.carbs_g, fat_g: m.fat_g };
 }
 
 /** The three columns a save writes for this row's portion (#104), or `null`
@@ -162,12 +234,10 @@ export function portionLabel(portion: AnalyzedItem["portion"]): string | null {
 
 /** `1.5` stays `1.5`; `4.0` is `4`. `formatNumeric` already does this for the
  *  field — this is the same rule for read-only text, and it is the language
- *  idiom `round1` is (six copies, no domain truth to diverge from), not a
+ *  idiom `round1` is (a handful of copies, no domain truth to diverge from —
+ *  this file's own went with the arithmetic that moved to `shared/portion.ts`),
+ *  not a
  *  second statement of a rule. */
 function trimZero(n: number) {
   return String(Math.round(n * 10) / 10);
-}
-
-function round1(n: number) {
-  return Math.round(n * 10) / 10;
 }

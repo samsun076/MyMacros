@@ -28,6 +28,7 @@ import { DELETE_CONTROL_ATTR, useCloseOnOutsideTap, useSwipeToReveal } from "../
 export function SwipeToDelete({
   label,
   onDelete,
+  onTap,
   open,
   onOpenChange,
   children,
@@ -35,6 +36,10 @@ export function SwipeToDelete({
   /** What is being deleted, for the accessible name — e.g. "Dinner, salmon". */
   label: string;
   onDelete: () => void;
+  /** Tapping the row rather than dragging it (#60). Optional: a swipeable row
+   *  that does nothing on tap is what this component was until the edit sheet
+   *  existed, and `Today` is the only caller that has somewhere to go. */
+  onTap?: () => void;
   /** Is this the row the list currently has open? */
   open: boolean;
   /** The row reporting its own gesture, or asking to be dismissed. */
@@ -42,7 +47,7 @@ export function SwipeToDelete({
   children: ReactNode;
 }) {
   const row = useRef<HTMLDivElement>(null);
-  const swipe = useSwipeToReveal(open, onOpenChange);
+  const swipe = useSwipeToReveal(open, onOpenChange, onTap);
   useCloseOnOutsideTap(open, row, () => onOpenChange(false));
 
   return (
@@ -101,6 +106,19 @@ export function SwipeToDelete({
           onClick={onDelete}
           {...{ [DELETE_CONTROL_ATTR]: "" }}
         />
+      )}
+
+      {/* The keyboard and screen-reader path to the *editor*, for the reason
+          the delete below has one: the tap fires from a pointer event (see
+          `useSwipeToReveal`), and a pointer event is not a route a keyboard or
+          a switch control can take. It is a real button doing the same thing,
+          not a fallback — and it deliberately carries no `DELETE_CONTROL_ATTR`,
+          because it is an outside tap like any other and should close an open
+          row on its way through (#97). */}
+      {onTap && (
+        <button type="button" className="vh-button" onClick={onTap}>
+          Edit {label}
+        </button>
       )}
 
       <button type="button" className="vh-button" onClick={onDelete} {...{ [DELETE_CONTROL_ATTR]: "" }}>
