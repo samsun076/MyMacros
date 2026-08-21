@@ -2396,3 +2396,197 @@ if they are not done first:**
 **If two days gets tight, cut #81 and #60.** The basket reshapes the log flow
 and edit-after-save touches the timeline; both are larger than anything in
 Session U. And #24 will quietly expand to fill whatever time it is given.
+
+## Session V — ten shipped, and every one of them found by a person — ✅ done 2026-08-21
+
+Opened at `141f75f`, closed at `fadfb7c`. **516 tests → 838. Zero regressions.**
+
+Ten issues closed: **#109, #107, #103, #112, #93, #91, #102, #114, #115, #117**.
+Seven filed: #110, #111, #113, #114, #115, #116, #117 — of which four were
+closed the same day.
+
+## What shipped
+
+| | |
+|---|---|
+| **#109** `dc30c76` | `200g of chicken` stored 100 g. `normalize()` clamped every portion at a ceiling derived for slices and applied to grams. Now the bound follows the unit — measured units get `grams`' 2,000, counted keep 100 — and an out-of-range qty **drops the whole portion to null** rather than becoming a confident wrong number. Three statements of the ceiling, pinned by `portion-limits.route.test.ts`, which says plainly what it cannot catch: a unit missing from all three lists, which is exactly what #109 was. |
+| **#93** `182b0bd` | A scrim at the safe area, so scrolled content stops crossing the clock. Every length is a multiple of `env(safe-area-inset-top)`, which is the whole safety argument — it collapses to zero everywhere iOS isn't. **Nothing in this repo can see it**; the guard is a test that substitutes a zero inset and fails if any length survives. |
+| **#107** `5493a32` | The barcode grams were discarded at save and always had been. `ai_portion_qty` reads `baseGrams`, never `orig` — the trap #104 hit one level down. Two of its five mutations left the entire suite green. |
+| **#103** `ce3eef4` | Star a meal from the confirm sheet. What gets starred is `foldMeals`' fold, not a second join. Fires on tap with unstar on the second, because star-on-save cannot have an undo. |
+| **#112** `7166e4c` | The scanner never stopped scanning behind the sheet, so a pack left in frame rebuilt it every ~400ms and wiped the typed grams. **The dep array was the defect, so the dep array is gone** — one derived boolean the effect depends on, and a condition added to the rule cannot fail to be a dependency. |
+| **#91** `8d100f0` | The trash panel was as tall as whatever it was deleting. A fixed 32×56 capsule, 56px on every row from 57px to 127px. `REVEAL_PX` was three numbers wearing one name; only the travel keeps it. |
+| **#102** `ba66109` | The picks panel honours its grab handle. A new hook with the shared rule extracted to `gesture.ts` rather than a copy with the axes swapped. |
+| **#114** `6deb1d6` | #102's dismiss distance was one number for a panel that is not one size — 12% of the full panel, 41% of a one-pick panel. Now a share of the rendered height, floored at the old constant. |
+| **#115** `6f34cf3` | `mergePicks` sliced at 8. Production had ten favourites; two rendered nowhere and could not be un-starred, and the recents half was gone entirely. The rule that replaced the number: **user-chosen data is never truncated; auto-generated data is.** |
+| **#117** `fadfb7c` | Starring a recent meal *destroyed a recents slot* instead of moving the meal — the cap was spent before the dedupe ran. Fixed by seeding the route's `seen` set with the caller's favourites: not an extra filter, an extra seed. |
+
+## Every finding came from a person or from production. None came from the suite.
+
+The suite went 516 → 838 and never once found a defect. Every one of those
+tests was written *after* a human found the bug, to stop it recurring. That is
+what tests are for and it is not a criticism — but it means the thing finding
+bugs in this project is a thumb, and there is exactly one of those.
+
+Four data points added to **#101** today, all recorded on the issue:
+
+- **#107 and #102 each had two mutations that left the entire suite green.**
+- **#114**: #102's drive tested a 40px drag springing back and passed. Nobody
+  tested 64–100px, which is where a human "little drag" actually lives. A
+  synthetic touch lands exactly where it is told and has no opinion about what
+  "a little" means.
+- **817 tests passed on a structurally corrupted source file** — the harness
+  had replaced the first `return;` in the file rather than the one it mutated.
+  Caught by a checksum, not by the suite.
+- **`armsDrag`'s core rule has never been touched by a human.** Its own comment
+  calls it "the one rule the whole feature turns on"; until #115 the panel
+  could not scroll on a 13 mini at all.
+
+## Five limits in one list, none of which had ever limited anything
+
+All in the picks list, all in one day, and the last three were found by the
+previous one being removed:
+
+1. **#82's `max-height: 80dvh` never applied.** Equal specificity, declared
+   above `.sheet`, lost the cascade. Present and correct in a rule that never
+   won — 488px of a 568px viewport where 80dvh is 454. A declaration test
+   cannot see this; only a rendered measurement can.
+2. **`PICKS_MAX = 8` read as a layout decision and was a data cliff.**
+3. **TEXT's justification for that cap described a layout that does not
+   exist.** The list is a block *after* the textarea in flow. Measured: the box
+   sits 146px down with 3 rows below it and 146px with 21.
+4. **`RECENTS_MAX` was spent before the dedupe** (#117).
+5. **`SCAN_ROWS` was an anonymous `.limit(60)`** that had never bound anything,
+   because the newest sixty rows always held eight distinct names — until
+   skipping starred meals started spending the window.
+
+The rule is now in CLAUDE.md. **The corollary is the part that will keep
+biting: removing an invisible limit does not create the bug it reveals.** #115
+did not break the picks header (#116); it removed the cap that had hidden it.
+#115 did not cause #117; it stopped #117 being indistinguishable from
+truncation. Expect the next one down every single time.
+
+## Three rules earned and written into CLAUDE.md
+
+- **A finding enters the active milestone only if it blocks that milestone's
+  own sentence, or it loses data.** M7 went 6 open to 9 in the session that
+  closed two of them, because every discovery was filed where its files lived.
+  The corollary: *no milestone is not deprioritised.*
+- **Count found-versus-created before believing the bug rate is rising.** Four
+  issues in a day read as a bad day until each was dated — three were 5, 15 and
+  17 days old. `git log -S` separates them in seconds.
+- **A mutation harness must assert its anchor matches exactly once**, sha before
+  and after, and sha again after revert. Earned by 817 green tests on a
+  corrupted file.
+
+Plus two register entries: **a dep array is a second statement of a rule**, and
+**a bound that has never been reached has never been tested.**
+
+## Two things a person answered that no tool could
+
+- **`black-translucent` does NOT force white status-bar glyphs on iOS 26.6.**
+  The implementation flagged white-on-ivory as a probable pre-existing defect on
+  the light packs. Dave's screenshots show the clock in **dark ink on ivory** and
+  white on Night Athletic — iOS adapts it. That retires the worry and retires it
+  for #30 as well. **Do not file a white-on-ivory issue.**
+- **Safari's top inset is non-zero**, so the scrim renders in-browser too and
+  does not blend the way it does in standalone. Inferred from #38 as zero; the
+  inference was wrong. Accepted as shipped, with the lever recorded on #93.
+
+## Where it stands
+
+Live at **`fadfb7c`**. 838 tests. Production D1 on `0009_portion.sql` — **no
+migration shipped today**.
+
+| | | |
+|---|---|---|
+| **M7** | 3 | #60, #81, #59 — all real features |
+| **M11** | 2 | #116, #24 |
+| **M6** | 13 | not in scope |
+| **M8** | 1 | #67, deferred |
+| none | 4 | #110, #113, #49, #32 |
+
+## Tomorrow — #60 leads, and it was promoted for a reason
+
+**#60 (open a saved meal to edit it) is first.** Dave moved it up on 2026-08-21
+after it turned out to be load-bearing: **there is no in-app way to verify a
+stored portion.** Today's UAT asked him to open a saved meal to check #107's
+grams and he could not — the row had to be read out of D1 by hand. Every
+portion check until #60 lands costs a database query.
+
+It is also the smallest of M7's three remaining features. #81 reshapes the log
+flow and #59 needs a re-analyze path.
+
+Then **#81** and **#59**, and the standing advice holds: if the day gets tight,
+cut #81 — it will expand to fill whatever it is given.
+
+## Owed at M7 close, and it is not a skip
+
+**Rule 4b reconciliation.** #58 changed how a meal's macros are derived, so
+there is a real figure to check. Budget 25–45 minutes with `npm run reconcile`,
+and heed the rule's own warning: **if it finishes much faster, step 4 was
+skipped**, and step 4 is the part with no output until it finds something.
+
+M11 close owes rule 4's light-pack theme QA.
+
+## Open, and deliberately unresolved
+
+- **#101** — how this project tests sequences. Four fresh data points added
+  today and the argument against it still stands on the issue. Dave's call.
+- **#116** — the picks header scrolls out of view, and it is the only thing
+  saying where a one-tap log lands. A design call, costed on the issue, not
+  taken.
+- **#111, #113, #110** — real defects, no milestone, waiting on triage. That is
+  the new filing rule working, not neglect.
+
+## Starter prompt (paste verbatim)
+
+```
+Working on MyMacros (~/Projects/MyMacros). Read CLAUDE.md, then the Session V
+section of NEXT-STEPS.md — it runs to the end of the file and carries what
+shipped, five limits that turned out to be doing nothing, and the reason #60
+goes first.
+
+Live at fadfb7c, production D1 on 0009_portion.sql, 838 tests, tree clean.
+Ten issues shipped and were reviewed yesterday: #109, #107, #103, #112, #93,
+#91, #102, #114, #115, #117.
+
+Start with #60 — open a saved meal from the timeline and edit it. It was
+promoted because it turned out to be load-bearing: there is no in-app way to
+verify a stored portion, so yesterday's UAT of #107 had to be checked by
+querying production D1 by hand. Every portion check costs a database query
+until this lands.
+
+Then #81, then #59. If the day gets tight, cut #81 — it reshapes the log flow
+and will expand to fill whatever it is given. M7's close owes a rule 4b
+reconciliation and it is not a skip: #58 changed how a meal's macros are
+derived. 25-45 minutes with `npm run reconcile`, and if it finishes much
+faster, step 4 was skipped.
+
+One device check is outstanding and worth doing early, because it has never
+been possible before: #102's mid-list drag on the picks panel. Drag from the
+middle of the list (must scroll) versus from the grab bar (must dismiss). Until
+#115 the panel could not scroll on a 13 mini at all, so that rule has never
+been touched by a human.
+
+Run each as an orchestration — one agent per issue, sequential where files
+collide. Agents implement and prove; the main session writes every commit and
+agents never touch git. Agents return verification output verbatim, not
+summarised. Read every diff and open three or four PNGs where structure could
+break. Before any migration reaches production, show it to me first, and
+remember the order: migrate remote, then push.
+
+Yesterday's lesson worth carrying: every one of ten findings came from a person
+or from reading production rows, and none from the test suite. When a check
+passes, ask what it structurally cannot see.
+
+Environment, if starting cold: kill any orphan dev server on 5173,
+npm run db:migrate, node tools/seed-demo.mjs --weeks 12, and mint a session
+cookie from the DEV-only email/password route (the Origin header is required
+and must match APP_URL, or better-auth answers 403).
+```
+
+## The SHA in that prompt is `fadfb7c` and it is correct as of writing
+
+Two previous starter prompts shipped with stale SHAs. If anything lands on
+`main` between this being written and the next session opening, **the prompt is
+wrong and the tree is the truth** — `git log --oneline -1` settles it.
