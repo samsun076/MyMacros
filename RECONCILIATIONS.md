@@ -26,6 +26,141 @@ sitting above it.
 
 ---
 
+## M7 (#58, #104, #107, #109, #60, #81, #59) — a meal's macros after a portion change, 2026-08-21
+
+**Why an entry is owed.** #58 changed how a meal's macros are *derived*: they are
+no longer whatever the reader returned, they are the reader's figures rescaled
+linearly from a pristine `base` by a portion the user chose. #104 gave that
+portion columns, #107 stopped the barcode path discarding its grams, and #109
+fixed the ceiling that clamped 200 g to 100. Five issues, one arithmetic path,
+and it writes to every row a person eats. Not a skip.
+
+**Figure:** Today, Friday 21 August, shows **2,549 kcal eaten** and
+**139.4 P · 269.4 C · 107.7 F**, over eight rows — one of which is the only row
+in the entire production table whose macros came out of a portion rescale.
+
+**Inputs, pulled read-only from production D1 the same evening.** 87 `food_logs`
+rows, of which 7 carry a portion and 48 carry `ai_*` macros. Profile: male,
+b. 1980-04-03, 165.1 cm, light, cut, deficit 250, `protein_g_per_kg` 2,
+`carb_ratio_pct` 65, runner, tz America/New_York. Both sync sources healthy
+(runs and weights, last success 2026-08-21T21:09Z, 15 and 10 items) — no #62
+repeat.
+
+The eight rows of 21 August:
+
+| name | source | kcal | P | C | F | portion | ai_portion |
+|---|---|---|---|---|---|---|---|
+| Barebells PROTEIN BAR PEANUT B… | barcode | 200 | 20 | 21 | 6 | — | — |
+| Mini pancakes with blueberry… | photo | 260 | 6 | 38 | 9 | 4 mini pancakes | 4 |
+| Scrambled eggs with hot sauce | photo | 220 | 14 | 2 | 16 | 1 cup | 1 |
+| Sausage patty | photo | 110 | 6 | 1 | 9 | 1 patty | 1 |
+| Watermelon chunks | photo | 45 | 1 | 11 | 0 | 0.5 cup | 0.5 |
+| **Barebells CHOCOLATE DOUGH** | **barcode** | **564** | **56.4** | **56.4** | **19.7** | **155 g** | **55** |
+| Pineapple pizza | text | 720 | 28 | 88 | 28 | 4 slices | 4 |
+| Grande Hot Mocha (White Mocha… | favorite | 430 | 8 | 52 | 20 | — | — |
+
+**Recomputed by hand, importing nothing:**
+
+```
+kcal    200+260+220+110+45+564+720+430 = 2549   app: 2549
+protein 20+6+14+6+1+56.4+28+8          = 139.4  app: 139.4
+carbs   21+38+2+1+11+56.4+88+52        = 269.4  app: 269.4
+fat     6+9+16+9+0+19.7+28+20          = 107.7  app: 107.7
+```
+
+And the one row #58's path actually produced, checked against its own base:
+
+```
+564 kcal / 155 g = 3.63871 kcal/g
+at the reader's 55 g: 200.13 kcal · 20.01 P · 20.01 C · 6.99 F
+```
+
+Those are round pack numbers — 200 / 20 / 20 / 7 for a 55 g bar. The rescale is
+linear from a pristine base and lands exactly where it should. **Not one figure
+off, including the arithmetic this milestone changed.**
+
+### What it found, which is not in the arithmetic
+
+**A question about an input, and it is the only thing here that matters.** That
+Barebells row says 155 g of a bar whose pack serving is 55 g — 2.82 bars, 564
+kcal, 22% of the day, on a day that came out 643 kcal over a 1,906 target. The
+same day's *other* Barebells row is the control: one bar, 200 kcal, portion not
+recorded. Nothing in the code is wrong and every column is internally
+consistent; the question is whether 155 is what was eaten or a 1 in front of a
+55. **Only Dave can answer it**, and that is exactly the class rule 4b exists
+for — plausible-looking rather than visibly broken, invisible to every test and
+every screenshot, reachable only by reading real rows.
+
+It is also #60's argument restated by the data: as of the start of this session
+there was no way to open that meal in the app and look. There is now.
+
+**A latent inconsistency in what the `ai_*` columns mean, worth writing down
+before something reads them.** The macro pair and the portion pair are
+denominated differently, and each is correct for its own question. `ai_kcal` is
+stated **at the saved portion** — `setPortionQty` and `setGrams` deliberately
+move `orig` with the scaled values so that a portion change does not read as an
+override — so the row correctly answers "did the user override the numbers?"
+with *no*. `ai_portion_qty` is stated **at the read portion** (`base`, never
+`orig` — #107 made that explicit), so it correctly answers "what did the reader
+count?" with *55*. Joined naively as one reading, they claim the reader said 55 g
+was 564 kcal, which it never said.
+
+Nothing reads them that way today; the only consumer is `Today.tsx`'s undo,
+which round-trips them faithfully. **#75's per-source estimate-quality analysis
+is the reader that would get this wrong**, by a factor of 2.82 on the barcode
+path. Recorded here rather than filed, because the columns are not defective —
+what is missing is the sentence saying they are not a pair.
+
+**`edited = 1` on a row with a zero macro delta, and it is not a defect.**
+2026-08-11's "Mushrooms with sesame seeds" has all four macros equal to the
+reader's and `edited = 1`. `isEdited()` includes `item.name`, and there is no
+`ai_name` column — so a name-only correction is indistinguishable from a
+spurious flag by reading the row. A limit on what the column can answer, not a
+bug in it.
+
+**A coverage fact that surprised me and is the strongest thing here.** #58's
+*per-item* portion rescale — the control this milestone was built around — **has
+never run in production.** All six non-barcode portion rows have
+`portion_qty == ai_portion_qty`, meaning the reader's count was accepted
+unchanged every single time. The only rescale in 87 rows used the barcode grams
+path (#15/#107), which predates #58. So the headline computation of M7 is, on
+real data, exercised by tests and by nobody's thumb. That is CLAUDE.md's "a
+bound that has never been reached has never been tested" one level up: not an
+unreached limit but an unused feature, and the same warning applies — the first
+time it runs for real is the first time anything checks it.
+
+### The two issues that landed after the figures were taken
+
+#81 and #59 closed the milestone a few hours after this recomputation, and both
+touch a derivation, so they are named in the heading rather than left out.
+**Neither changes anything checked above**, and saying why is the point:
+
+- **#81 makes `savedGrams` per capture rather than per save.** That is a real
+  change to which number reaches `portion_qty` — but only on a path that did
+  not exist until that commit, a basket holding more than one barcode scan.
+  Production has no such row, and cannot have one before this deploys. The
+  single-capture save is byte-identical to what produced the Barebells row
+  above.
+- **#59 resets `orig` on a re-read**, so a corrected read stores the *second*
+  answer's numbers in the `ai_*` columns and leaves `edited` at 0. This is the
+  first thing that writes those columns from anything but the original read,
+  and it sharpens the denomination gap recorded above rather than closing it:
+  after a correction, `ai_kcal` is what the reader said the *second* time.
+  Nothing in production has been corrected, because nothing could be.
+
+Both are therefore owed a figure at the *next* reconciliation, once real rows
+exist. Recording that now is the honest version of "not applicable yet" — the
+alternative is a future entry that silently starts covering them.
+
+**Verdict:** arithmetic clean, four totals reconciled exactly, the one real
+rescale in production recomputes to round pack numbers. No input defect found in
+the code's assumptions. One input question for Dave (the 155 g), one
+documentation gap recorded (the `ai_*` denomination), and one uncomfortable
+coverage fact (the per-item path is unused). Time spent: roughly 40 minutes,
+most of it on the last three paragraphs, which produced no output until they did.
+
+---
+
 ## M9 (#77, #79) — the protein target and the base target, 2026-08-14
 
 **Figure:** Today, Friday 14 August, shows **BASE 1,909 kcal** and macro targets
