@@ -2546,8 +2546,9 @@ section of NEXT-STEPS.md — it runs to the end of the file and carries what
 shipped, five limits that turned out to be doing nothing, and the reason #60
 goes first.
 
-Live at b5dda8a, production D1 on 0009_portion.sql, 838 tests, tree clean.
-(fadfb7c is the last code commit; b5dda8a is this write-up on top of it.)
+Last code commit is fadfb7c; anything after it is documentation. Run
+`git log --oneline -1` for the real HEAD — do not trust this line for it.
+Production D1 on 0009_portion.sql, 838 tests, tree clean.
 Ten issues shipped and were reviewed yesterday: #109, #107, #103, #112, #93,
 #91, #102, #114, #115, #117.
 
