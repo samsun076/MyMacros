@@ -68,6 +68,24 @@
   --on-chrome: var(--ink-muted);
   --on-chrome-active: var(--accent);
 
+  /* The top counterpart to --chrome: what scrolled content passes UNDER at
+     the safe area (#93). In standalone, black-translucent + viewport-fit=cover
+     run the page to y=0 — deliberate, and the thing #38/#39 cost a session to
+     settle, because it is how the top chrome takes its colour from the canvas
+     at all — so scroll far enough and a bordered earned stamp draws across the
+     clock and the battery.
+
+     `var(--bg-top)`, not a literal and not three copies: --bg-top is already
+     the canvas colour on phone widths, so the scrim is the same surface iOS
+     composites its glyphs against at the top of an unscrolled screen, and each
+     pack inherits its own paper with nothing to keep in step by hand. Named
+     anyway, because matching the canvas is a DECISION and not an identity —
+     `black-translucent` paints the status-bar glyphs white, so a light pack
+     may have to override this to a dark plate or the clock is unreadable for
+     the opposite reason. Open for #30; don't assume either way without a
+     device. */
+  --status-scrim: var(--bg-top);
+
   --track: #263041;             /* empty meter/bar track */
   --line: rgba(214,226,240,.10);
   --line-soft: rgba(214,226,240,.06);

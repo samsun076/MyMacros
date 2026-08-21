@@ -76,3 +76,91 @@ describe("the canvas (#38, #89)", () => {
     expect(phoneBody()).toMatch(/background-color\s*:\s*var\(--bg-top\)/);
   });
 });
+
+/** The status-bar scrim (#93) — same file, same reason.
+ *
+ *  It lives here rather than beside a screenshot test because **no screenshot
+ *  can see it at all**: it is sized entirely in multiples of
+ *  `env(safe-area-inset-top)`, and headless Chrome reports that as 0. Every
+ *  PNG this repo can produce is of an element with zero height. So the device
+ *  check is the only proof it *works*, and these are the only guard against
+ *  the three ways it could be quietly broken afterwards — each of which is
+ *  invisible to Chrome for exactly the same reason it is invisible here.
+ */
+const scrim = () => ruleBody(".frame::before");
+
+/** Read from the stylesheet rather than pinned to 10/20/30, so moving any of
+ *  the three keeps the relationship honest instead of just moving a literal. */
+const zOf = (selector) => Number(ruleBody(selector).match(/z-index\s*:\s*(\d+)/)?.[1]);
+
+/** One declaration out of the scrim's rule body. */
+function scrimDecl(prop) {
+  const m = scrim().match(new RegExp(`(?:^|;)\\s*${prop}\\s*:([^;]*)`));
+  return m ? m[1].trim() : "";
+}
+
+describe("the status-bar scrim (#93)", () => {
+  it("exists", () => {
+    expect(scrim(), "app.css must define .frame::before").not.toBe("");
+  });
+
+  /** **The safety property.** The scrim is only ever wanted where iOS has run
+   *  the page under its own status bar. Everywhere else the inset is 0 and the
+   *  element must therefore be 0 tall. Written as `calc(env(…) + 12px)`
+   *  instead of `calc(env(…) * 1.25)` it paints a --bg-top band across the top
+   *  of every desktop browser instead — not a hypothetical: that edit was made
+   *  and headless Chrome rendered 12px of it against a zero inset. #38's
+   *  defect class with the sign flipped.
+   *
+   *  Checked by substituting a zero inset and looking for any length left
+   *  standing, so it holds for whatever arithmetic a future edit uses. */
+  it("collapses to nothing wherever the inset is zero", () => {
+    const vertical = `${scrimDecl("height")} ${scrimDecl("background-image")}`;
+    expect(vertical, "the scrim needs a height and a gradient").toMatch(/env\(\s*safe-area-inset-top/);
+    const zeroed = vertical.replaceAll(/env\(\s*safe-area-inset-top[^)]*\)/g, "0");
+    expect(zeroed, "a length that survives a zero inset is a band on every desktop").not.toMatch(
+      /\d+(\.\d+)?(px|r?em|v[hwib]|pt|ch)\b/,
+    );
+  });
+
+  /** A scrim that swallows taps is the worst outcome available here, and the
+   *  one nothing else can catch: on device it is ~62px of dead zone across the
+   *  top of every screen, and in Chrome the element has no height, so it could
+   *  not intercept a tap even if this line were gone. Structural or nothing. */
+  it("never intercepts a tap", () => {
+    expect(scrimDecl("pointer-events")).toBe("none");
+  });
+
+  /** Build rule 2, and the reason the token exists: a light pack may have to
+   *  make this a dark plate, because `black-translucent` paints the status-bar
+   *  glyphs white and white on ivory is the same defect one theme over (#30). */
+  it("takes its colour from --status-scrim", () => {
+    expect(scrimDecl("background-image")).toMatch(/var\(--status-scrim\)/);
+  });
+
+  /** Split from the assertion above rather than sharing its body: a mutation
+   *  that swaps the var for a literal fails the first `expect`, and a second
+   *  one underneath it would never run — neither green nor red, reporting
+   *  nothing, while the test name still claims both halves. That is the
+   *  never-ran trap CLAUDE.md counts, and one assertion per test is the
+   *  practice that took #82's never-ran count to 0. */
+  it("never states a colour as a literal", () => {
+    expect(scrimDecl("background-image")).not.toMatch(/#[0-9a-f]{3}|rgba?\(/i);
+  });
+
+  /** Above the page and the tab bar, below the confirm sheet. The sheet lays
+   *  its own `--scrim` dim wash over the whole viewport, so a page-coloured
+   *  plate on top of that is a brighter band, not a quieter one. Read from the
+   *  stylesheet rather than pinned to 10/20/30, so moving any of the three
+   *  keeps the relationship honest instead of just moving the literal. */
+  it("stacks above the tab bar", () => {
+    expect(zOf(".tabbar")).toBeLessThan(zOf(".frame::before"));
+  });
+
+  /** Same split, same reason as the colour pair above. A scrim shoved under
+   *  the tab bar and a scrim shoved over the confirm sheet are two different
+   *  regressions, and a shared body only ever reports the first. */
+  it("stacks below the confirm sheet", () => {
+    expect(zOf(".frame::before")).toBeLessThan(zOf(".sheet-wrap"));
+  });
+});

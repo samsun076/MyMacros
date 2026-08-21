@@ -165,6 +165,102 @@ body {
   }
 }
 
+/* ── the status-bar scrim (#93) ───────────────────────────── */
+/* The header pads itself by `env(safe-area-inset-top)`, so a screen *starts*
+   below the status bar correctly. What was never designed is the SCROLLED
+   state: `viewport-fit=cover` + `apple-mobile-web-app-status-bar-style:
+   black-translucent` run the page to y=0 on purpose (#38/#39 — it is how the
+   top chrome takes its colour from the canvas at all), so scroll far enough
+   and Field Notes' vermilion earned stamp draws a bordered box across the
+   clock, the signal bars and the battery. Both stay legible, which is what
+   makes it read as broken rather than as overlap.
+
+   Shared layer, not a motif: the stamp is the loudest case but Night
+   Athletic's swatch-and-caption and Instrument's legend do the same thing
+   more quietly, and a fix in one pack leaves the other two.
+
+   **Every length is a multiple of the inset, and that is the whole safety
+   argument.** `calc(env(...) * 1.25)` is ZERO wherever the inset is zero, and
+   written as `+ 12px` it would instead paint a --bg-top band across the top of
+   every desktop browser — measured, by making exactly that edit and watching
+   headless Chrome render 12px of it against a zero inset. Chrome reports every
+   `env(safe-area-inset-*)` as 0, so it CANNOT render this rule at all; the
+   corollary is that no screenshot this repo can take shows the scrim, and only
+   a device proves it works.
+
+   iOS Safari in-browser is expected to be a zero-inset case too — Safari's own
+   chrome occupies the notch area in portrait, which is why #38 found it
+   *tinting* from the canvas rather than the page painting there. **Inferred
+   from #38, not measured**, so the device pass checks Safari as well as
+   standalone: if the inset is non-zero there, the scrim appears in-browser
+   too, sitting inside the frame's top padding at scroll 0 (harmless) and
+   dimming content near the top edge when scrolled (arguably wanted). Either
+   way it is a look, not a break — but say which one it is.
+
+   Geometry, on the 375×812 reference (iPhone 13 mini, inset 50):
+     0    → 37.5px  opaque — the clock/battery glyph band sits inside this
+     37.5 → 62.5px  fade to nothing
+     64px           where the frame's own content starts (14px + inset)
+   So at scroll 0 the scrim lies ENTIRELY inside the frame's top padding and
+   touches no content — the unscrolled screen is unchanged except for the
+   safe-area strip itself. (Dynamic Island models, inset 59, overshoot that by
+   0.75px at alpha ≈ 0.)
+
+   What it composites over is `--page-surface`, which at the top of the page is
+   `--bg-top` PLUS the radial accent glow. The scrim is flat `--bg-top`, so it
+   flattens the glow inside the strip and the glow ramps back in over the fade.
+   That is unavoidable rather than a choice: the glow spans the top ~300px of
+   the page, so *anything* opaque enough to hide a scrolled stamp also hides
+   the glow behind it, at any scroll offset. Not fixed by tinting the scrim to
+   the glowed value — that is the accent, it switches live (build rule 5), and
+   #38 already paid for baking a glowed value into a surface that must not
+   carry one.
+
+   z-index 20: above the page and the tab bar (10), below the confirm sheet
+   (30). Deliberately below — `.sheet-wrap` lays its own `--scrim` dim wash
+   over the full viewport, and a page-coloured plate punched through the top of
+   a dimmed screen is a brighter band, not a quieter one. This way the sheet's
+   wash composites on top and the strip stays consistent with it.
+
+   A pseudo-element on `.frame` rather than a component: the frame is rendered
+   by five screens (AppShell, Log's text mode, CameraStage, Onboarding,
+   Weight), and a <Scrim /> would be five places to forget. The cost is that
+   `verify:viewport` can't probe it — it walks the DOM, and this isn't in it —
+   which is paid off by `left/right: 0` + `max-width` making a horizontal
+   overflow structurally impossible. */
+.frame::before {
+  content: "";
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  margin-inline: auto;
+  width: 100%;
+  /* the frame's own column, not the viewport: on a tablet in standalone the
+     letterbox either side is --canvas, and a --bg-top band across it would be
+     a new seam of exactly the kind #38 was about */
+  max-width: 430px;
+  height: calc(env(safe-area-inset-top, 0px) * 1.25);
+  background-image: linear-gradient(
+    to bottom,
+    var(--status-scrim) 0,
+    var(--status-scrim) calc(env(safe-area-inset-top, 0px) * 0.75),
+    transparent 100%
+  );
+  pointer-events: none;
+  z-index: 20;
+}
+
+/* The camera stage is the one frame that neither needs this nor could take it.
+   It doesn't scroll — measured 812px at 375, exactly the viewport — so nothing
+   ever passes under the status bar; and its surface is `--viewfinder-surface`,
+   deliberately much darker than the page, so a `--bg-top` plate would be a
+   visible light band across the top of a viewfinder. If the stage ever grows
+   past the viewport this needs a viewfinder-coloured scrim, not this one. */
+.frame.cam::before {
+  display: none;
+}
+
 /* ── shared bones (ported from the sketch) ────────────────── */
 
 .eyebrow {
