@@ -21,6 +21,7 @@ import { fmtInt } from "../lib/format";
 import { FOOD_LIMITS, type NumericRule, portionQtyRule } from "../lib/numeric";
 import { type Pick, favoriteDraft, favoriteNamed, mergePicks } from "../lib/picks";
 import { type EditableItem, editable, portionLabel, savedGrams, savedPortion, setPortionQty } from "../lib/portion";
+import { SHEET_HANDLE_ATTR, useDragToDismiss } from "../lib/sheet-drag";
 
 /** The log flow: capture → editable confirm sheet → saved.
  *
@@ -239,6 +240,13 @@ export function Log() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [picksOpen]);
+
+  /** …and a downward drag closes it too (#102). Same reasoning one step over:
+   *  the panel wears a grab handle, the handle promises a drag, and until this
+   *  it promised one nobody could make. The confirm sheet below still doesn't
+   *  honour its own — deliberately, see the comment on its `.grab`. */
+  const closePicks = useCallback(() => setPicksOpen(false), []);
+  const picksDrag = useDragToDismiss(closePicks);
 
   async function toggleStar(pick: Pick) {
     try {
@@ -705,8 +713,33 @@ export function Log() {
             if (e.target === e.currentTarget) setPicksOpen(false);
           }}
         >
-          <div className="sheet picks-sheet" role="dialog" aria-label="Favorites and recents">
-            <div className="grab" aria-hidden="true" />
+          <div
+            className="sheet picks-sheet"
+            role="dialog"
+            aria-label="Favorites and recents"
+            style={{
+              // Identity at rest, so a spring-back is a *removed* transform
+              // rather than a `translate3d(0,0,0)` that reads the same and
+              // isn't: the stylesheet's transition has nothing to ease from
+              // if the property was never there.
+              transform: picksDrag.state.offsetPx
+                ? `translate3d(0,${picksDrag.state.offsetPx}px,0)`
+                : undefined,
+              // No easing while a finger is down, or the sheet lags behind it.
+              transition: picksDrag.state.dragging ? "none" : undefined,
+            }}
+            {...picksDrag.handlers}
+          >
+            {/* The handle, and now a target rather than a picture of one
+                (#102). `.grab` is 36 × 4; the band around it is 44px and
+                `touch-action: none`, so a drag that starts here is this
+                gesture's whatever the list is doing underneath. Still
+                `aria-hidden`: Escape and the backdrop are the panel's
+                non-pointer exits, and a decorative bar announcing itself
+                would be a third one that doesn't exist. */}
+            <div className="grab-band" aria-hidden="true" {...{ [SHEET_HANDLE_ATTR]: "" }}>
+              <div className="grab" />
+            </div>
             <Picks
               picks={picks}
               saving={saving}
@@ -726,6 +759,26 @@ export function Log() {
           }}
         >
           <div className="sheet" role="dialog" aria-label="Confirm what you ate">
+            {/* **This handle stays, and it still doesn't drag** — #102's open
+                question, answered here so it isn't answered twice.
+
+                Removing it was the other legitimate answer and it loses on
+                cost: the bar is also how a sheet says it is a sheet, it is in
+                the frozen sketch this screen was ported from, and taking it
+                out would restyle the app's most-photographed surface to fix an
+                affordance nobody has complained about *here*. What was
+                complained about is the picks panel, which now honours it.
+
+                What the decision does cost is a real thing to say out loud:
+                two sheets on one screen wear the same bar and only one of them
+                drags. The reason they are not the same gesture is that they
+                are not the same action — `dismiss()` throws the read away and
+                with it #16's photo, already in R2, whose only handle on screen
+                is this sheet. A cheap gesture for an expensive action needs its
+                own commit distance or its own undo, and #102 is explicit that
+                the decision is not its. Until someone makes it, the honest
+                position is that this bar is decoration and is documented as
+                decoration. */}
             <div className="grab" aria-hidden="true" />
             <div className="sheet-head">
               {/* slot is derived from the clock and shown; tapping cycles it.

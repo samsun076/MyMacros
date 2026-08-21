@@ -432,6 +432,17 @@ one meal) · `ACTIVITY_FACTORS` · `PROTEIN_G_PER_KG` · `ATHLETE_PROFILES` ·
 `src/shared/`, all reached by both the client preview and the Worker, which is the whole
 reason that directory exists.
 
+**One more single source, and it is the first that is client-only.** `claimAxis` ·
+`commits` · `INTENT_PX`, in `src/client/lib/gesture.ts` (#102). Two gestures now share
+one screen's worth of arbitration — #52's horizontal swipe-to-reveal and #102's vertical
+drag-to-dismiss — and they are mirror images of each other, which is exactly the shape
+that invites a copy with the axes swapped. **The constants stay per-gesture and are
+argued where they live** (88px of travel to reveal a control, 64px to throw a panel
+away); the *rule* is one function each: when a finger has moved enough to mean anything,
+which axis wins, and whether a release commits or springs back. `src/shared/` is for
+quantities that cross the wire — this one never leaves the client, so it sits beside its
+two consumers instead.
+
 **Deliberately two, and each is correct:**
 
 - **`localDay()` vs `dayInTimezone()`** — the device owns the local day when a person is

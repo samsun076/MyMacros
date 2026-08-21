@@ -1,14 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { claimAxis, commits } from "./gesture";
 
 /** Swipe-left-to-reveal, on pointer events and no library (#52).
  *
  *  **The whole problem is telling a swipe from a scroll**, on a screen whose
- *  main gesture is vertical. A touch that starts on a timeline row is far more
- *  often the beginning of a scroll than the beginning of a delete, so this
- *  never claims the gesture up front: it watches the first few pixels, and the
- *  axis whose movement is larger wins once either passes `INTENT_PX`. Until
- *  then nothing moves and nothing is captured, so a scroll that happens to
- *  start with a degree of horizontal drift behaves exactly as it did before.
+ *  main gesture is vertical — and since #102 that problem has two owners, so
+ *  the answer to it lives in `gesture.ts` and this file only applies it. What
+ *  remains here is everything specific to *this* gesture: which direction it
+ *  runs, how far, and what the travel drives.
  *
  *  Once horizontal wins, the pointer is captured and `preventDefault` stops the
  *  page scrolling under the drag. Once vertical wins, this component is out of
@@ -32,10 +31,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
  *  at once.
  */
 
-/** How far before the gesture commits to an axis. Below Apple's ~10pt, which
- *  reads as sluggish on a 375px screen where a row is only ~110px tall. */
-const INTENT_PX = 8;
-
 /** **How far the finger travels, and nothing else** (#91).
  *
  *  It used to be three quantities wearing one name: the travel, the width of
@@ -56,7 +51,9 @@ const INTENT_PX = 8;
 export const REVEAL_PX = 88;
 
 /** Past this, letting go opens rather than snapping back. Deliberately less
- *  than half: the gesture is a flick, not a drag to a target. */
+ *  than half: the gesture is a flick, not a drag to a target. A fraction of
+ *  *this* gesture's travel — `sheet-drag.ts` states its own, and `commits()`
+ *  in `gesture.ts` is the one place either is compared against. */
 const COMMIT_PX = REVEAL_PX * 0.4;
 
 /** How far *in* the panel is, 0 (off-stage) … 1 (at rest), for a given offset.
@@ -126,13 +123,14 @@ export function useSwipeToReveal(open: boolean, onOpenChange: (open: boolean) =>
     const dy = e.clientY - from.y;
 
     if (from.axis === "none") {
-      if (Math.abs(dx) < INTENT_PX && Math.abs(dy) < INTENT_PX) return;
-      from.axis = Math.abs(dx) > Math.abs(dy) ? "x" : "y";
-      if (from.axis === "y") {
+      const axis = claimAxis(dx, dy);
+      if (axis === "none") return;
+      if (axis === "y") {
         // The scroll won. Stand down for the rest of this gesture.
         start.current = null;
         return;
       }
+      from.axis = axis;
       e.currentTarget.setPointerCapture(e.pointerId);
     }
 
@@ -153,7 +151,10 @@ export function useSwipeToReveal(open: boolean, onOpenChange: (open: boolean) =>
         e.currentTarget.releasePointerCapture(e.pointerId);
       }
       setDrag(null);
-      onOpenChange(from.offset <= -COMMIT_PX);
+      // Negated because the offset runs left: what `commits` wants is how far
+      // the finger went *this gesture's way*, and the hook has already clamped
+      // a rightward drag to 0.
+      onOpenChange(commits(-from.offset, COMMIT_PX));
     },
     [onOpenChange],
   );
