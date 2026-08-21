@@ -172,7 +172,26 @@ export function Log() {
   const [picksOpen, setPicksOpen] = useState(() => window.location.hash === "#picks");
   const openedAt = useRef(Date.now());
   const { data: favData, reload: reloadFavs } = useApi<FavoritesResponse>("/api/favorites");
-  const { data: recentData } = useApi<RecentsResponse>("/api/food-logs/recent");
+  const { data: recentData, reload: reloadRecents } = useApi<RecentsResponse>("/api/food-logs/recent");
+
+  /** A star changes BOTH feeds, so a star re-reads both (#117).
+   *
+   *  It always moved a meal from the recents half to the favourites half; what
+   *  it does now as well is free a slot for the next unstarred meal, because
+   *  `GET /api/food-logs/recent` no longer spends one of its eight on a meal
+   *  that is already listed above. Re-reading favourites alone would leave the
+   *  panel one row shorter than what the server would send, until the screen
+   *  was next mounted — the fix would be real and invisible on the surface it
+   *  is about.
+   *
+   *  One statement, called from both stars: the picks row's and the confirm
+   *  sheet's (#103). Nothing here is optimistic — the panel draws what the two
+   *  routes say, and `mergePicks` is what covers the moment when the two
+   *  answers are of different ages. */
+  const reloadPicks = useCallback(() => {
+    reloadFavs();
+    reloadRecents();
+  }, [reloadFavs, reloadRecents]);
 
   // An object URL is a document-lifetime handle on the frame's bytes, so the
   // previous one is released whenever it's replaced and on the way out.
@@ -252,7 +271,7 @@ export function Log() {
     try {
       if (pick.favorite) await api.del(`/api/favorites/${pick.favorite.id}`);
       else await api.post("/api/favorites", pick.meal);
-      reloadFavs();
+      reloadPicks();
     } catch {
       /* a failed star toggle is not worth an error state */
     }
@@ -288,7 +307,7 @@ export function Log() {
       } else {
         setStarEdit({ name: draft.name, favorite: await api.post<Favorite>("/api/favorites", draft) });
       }
-      reloadFavs();
+      reloadPicks();
     } catch {
       setError(
         readFavorite

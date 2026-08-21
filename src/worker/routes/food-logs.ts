@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import type { FoodLogCreate, FoodLogsCreated, RecentsResponse } from "../../shared/api";
-import { foldMeals } from "../../shared/meals";
+import { foldMeals, mealNameKey } from "../../shared/meals";
 import { ownedPhotoKey } from "../photos";
 import type { AppEnv } from "../types";
 import { isDay, isInstant, isNum, oneOf } from "../validate";
@@ -16,29 +16,99 @@ const foodLogs = new Hono<AppEnv>();
  *  panel shows is what this route sends. The client deliberately does not
  *  restate the number: it would be a second opinion about a length this route
  *  owns, the same way re-sorting would be a second opinion about the order
- *  `orderBy` below already decides. `food-logs.route.test.ts` pins it. */
+ *  `orderBy` below already decides. `food-logs.route.test.ts` pins it.
+ *
+ *  **It counts rows the panel will draw, which it did not before #117.** The
+ *  cap used to be spent on starred meals that `mergePicks` then removed, so
+ *  starring a recent meal did not move it from the recents half to the
+ *  favourites half — it consumed a recents slot and then vanished from it, and
+ *  no older meal could slide up because the window had already closed here.
+ *  Eight stars emptied the half. Measured in production the morning of
+ *  2026-08-21: nine favourites, the eight meals this route returned were all
+ *  nine of them (bar one just out of reach), the recents half was empty, and
+ *  the panel had shrunk to nine rows that no longer scrolled. */
 const RECENTS_MAX = 8;
+
+/** How far back the search for those meals reads, in rows — **a different
+ *  quantity from `RECENTS_MAX`, and it needs its own argument** (#117).
+ *
+ *  One is "how many meals does the panel get"; this is "how much history do we
+ *  look through to find them". They were never the same number and the first
+ *  never implied the second; before #117 this one was an unnamed `.limit(60)`,
+ *  and naming it is the point — it is the next bound down from the one #117
+ *  fixed, exactly the way CLAUDE.md's corollary says to expect.
+ *
+ *  **Sixty, carried and examined rather than inherited.** The exclusion above
+ *  makes this bound do real work for the first time: starred meals are by
+ *  definition the ones eaten most often, so they are the *densest* rows in any
+ *  window, and skipping them spends history faster than the old dedupe did.
+ *  Measured against production on 2026-08-21 (read-only pull, 86 rows in the
+ *  table): the newest 60 rows fold to 49 meals and 35 distinct names, of which
+ *  9 are starred and **26 are not** — better than three times the eight this
+ *  route needs. The seeded demo history is the opposite shape, three meals on
+ *  repeat for twenty days, and yields 9 distinct in the same 60 rows. Both are
+ *  fine, and the second is why the number is not smaller.
+ *
+ *  **What happens when it is exhausted is the reason it is not larger.** A
+ *  window with fewer than `RECENTS_MAX` unstarred meals returns fewer, and that
+ *  answer is honest: every meal it skipped is already on the panel, in the
+ *  favourites half, one row further up. Nothing is hidden and nothing is lost,
+ *  which is precisely what could not be said before #117. The alternative —
+ *  read deeper until eight are found — pads the *recents* half with things
+ *  eaten two months ago, which is not what the word means, and buys it with an
+ *  unbounded scan. */
+const SCAN_ROWS = 60;
 
 /** GET /api/food-logs/recent (#12): the last few distinct meals, newest
  *  first, each folded the same way the timeline folds them (rows sharing a
  *  logged_at instant are one meal). Deduped by name so "the usual" shows up
- *  once no matter how often it was logged. */
+ *  once no matter how often it was logged — and, since #117, deduped against
+ *  the caller's *favourites* by the same rule and in the same pass, so a meal
+ *  that is already one tap away above never costs a slot down here.
+ *
+ *  **The exclusion has to happen after the fold, and never in the SQL.**
+ *  Excluding rows by name looks equivalent and is not: a meal's name is the
+ *  fold of its items ("Grilled chicken breast, jasmine rice, steamed
+ *  broccoli"), which is no single row's name, so a `WHERE name NOT IN
+ *  (favourites)` would drop one item out of a three-item meal and hand back a
+ *  meal with a different name *and* two thirds of its calories. The favourite
+ *  is a whole meal; the row is not.
+ *
+ *  **The client still filters too, and that is not a second opinion** — see
+ *  `mealNameKey`, which both sides call. Favourites and recents are two
+ *  fetches and starring reloads them one at a time, so for one window the
+ *  recents list on screen still carries a meal the favourites list has just
+ *  claimed. The route decides what a *slot* is spent on; the client decides
+ *  what a *row* is, given two answers of different ages. */
 foodLogs.get("/recent", async (c) => {
-  const rows = await c.var.db
-    .selectFrom("food_logs")
-    .selectAll()
-    .where("user_id", "=", c.var.user.id)
-    .orderBy("logged_at", "desc")
-    .limit(60)
-    .execute();
+  const [rows, starred] = await Promise.all([
+    c.var.db
+      .selectFrom("food_logs")
+      .selectAll()
+      .where("user_id", "=", c.var.user.id)
+      .orderBy("logged_at", "desc")
+      .limit(SCAN_ROWS)
+      .execute(),
+    c.var.db
+      .selectFrom("favorites")
+      .select("name")
+      .where("user_id", "=", c.var.user.id)
+      .execute(),
+  ]);
 
   // Folded by the same function the Today timeline folds with (#86) — the two
   // used to carry separate copies of this, which could disagree about what
   // counts as one meal without anything failing.
-  const seen = new Set<string>();
+  //
+  // One set, primed with the meals the panel is already showing above (#117).
+  // "Already listed" is one idea here, not two: a name skipped because a newer
+  // save had it and a name skipped because it is starred take the same branch
+  // and neither reaches the counter. That is what makes the cap unspendable on
+  // a row nobody will see — not an extra filter, an extra *seed*.
+  const seen = new Set<string>(starred.map((f) => mealNameKey(f.name)));
   const meals = [];
   for (const meal of foldMeals(rows)) {
-    const dedupe = meal.name.toLowerCase();
+    const dedupe = mealNameKey(meal.name);
     if (seen.has(dedupe)) continue;
     seen.add(dedupe);
     meals.push({

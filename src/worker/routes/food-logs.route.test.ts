@@ -5,11 +5,13 @@ import type {
   DayResponse,
   FoodLogItemInput,
   FoodLogsCreated,
+  RecentMeal,
   RecentsResponse,
 } from "../../shared/api";
 import { createDb } from "../db";
 import type { AppEnv } from "../types";
 import day from "./day";
+import favorites from "./favorites";
 import foodLogs from "./food-logs";
 
 /** The save route's record of what the reader said (#76), against real D1.
@@ -37,6 +39,13 @@ app.route("/api/food-logs", foodLogs);
 // *not recorded*" is a claim about the reader, and asserting it against the
 // save route's own 201 body would only prove the row it just built.
 app.route("/api/day", day);
+// And the favourites route for the same reason (#117): what /recent hides is
+// "a meal this user has starred", which is a claim about two routes agreeing
+// on what a stored favourite looks like. Forging rows into `favorites` with
+// raw SQL would let these pass against a name the star can never produce —
+// `favoriteName` trims and truncates on the way in, and that is exactly the
+// kind of gap where one side matches and the other doesn't.
+app.route("/api/favorites", favorites);
 
 const save = (body: unknown) =>
   app.fetch(
@@ -610,25 +619,45 @@ async function rowCount() {
  *
  *  Fifteen meals rather than nine, so a route that had quietly grown a
  *  `.limit(10)` in front of the fold would still fail this. */
-describe("GET /api/food-logs/recent — the only bound on the recents half (#115)", () => {
-  const recents = () =>
-    app.fetch(new Request("https://fuel.debrief.run/api/food-logs/recent"), env);
+const recents = () => app.fetch(new Request("https://fuel.debrief.run/api/food-logs/recent"), env);
 
-  async function saveDistinctMeals(n: number) {
-    for (let i = 1; i <= n; i++) {
-      const res = await save(
-        meal({
-          // Distinct instants: `foldMeals` groups on `logged_at|meal_slot`, so
-          // saves sharing a millisecond would fold into ONE meal and the test
-          // would pass by having too little data rather than by the cap.
-          logged_at: `2026-08-10T${String(i).padStart(2, "0")}:00:00.000Z`,
-          items: [item({ name: `Meal ${i}` })],
-        }),
-      );
-      if (res.status !== 201) throw new Error(`seed ${i} failed: ${res.status}`);
-    }
+/** `Meal 1` … `Meal n`, oldest first, so `Meal n` is the newest. Shared by
+ *  #115's cap and #117's exclusion below — the two describe the same route
+ *  from either side of the same loop, and seeding it two ways would let them
+ *  drift into testing two different histories. */
+async function saveDistinctMeals(n: number) {
+  for (let i = 1; i <= n; i++) {
+    const res = await save(
+      meal({
+        // Distinct instants: `foldMeals` groups on `logged_at|meal_slot`, so
+        // saves sharing a millisecond would fold into ONE meal and the test
+        // would pass by having too little data rather than by the cap.
+        logged_at: `2026-08-10T${String(i).padStart(2, "0")}:00:00.000Z`,
+        items: [item({ name: `Meal ${i}` })],
+      }),
+    );
+    if (res.status !== 201) throw new Error(`seed ${i} failed: ${res.status}`);
   }
+}
 
+/** Star a meal exactly the way the picks row does — `api.post("/api/favorites",
+ *  pick.meal)`, the whole `RecentMeal` as the body. Throws rather than
+ *  asserting: a star that failed to land is a broken fixture, and a fixture
+ *  failure that reads as a test failure sends the next person to the wrong
+ *  file. */
+async function starMeal(m: Pick<RecentMeal, "name" | "kcal" | "protein_g" | "carbs_g" | "fat_g">) {
+  const res = await app.fetch(
+    new Request("https://fuel.debrief.run/api/favorites", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(m),
+    }),
+    env,
+  );
+  if (!res.ok) throw new Error(`star "${m.name}" failed: ${res.status}`);
+}
+
+describe("GET /api/food-logs/recent — the only bound on the recents half (#115)", () => {
   it("stops at eight distinct meals however long the history is", async () => {
     await saveDistinctMeals(15);
     const { meals } = await (await recents()).json<RecentsResponse>();
@@ -642,5 +671,174 @@ describe("GET /api/food-logs/recent — the only bound on the recents half (#115
       "Meal 9",
       "Meal 8",
     ]);
+  });
+});
+
+/* ── #117: the cap is spent on rows the panel will actually draw ──────────── */
+
+/** **Starring a meal used to make the shortcut list shorter.** The cap above
+ *  ran first and `mergePicks` removed the starred meals afterwards, so a star
+ *  did not move a meal from the recents half to the favourites half — it burned
+ *  a recents slot and then vanished from it, and no older meal could take the
+ *  place, because the window had already closed here. Production on 2026-08-21:
+ *  nine favourites, all eight returned meals starred, recents half empty, the
+ *  panel down to nine rows that no longer scrolled.
+ *
+ *  Every test below stars through `POST /api/favorites` rather than inserting
+ *  into the table, because the claim under test is that two routes agree about
+ *  what a starred meal is called. */
+describe("GET /api/food-logs/recent — a star must not cost a slot (#117)", () => {
+  /** The issue's own "done when", and the state production was in when it was
+   *  filed. Twenty meals: eight to star, eight to prove the half refills, four
+   *  spare so a route that had grown an off-by-one somewhere still fails. */
+  it("refills the half from older history when every meal it returned is starred", async () => {
+    await saveDistinctMeals(20);
+    const first = await (await recents()).json<RecentsResponse>();
+    if (first.meals.length !== 8) throw new Error(`fixture: expected 8, got ${first.meals.length}`);
+    for (const m of first.meals) await starMeal(m);
+
+    const { meals } = await (await recents()).json<RecentsResponse>();
+    expect(meals.map((m) => m.name)).toEqual([
+      "Meal 12",
+      "Meal 11",
+      "Meal 10",
+      "Meal 9",
+      "Meal 8",
+      "Meal 7",
+      "Meal 6",
+      "Meal 5",
+    ]);
+  });
+
+  /** One star, which is the actual gesture — A above is the accumulated state.
+   *  The starred meal leaves this list and `Meal 12` arrives at the end of it,
+   *  so the panel keeps every row it had and gains one.
+   *
+   *  **This test was first written as `expect(after.length).toBe(before.length)`
+   *  and that version was decorative**: the broken route also returned eight
+   *  both times — it returned the starred meal and let the client drop it, which
+   *  is the entire defect. A length that cannot tell the two apart reads as
+   *  coverage and is not, so the assertion is on *which* meals come back. */
+  it("fills the slot a star frees with the next meal down", async () => {
+    await saveDistinctMeals(20);
+    const before = await (await recents()).json<RecentsResponse>();
+    if (!before.meals[0]) throw new Error("fixture: nothing to star");
+    await starMeal(before.meals[0]);
+
+    const { meals } = await (await recents()).json<RecentsResponse>();
+    expect(meals.map((m) => m.name)).toEqual([
+      "Meal 19",
+      "Meal 18",
+      "Meal 17",
+      "Meal 16",
+      "Meal 15",
+      "Meal 14",
+      "Meal 13",
+      "Meal 12",
+    ]);
+  });
+
+  it("never lists a meal that is already starred", async () => {
+    await saveDistinctMeals(3);
+    await starMeal({ name: "Meal 2", kcal: 240, protein_g: 15, carbs_g: 22, fat_g: 11 });
+
+    const { meals } = await (await recents()).json<RecentsResponse>();
+    expect(meals.map((m) => m.name)).toEqual(["Meal 3", "Meal 1"]);
+  });
+
+  /** `mealNameKey`, from both sides of the wire at once: the star stores one
+   *  case and the log holds another. The panel has hidden the duplicate
+   *  case-insensitively since #12 and the route has to hide the same one, or a
+   *  slot is spent on a row the client then removes — the defect again, wearing
+   *  a capital letter. */
+  it("matches the star case-insensitively, the way the panel does", async () => {
+    await saveDistinctMeals(2);
+    await starMeal({ name: "MEAL 2", kcal: 240, protein_g: 15, carbs_g: 22, fat_g: 11 });
+
+    const { meals } = await (await recents()).json<RecentsResponse>();
+    expect(meals.map((m) => m.name)).toEqual(["Meal 1"]);
+  });
+
+  /** The exclusion is a *meal* rule and cannot become a SQL `WHERE name NOT IN`
+   *  over rows. A meal's name is the fold of its items, which is no single
+   *  row's name — filtering rows would drop one item out of a three-item meal
+   *  and hand back a meal with a different name and two thirds of its calories.
+   *  This fails the moment anyone moves the filter into the query. */
+  it("excludes whole meals, not the rows a meal is folded from", async () => {
+    const res = await save(
+      meal({
+        items: [
+          item({ name: "Chicken breast" }),
+          item({ name: "Jasmine rice" }),
+          item({ name: "Steamed broccoli" }),
+        ],
+      }),
+    );
+    if (res.status !== 201) throw new Error(`fixture: save failed ${res.status}`);
+    await starMeal({ name: "Chicken breast", kcal: 240, protein_g: 15, carbs_g: 22, fat_g: 11 });
+
+    const { meals } = await (await recents()).json<RecentsResponse>();
+    expect(meals.map((m) => m.name)).toEqual(["Chicken breast, jasmine rice, steamed broccoli"]);
+  });
+
+  /** Empty is an honest answer here and was not before. Every meal it skipped
+   *  is already on the panel one row further up, in the favourites half — so
+   *  nothing is hidden, which is precisely what could not be said while the cap
+   *  ran first. */
+  it("returns nothing when the whole window is already on the panel", async () => {
+    await saveDistinctMeals(3);
+    for (const m of (await (await recents()).json<RecentsResponse>()).meals) await starMeal(m);
+
+    const { meals } = await (await recents()).json<RecentsResponse>();
+    expect(meals).toEqual([]);
+  });
+});
+
+/** **`SCAN_ROWS` is the other quantity, and #117 is what made it do any work.**
+ *  `RECENTS_MAX` is how many meals the panel gets; this is how much history the
+ *  search reads to find them, and it had never bound anything while the route
+ *  returned the newest eight distinct names — the newest 60 rows always hold
+ *  eight of those. Skipping starred meals spends the window, so it can now be
+ *  reached, and CLAUDE.md's rule is that a bound nobody has reached has never
+ *  been tested.
+ *
+ *  Both sides on purpose: an `expect([...])` that only checks the far edge
+ *  passes just as well against a route that reads nothing at all. Sixty rows
+ *  from twenty three-item saves, so the fold does the work rather than sixty
+ *  round trips. */
+describe("GET /api/food-logs/recent — how far back it reads (#117)", () => {
+  /** `n` saves of the same three items — one distinct meal name, 3n rows. */
+  async function fillRows(saves: number) {
+    for (let i = 1; i <= saves; i++) {
+      const res = await save(
+        meal({
+          logged_at: `2026-08-10T${String(i).padStart(2, "0")}:00:00.000Z`,
+          items: [item({ name: "Filler" }), item({ name: "More filler" }), item({ name: "Yet more" })],
+        }),
+      );
+      if (res.status !== 201) throw new Error(`filler ${i} failed: ${res.status}`);
+    }
+  }
+
+  const older = () =>
+    save(
+      meal({
+        logged_at: "2026-08-09T12:00:00.000Z",
+        items: [item({ name: "Older meal" })],
+      }),
+    );
+
+  it("reads a meal sitting on the 58th row", async () => {
+    await older();
+    await fillRows(19);
+    const { meals } = await (await recents()).json<RecentsResponse>();
+    expect(meals.map((m) => m.name)).toEqual(["Filler, more filler, yet more", "Older meal"]);
+  });
+
+  it("does not read one sitting on the 61st", async () => {
+    await older();
+    await fillRows(20);
+    const { meals } = await (await recents()).json<RecentsResponse>();
+    expect(meals.map((m) => m.name)).toEqual(["Filler, more filler, yet more"]);
   });
 });

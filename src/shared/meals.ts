@@ -98,3 +98,31 @@ export const FAVORITE_NAME_MAX = 120;
 export function favoriteName(name: string): string {
   return name.trim().slice(0, FAVORITE_NAME_MAX);
 }
+
+/** The key under which two meal names are "the same meal in a list" (#117).
+ *
+ *  **Both sides of the wire now hide a recent meal that is already starred, so
+ *  they have to agree about which meal that is.** `GET /api/food-logs/recent`
+ *  excludes a starred meal *before* it spends one of its slots on it — that is
+ *  #117's whole fix — and `mergePicks` excludes it again on the client, because
+ *  favourites and recents are two fetches and a star can land in one before the
+ *  other. Two independent statements of "same meal" would show up as one meal
+ *  listed twice, or as a recent that disappears for no reason; a third would be
+ *  worse. One function, called from both.
+ *
+ *  **Case-folding and nothing else, deliberately.** This is the rule
+ *  `mergePicks` has applied since #12, lifted rather than rewritten — a fix for
+ *  the *order* of a cap and a filter must not quietly change *what* the filter
+ *  matches. In particular it does not trim: `favoriteName` already trims
+ *  whatever the store holds, and a folded name is built by `foldMeals` out of
+ *  names the save route trimmed on the way in.
+ *
+ *  **Not `favoriteName`'s comparison, which answers a different question.**
+ *  "Would starring this write a second row?" is exact, because
+ *  `POST /api/favorites` matches on a column with no `COLLATE NOCASE`; see
+ *  `favoriteNamed` in lib/picks.ts, which is deliberately strict for that
+ *  reason. This one is a *display* rule — do not list the same meal twice —
+ *  and being lenient there costs nothing. */
+export function mealNameKey(name: string): string {
+  return name.toLowerCase();
+}

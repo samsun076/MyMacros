@@ -1,5 +1,5 @@
 import type { Favorite, MealSlot, RecentMeal } from "../../shared/api";
-import { favoriteName, foldMeals } from "../../shared/meals";
+import { favoriteName, foldMeals, mealNameKey } from "../../shared/meals";
 
 /** The "picks" list: starred meals first, then recent ones that aren't
  *  already starred (#12, lifted out of Log.tsx by #82).
@@ -39,7 +39,14 @@ import { favoriteName, foldMeals } from "../../shared/meals";
  *    that used to sit either side of the wire were one quantity written
  *    twice; only the route's remains.
  *  - **Their slots are reserved by construction.** Nothing truncates the join,
- *    so no number of favourites can crowd the recents out.
+ *    so no number of favourites can crowd the recents out. **And since #117
+ *    they cannot be spent from the other side either.** The route used to fill
+ *    its eight and let the filter below empty them again, so starring a recent
+ *    meal did not move it up here — it destroyed a slot, and starring eight
+ *    left this half empty while unstarred history sat just outside the window,
+ *    unreachable. The route now skips a starred meal before it spends a slot on
+ *    it. The filter below stays, and is no longer the thing the panel's length
+ *    depends on: see `mealNameKey`, which both sides call.
  *
  *  **Both placements are handed the whole list and render all of it, and the
  *  reason they can differ in layout without differing in length is stated
@@ -74,10 +81,20 @@ export function mergePicks(
 ): Pick[] {
   const favs: Pick[] = (favorites ?? []).map((f) => ({ meal: f, favorite: f }));
   // Case-insensitive: "Greek yoghurt" starred should hide "greek yoghurt" from
-  // the recents half rather than listing the same meal twice.
-  const starred = new Set(favs.map((p) => p.meal.name.toLowerCase()));
+  // the recents half rather than listing the same meal twice. `mealNameKey` is
+  // that rule, and `GET /api/food-logs/recent` calls the same one — it excludes
+  // a starred meal before spending a slot on it (#117), so most of the time
+  // this filter now matches nothing.
+  //
+  // **It is still load-bearing, for a window measured in one round trip.** The
+  // two feeds are two fetches: starring reloads both, and between the first
+  // landing and the second the recents list on screen is older than the
+  // favourites list beside it and still carries the meal that was just starred.
+  // Without this the panel would list it twice for that moment — once in each
+  // half, one of them with a hollow star.
+  const starred = new Set(favs.map((p) => mealNameKey(p.meal.name)));
   const rest: Pick[] = (recents ?? [])
-    .filter((m) => !starred.has(m.name.toLowerCase()))
+    .filter((m) => !starred.has(mealNameKey(m.name)))
     .map((meal) => ({ meal, favorite: null }));
   return [...favs, ...rest];
 }

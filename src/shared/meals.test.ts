@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { FAVORITE_NAME_MAX, favoriteName, foldMeals, type MealRow } from "./meals";
+import { FAVORITE_NAME_MAX, favoriteName, foldMeals, mealNameKey, type MealRow } from "./meals";
 
 /** The fold used to exist twice — once on the Today timeline, once in
  *  GET /api/food-logs/recent — with the same key and the same name-joining
@@ -89,5 +89,25 @@ describe("favoriteName", () => {
 
   it("states the ceiling as 120", () => {
     expect(FAVORITE_NAME_MAX).toBe(120);
+  });
+});
+
+/** #117 gave the route the same "already listed" rule the panel has had since
+ *  #12, so the rule stopped being one function's private business and became a
+ *  thing two sides of the wire have to agree on. These pin what it is — and,
+ *  more usefully, what it is *not*: it is not `favoriteName`, which answers the
+ *  store's question ("would starring this write a second row?") and is exact
+ *  for that reason. */
+describe("mealNameKey", () => {
+  it("folds case, so a star under one spelling hides the meal under another", () => {
+    expect(mealNameKey("Pad Thai")).toBe(mealNameKey("PAD THAI"));
+  });
+
+  /** Deliberately not `favoriteName`'s trim. A display dedupe that quietly
+   *  normalised more than case would be a second, laxer definition of "the same
+   *  meal" than the one the store uses — and #117 was a fix for the *order* of
+   *  a cap and a filter, not licence to change what the filter matches. */
+  it("leaves whitespace alone", () => {
+    expect(mealNameKey(" Pad Thai ")).toBe(" pad thai ");
   });
 });
