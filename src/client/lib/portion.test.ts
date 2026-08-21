@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { AnalyzedItem } from "../../shared/api";
-import { type EditableItem, editable, portionLabel, savedPortion, setPortionQty } from "./portion";
+import { FOOD_LIMITS, isMeasuredPortionUnit, portionQtyRule } from "./numeric";
+import { type EditableItem, editable, portionLabel, savedGrams, savedPortion, setPortionQty } from "./portion";
 
 /** #58. The property this file exists for is **drift**, and it is the one a
  *  screenshot and a single tap both miss: a rescale that starts from the
@@ -225,6 +226,91 @@ describe("savedPortion", () => {
       confidence: null,
     });
     expect(savedPortion(blank)).toBeNull();
+  });
+});
+
+/** #107, and it is #104's defect one control over. The barcode sheet's HOW
+ *  MUCH field has rescaled every macro since #15 and the number itself has
+ *  never been saved — so a row says "Greek yoghurt, 2%, 146 kcal" and nothing
+ *  on it says whether that was 100 g, 150 g or the tub.
+ *
+ *  There is exactly one way to get this wrong while producing a well-formed
+ *  row, and it is the same shape `savedPortion` names: read the reader's
+ *  amount off something a rescale has already moved. At read level that is
+ *  `read.grams`. It is worse here than it is one level down, because
+ *  `setGrams` rebuilds every row with `editable(scaled)` — which moves BOTH
+ *  `orig` and `base` — so after one adjustment `read.baseGrams` is the only
+ *  surviving copy of what the read arrived at, anywhere in the app.
+ *
+ *  **The figures below are 150 over a base of 100 on purpose.** An unscaled
+ *  save has the two equal, so it cannot tell a correct implementation from one
+ *  reading `grams` twice — every assertion about provenance has to be made
+ *  against a sheet somebody has actually adjusted. */
+describe("savedGrams", () => {
+  /** A 150 g helping of a product the reader opened at 100 g. */
+  const SCALED = { grams: 150, baseGrams: 100 };
+
+  it("sends the grams the user settled on", () => {
+    expect(savedGrams(SCALED)?.portion_qty).toBe(150);
+  });
+
+  it("sends the AS-READ grams as the reader's, not the scaled ones", () => {
+    // `read.grams` is 150 here. Reading it would be the whole defect.
+    expect(savedGrams(SCALED)?.ai_portion_qty).toBe(100);
+  });
+
+  it("labels the amount in grams", () => {
+    expect(savedGrams(SCALED)?.portion_unit).toBe("g");
+  });
+
+  /** The #109 interlock, asserted where the label is chosen. The save route
+   *  reads this string to pick the qty ceiling, so a label that fell out of
+   *  MEASURED_PORTION_UNITS would bound a gram weight at 100 and refuse the
+   *  150 above — a 400 on the save, from a change nowhere near it. */
+  it("labels it with a MEASURED unit, or the route bounds grams at 100", () => {
+    expect(isMeasuredPortionUnit(savedGrams(SCALED)?.portion_unit)).toBe(true);
+  });
+
+  /** The other half: same list, same number. #109 derived
+   *  `portion_qty_measured.max` from `grams.max` precisely so "the field
+   *  accepted it" and "the route will store it" are one statement. */
+  it("and that unit's ceiling is the grams field's own ceiling", () => {
+    expect(portionQtyRule(savedGrams(SCALED)?.portion_unit).max).toBe(FOOD_LIMITS.grams.max);
+  });
+
+  /** 0006's rule, at the read level: equal, never null. "The reader's amount
+   *  was right" must not look like "nobody recorded the reader's amount". */
+  it("writes both amounts on an UNTOUCHED read rather than withholding them", () => {
+    expect(savedGrams({ grams: 100, baseGrams: 100 })).toEqual({
+      portion_qty: 100,
+      portion_unit: "g",
+      ai_portion_qty: 100,
+    });
+  });
+
+  it("withholds everything for a photo or text read, which has no grams", () => {
+    expect(savedGrams({})).toBeNull();
+  });
+
+  /** The boundary #109 left standing: a value the field accepts must reach the
+   *  column, or the ceiling silently became a refusal. */
+  it("carries the field's ceiling through — 2,000 g", () => {
+    expect(savedGrams({ grams: 2000, baseGrams: 2000 })?.portion_qty).toBe(2000);
+  });
+
+  it("carries the field's floor through — 1 g", () => {
+    expect(savedGrams({ grams: 1, baseGrams: 1 })?.portion_qty).toBe(1);
+  });
+
+  /** `defaultGrams` is not the field's number: it echoes OpenFoodFacts'
+   *  contributor-entered `serving_quantity`, which can be anything. Sending it
+   *  would 400 the whole save and make the product unloggable. */
+  it("withholds when the AS-READ amount is above what the route accepts", () => {
+    expect(savedGrams({ grams: 150, baseGrams: 5000 })).toBeNull();
+  });
+
+  it("withholds when a sub-gram serving rounded the read down to zero", () => {
+    expect(savedGrams({ grams: 0, baseGrams: 0 })).toBeNull();
   });
 });
 

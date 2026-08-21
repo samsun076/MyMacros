@@ -1,4 +1,5 @@
 import type { AnalyzedItem } from "../../shared/api";
+import { FOOD_LIMITS } from "./numeric";
 
 /** Scaling one item's portion on the confirm sheet (#58).
  *
@@ -93,6 +94,59 @@ export function savedPortion(item: EditableItem) {
   const read = item.base.portion;
   if (!now || !read) return null;
   return { portion_qty: now.qty, portion_unit: now.unit, ai_portion_qty: read.qty };
+}
+
+/** The label a gram weight is stored under (#107).
+ *
+ *  **It has to stay a MEASURED unit.** The save route picks the qty ceiling off
+ *  this string (#109): a label outside `MEASURED_PORTION_UNITS` bounds the
+ *  number beside it at 100, and every honest 150 g save would be refused. The
+ *  pairing is asserted in `portion.test.ts` rather than left to reading. */
+const GRAMS_UNIT = "g";
+
+/** The three columns a save writes for a BARCODE read's grams (#107), or
+ *  `null` when there is nothing to record.
+ *
+ *  **Per read, not per item, and that is deliberate.** `grams` lives on the
+ *  read because a barcode read is one product — one field, one number, every
+ *  row of the sheet rescaled by it. So every row of a barcode save carries the
+ *  **same** `portion_qty`, which will look odd to whoever reads the table next
+ *  and is correct: there is one amount, because there is one thing. #58's
+ *  per-item control answers a different question ("how many of these four
+ *  foods"), and the two are not unified — #15's reasons, restated in #107.
+ *
+ *  **`ai_portion_qty` is `baseGrams`, never `grams`**, and that one line is
+ *  the whole reason this function exists rather than an object literal at the
+ *  call site. It is `savedPortion`'s trap one level up: `setGrams` rescales
+ *  every row from `read.base`/`read.baseGrams` and rebuilds each one with
+ *  `editable(scaled)`, which moves **both** shadow copies — so after a single
+ *  adjustment a row's `orig` *and* its `base` describe the scaled figures, and
+ *  the as-read amount survives nowhere but `read.baseGrams`. Sending `grams`
+ *  for both would record "the reader said 150" about a read that arrived at
+ *  100: a well-formed row, wrong about the only question the column answers,
+ *  and unfixable afterwards because the read is gone the moment the sheet
+ *  closes.
+ *
+ *  **A quantity the field itself would refuse is withheld, not clamped.** The
+ *  typed value is always in range — `NumericField` clamps at commit — but the
+ *  as-read default is not the field's number: `defaultGrams` in
+ *  `routes/barcode.ts` hands back whatever OpenFoodFacts' contributor-entered
+ *  `serving_quantity` says, and `Math.round` of a sub-gram serving is 0.
+ *  Sending either would 400 the entire save (`invalid_portion`) and turn a
+ *  meal that logs today into one that cannot be logged at all — a worse bug
+ *  than the one this fixes. Null here means what null has always meant on
+ *  these columns: **not recorded**, exactly the state every barcode row was in
+ *  before this. Clamping is not the alternative on the table; #109 is the
+ *  record of what a clamped number costs in a column nobody can repair. */
+export function savedGrams(read: { grams?: number; baseGrams?: number }) {
+  const { grams, baseGrams } = read;
+  if (grams === undefined || baseGrams === undefined) return null;
+  if (!withinGrams(grams) || !withinGrams(baseGrams)) return null;
+  return { portion_qty: grams, portion_unit: GRAMS_UNIT, ai_portion_qty: baseGrams };
+}
+
+function withinGrams(n: number) {
+  return Number.isFinite(n) && n >= FOOD_LIMITS.grams.min && n <= FOOD_LIMITS.grams.max;
 }
 
 /** What the collapsed row says about the portion: `4 SLICES`, `1.5 CUPS`.

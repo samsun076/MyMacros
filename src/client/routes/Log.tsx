@@ -18,7 +18,7 @@ import { deviceTimezone, localDay, mealSlotFor } from "../lib/day";
 import { fmtInt } from "../lib/format";
 import { FOOD_LIMITS, type NumericRule, portionQtyRule } from "../lib/numeric";
 import { type Pick, mergePicks } from "../lib/picks";
-import { type EditableItem, editable, portionLabel, savedPortion, setPortionQty } from "../lib/portion";
+import { type EditableItem, editable, portionLabel, savedGrams, savedPortion, setPortionQty } from "../lib/portion";
 
 /** The log flow: capture → editable confirm sheet → saved.
  *
@@ -455,6 +455,11 @@ export function Log() {
     // typed from scratch is not an edit — there was nothing to correct (#16).
     const manual = read.manual !== undefined;
     const edited = manual ? [] : read.items.filter(isEdited);
+    // #107: a barcode read's portion is the HOW MUCH field, and it is one
+    // number for the whole read — so it is resolved once, out here, rather
+    // than per item inside the map. Every row of a barcode save gets the same
+    // `portion_qty` because a barcode read is one product; see `savedGrams`.
+    const readGrams = savedGrams(read);
     try {
       await api.post("/api/food-logs", {
         logged_on: localDay(),
@@ -485,16 +490,23 @@ export function Log() {
                 ai_protein_g: it.orig.protein_g,
                 ai_carbs_g: it.orig.carbs_g,
                 ai_fat_g: it.orig.fat_g,
-                // #104: how much of it, and how much the reader said it was.
-                // Same argument as the four above and the same window — the
-                // portion lives in this sheet's memory and nowhere else until
-                // the save. **`savedPortion` reads `base`, not `orig`**: a
-                // portion change deliberately moves `orig` (#58), so `orig`
-                // holds the user's number after a rescale and would record
-                // the reader as having said whatever the user said. Withheld
-                // whole for a read that proposed no portion, exactly as the
-                // `ai_*` set is withheld for #16's blank row.
-                ...savedPortion(it),
+                // #104/#107: how much of it, and how much the reader said it
+                // was. Same argument as the four above and the same window —
+                // the portion lives in this sheet's memory and nowhere else
+                // until the save. **Both functions read the as-read copy, not
+                // `orig`**: a portion change deliberately moves `orig` (#58),
+                // so after a rescale `orig` holds the *user's* number and
+                // would record the reader as having said whatever the user
+                // said. Withheld whole for a read that proposed no portion,
+                // exactly as the `ai_*` set is withheld for #16's blank row.
+                //
+                // The barcode number wins where there is one, and the order is
+                // stated rather than relied on: a barcode read's items carry
+                // no per-item `portion` today, so in practice this chooses
+                // between a value and a null — but the read-level grams is the
+                // field the user was actually looking at, and if a reader ever
+                // supplies both, that is the one the row should record.
+                ...(readGrams ?? savedPortion(it)),
               }),
         })),
       });
