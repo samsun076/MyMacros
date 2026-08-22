@@ -2137,3 +2137,79 @@ describe("POST /api/food-logs — provenance is stated by all the items or none 
     ]);
   });
 });
+
+/* ── #118: the payload a one-tap re-log actually sends ───────────────────────
+ *
+ * The unit test above pins what `relogItem` builds. This pins that the ROUTE
+ * accepts it — because the two halves failing together is exactly what
+ * happened: #81 tightened the contract here and nothing checked the one client
+ * that was already sending a wider object.
+ *
+ * The second test is the falsifiable one. It sends what the BROKEN client sent
+ * — a whole `Favorite` row spread into the item — and asserts the route still
+ * refuses it, because the route was never what was wrong. */
+describe("POST /api/food-logs — the one-tap re-log (#118)", () => {
+  const relogBody = {
+    logged_on: "2026-08-22",
+    meal_slot: "snack" as const,
+    source: "favorite" as const,
+    favorite_id: "fav-1",
+    items: [
+      {
+        name: "Barebells CHOCOLATE DOUGH",
+        kcal: 200,
+        protein_g: 20,
+        carbs_g: 21,
+        fat_g: 6,
+        confidence: null,
+        edited: false,
+      },
+    ],
+  };
+
+  it("accepts what relogItem builds", async () => {
+    const res = await save(relogBody);
+    expect(res.status).toBe(201);
+  });
+
+  it("stores it as a favorite-sourced row", async () => {
+    const saved = await (await save(relogBody)).json<FoodLogsCreated>();
+    expect(saved.logs[0]!.source).toBe("favorite");
+  });
+
+  it("stores no photo_key for it", async () => {
+    const saved = await (await save(relogBody)).json<FoodLogsCreated>();
+    expect(saved.logs[0]!.photo_key).toBeNull();
+  });
+
+  /* The broken shape, kept as a live example rather than described in a
+     comment: a `Favorite` row spread whole into the item. `photo_key: null` is
+     a STATEMENT under #81's contract, and stating one of the three without the
+     other two is refused — correctly. This is the assertion that would have
+     gone red the moment #81 landed, had it existed. */
+  it("still refuses a whole Favorite row spread into the item", async () => {
+    const res = await save({
+      ...relogBody,
+      items: [
+        {
+          id: "fav-1",
+          user_id: "someone",
+          ...relogBody.items[0]!,
+          photo_key: null,
+          use_count: 3,
+          last_used_at: "2026-08-21T00:00:00.000Z",
+          created_at: "2026-08-20T00:00:00.000Z",
+        },
+      ],
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("names that refusal invalid_item_provenance", async () => {
+    const res = await save({
+      ...relogBody,
+      items: [{ ...relogBody.items[0]!, photo_key: null }],
+    });
+    expect((await res.json<{ error: string }>()).error).toBe("invalid_item_provenance");
+  });
+});

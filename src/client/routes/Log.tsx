@@ -34,7 +34,7 @@ import { releaseCamera } from "../lib/camera";
 import { deviceTimezone, localDay, mealSlotFor } from "../lib/day";
 import { fmtInt } from "../lib/format";
 import { FOOD_LIMITS } from "../lib/numeric";
-import { type Pick, favoriteDraft, favoriteNamed, mergePicks } from "../lib/picks";
+import { type Pick, favoriteDraft, favoriteNamed, mergePicks, relogItem } from "../lib/picks";
 import {
   type EditableItem,
   editable,
@@ -481,7 +481,12 @@ export function Log() {
         meal_slot: mealSlotFor(),
         source: "favorite",
         favorite_id: pick.favorite?.id,
-        items: [{ ...pick.meal, confidence: null, edited: false }],
+        // Named fields, never a spread of `pick.meal` — a starred pick's meal
+        // IS the `Favorite` row, and spreading it put `photo_key` on the wire,
+        // which #81 made a *statement* rather than noise (#118). `relogItem`
+        // owns that and is tested; this line cannot own it, because nothing
+        // executes this file.
+        items: [relogItem(pick)],
       });
       void navigate("/", {
         state: {

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Favorite, RecentMeal } from "../../shared/api";
 import { FAVORITE_NAME_MAX } from "../../shared/meals";
-import { favoriteDraft, favoriteNamed, mergePicks } from "./picks";
+import { favoriteDraft, favoriteNamed, mergePicks, relogItem } from "./picks";
 
 /** #82's half of the fix. The merge was an untested `useMemo` inside Log.tsx
  *  and is now the single source both placements read — TEXT's inline list and
@@ -366,5 +366,84 @@ describe("favoriteNamed", () => {
 
   it("says nothing is starred for a meal with no name yet", () => {
     expect(favoriteNamed([fav("Pad thai")], "   ")).toBeNull();
+  });
+});
+
+/* ── #118: the one-tap re-log's save item ────────────────────────────────────
+ *
+ * The regression these exist for: `mergePicks` puts the whole `Favorite` row in
+ * as a pick's `meal`, `relog` spread it into the save item, and #81 had just
+ * made `photo_key` a *statement* — so every starred meal 400'd on the app's
+ * most-used shortcut. Found by a thumb, an hour after deploy, by nothing in
+ * this suite.
+ *
+ * The assertion that matters is the NEGATIVE one. "It sends the right five
+ * fields" was already true of the broken code — it sent those five and six
+ * more. Only "it sends nothing else" separates the two implementations, which
+ * is why the key-set test is first and the rest are regression guards. */
+describe("relogItem (#118)", () => {
+  const fav: Favorite = {
+    id: "fav-1",
+    user_id: "u-1",
+    name: "Barebells CHOCOLATE DOUGH",
+    kcal: 200,
+    protein_g: 20,
+    carbs_g: 21,
+    fat_g: 6,
+    photo_key: null,
+    use_count: 3,
+    last_used_at: "2026-08-21T00:00:00.000Z",
+    created_at: "2026-08-20T00:00:00.000Z",
+  };
+
+  it("sends NOTHING but the seven fields a save item has", () => {
+    expect(Object.keys(relogItem({ meal: fav, favorite: fav })).sort()).toEqual([
+      "carbs_g",
+      "confidence",
+      "edited",
+      "fat_g",
+      "kcal",
+      "name",
+      "protein_g",
+    ]);
+  });
+
+  it("never states photo_key, which is what #81 made load-bearing", () => {
+    expect("photo_key" in relogItem({ meal: fav, favorite: fav })).toBe(false);
+  });
+
+  it("never leaks the favourite's own row id", () => {
+    expect("id" in relogItem({ meal: fav, favorite: fav })).toBe(false);
+  });
+
+  it("carries the macros across unchanged", () => {
+    expect(relogItem({ meal: fav, favorite: fav })).toMatchObject({
+      name: "Barebells CHOCOLATE DOUGH",
+      kcal: 200,
+      protein_g: 20,
+      carbs_g: 21,
+      fat_g: 6,
+    });
+  });
+
+  it("records that nothing read it", () => {
+    expect(relogItem({ meal: fav, favorite: fav }).confidence).toBeNull();
+  });
+
+  it("is not an override of anything", () => {
+    expect(relogItem({ meal: fav, favorite: fav }).edited).toBe(false);
+  });
+
+  it("works the same for an UNSTARRED pick, whose meal is already narrow", () => {
+    const recent = { name: "Oats", kcal: 300, protein_g: 10, carbs_g: 50, fat_g: 5 };
+    expect(relogItem({ meal: recent, favorite: null })).toEqual({
+      name: "Oats",
+      kcal: 300,
+      protein_g: 10,
+      carbs_g: 50,
+      fat_g: 5,
+      confidence: null,
+      edited: false,
+    });
   });
 });

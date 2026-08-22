@@ -203,3 +203,53 @@ export function favoriteNamed(
   if (!stored) return null;
   return (favorites ?? []).find((f) => f.name === stored) ?? null;
 }
+
+/** The save item a one-tap re-log sends (#118).
+ *
+ *  **Five named fields, never a spread**, and that sentence is the whole fix.
+ *  `mergePicks` puts the `Favorite` itself in as a pick's `meal` — deliberately,
+ *  because that is what lets `favorite.id` ride along and bump `use_count` — so
+ *  a starred pick's `meal` is a whole database row wearing a `RecentMeal` type.
+ *  `Favorite` is structurally a superset of `RecentMeal`, so TypeScript is
+ *  satisfied and `{ ...pick.meal }` quietly puts `id`, `user_id`, `use_count`,
+ *  `last_used_at`, `created_at` **and `photo_key`** on the wire.
+ *
+ *  The first five were junk the route ignored. `photo_key` was not: #81 made
+ *  `photo_key`/`source`/`barcode` sayable per item, with **explicit `null`
+ *  meaning "none"** — which is load-bearing for a mixed basket, where the typed
+ *  mustard has to be able to say the photo does not show it. So a favourite
+ *  re-log started *stating* one of the three and none of the others, the
+ *  all-or-nothing guard fired, and every starred meal 400'd on the app's
+ *  most-used shortcut. Dave found it with his thumb inside an hour of the
+ *  deploy; nothing in the suite did.
+ *
+ *  **The route's contract is not what was wrong** and was deliberately not
+ *  changed: relaxing `null` back to "unstated" would give the basket two ways
+ *  to say nothing and take away the mustard's only way to say something. What
+ *  was wrong is a client shovelling a row it had into a request it was
+ *  building.
+ *
+ *  Here rather than inline in `Log.tsx`'s `relog` for the reason this session
+ *  established three separate times: **nothing in this repo executes
+ *  `Log.tsx`**, so a decision made in it has no oracle. Made here, it has one. */
+export function relogItem(pick: Pick): {
+  name: string;
+  kcal: number;
+  protein_g: number;
+  carbs_g: number;
+  fat_g: number;
+  confidence: null;
+  edited: false;
+} {
+  return {
+    name: pick.meal.name,
+    kcal: pick.meal.kcal,
+    protein_g: pick.meal.protein_g,
+    carbs_g: pick.meal.carbs_g,
+    fat_g: pick.meal.fat_g,
+    // Nothing read this — it is a meal the person already told us about. Same
+    // absence #16's blank row and every favorite re-log has always written.
+    confidence: null,
+    edited: false,
+  };
+}
