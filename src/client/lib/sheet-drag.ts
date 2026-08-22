@@ -1,7 +1,7 @@
 import { useCallback, useRef, useState } from "react";
 import { claimAxis, commits } from "./gesture";
 
-/** Drag a bottom sheet down to dismiss it (#102).
+/** Drag a bottom sheet down to dismiss it (#102, #118).
  *
  *  #82's picks panel drew `.grab` — the small centred bar every iOS sheet
  *  wears — because it borrows the confirm sheet whole, and then honoured
@@ -25,12 +25,32 @@ import { claimAxis, commits } from "./gesture";
  *  stylesheet. A handle that scrolls off the top is a handle you cannot reach
  *  at exactly the moment it is the only thing that would have worked.
  *
- *  **Only this panel gets the gesture**, and the confirm sheet deliberately
- *  does not: its dismiss throws away the read, and on #16's path a photo
- *  already written to R2 whose only handle on screen is that sheet. A cheap
- *  gesture for an expensive action needs a decision of its own — a much longer
- *  commit distance, or an undo — and #102 is explicit that the decision is not
- *  its. Dismissing the picks panel costs one more tap on the star.
+ *  **Every sheet gets the gesture now, and that is #118 rather than a drift**
+ *  (2026-08-22). #102 shipped it on the picks panel alone and named the cost of
+ *  stopping there in as many words — *"two sheets on one screen wear the same
+ *  bar and only one of them drags"* — with the confirm sheet's destructive
+ *  dismiss as the open question. Dave found the third sheet with his thumb:
+ *  *"the thumb down to close the drawer with the notch does not work."* A bar
+ *  that looks draggable and is not is the whole finding, and fixing one of the
+ *  three would have made that worse rather than better.
+ *
+ *  **What retires #102's objection is not a longer distance — it is #81.** The
+ *  rule this file now enforces by construction is that **a drag is exactly the
+ *  backdrop tap**: same handler, same guard, same consequence, no second
+ *  decision anywhere. So the confirm sheet's drag goes through
+ *  `needsDismissConfirm` — more than one capture asks first — because that is
+ *  what its backdrop already does. #102 asked for "its own commit distance **or**
+ *  its own undo"; #81 shipped the guard, so the second condition is met and the
+ *  objection is retired rather than overridden. The corollary is the reason this
+ *  is cheap: the gesture introduces no new way to lose anything, because every
+ *  way out it can reach was already reachable by tapping beside the sheet.
+ *
+ *  **Three consumers, one rule.** `Log.tsx` mounts it twice (the picks panel,
+ *  the confirm sheet) and `EditMealSheet.tsx` once. Nothing about the commit
+ *  distance is restated at any of them: `dismissDistance` reads the rendered
+ *  height, which is #114's answer to a fixed number and is exactly as necessary
+ *  here — a one-item meal is a short sheet and a four-item basket is a tall one,
+ *  so both new sheets have the size problem the picks panel had.
  */
 
 /** Marks the sheet's drag handle, so the hook can tell a drag that started
@@ -129,6 +149,58 @@ export type SheetDragState = {
    *  the transition so the sheet tracks the finger instead of easing after it. */
   dragging: boolean;
 };
+
+/** What a dragged sheet's `style` attribute has to say, stated once (#118).
+ *
+ *  **This was nine lines of inline JSX on the picks panel and it is here now
+ *  because #118 made it three.** Two of its four properties are decisions
+ *  rather than plumbing, and both fail silently when restated wrongly — which
+ *  is the register's own test for what belongs in one place:
+ *
+ *  **Identity at rest is `undefined`, not `translate3d(0,0,0)`.** They render
+ *  the same and they are not the same: the stylesheet's `transition: transform`
+ *  has nothing to ease *from* if the property was never there, so a spring-back
+ *  written as a zero transform would animate correctly while a *cancelled*
+ *  gesture — which sets no offset at all — would snap. One of the three sheets
+ *  getting that wrong is a difference nobody would attribute to the style
+ *  object.
+ *
+ *  **`transition: none` only while a finger is down.** Without it the sheet
+ *  eases *after* the thumb instead of tracking it, at 180ms of lag; with it
+ *  left on after release there is no spring-back to see and a refused drag
+ *  reads as a stutter. Both are feel, so both are invisible to every check in
+ *  this repo — see `tools/sheet-drag.test.mjs` on why the declarations are
+ *  asserted rather than the motion.
+ *
+ *  A plain object rather than a hook-internal memo: it is derived from two
+ *  numbers and is consumed by exactly one `style` prop per sheet. */
+export function dragStyle(state: SheetDragState): {
+  transform?: string;
+  transition?: string;
+} {
+  return {
+    transform: state.offsetPx ? `translate3d(0,${state.offsetPx}px,0)` : undefined,
+    transition: state.dragging ? "none" : undefined,
+  };
+}
+
+/** Did this click land on the backdrop itself rather than on the sheet
+ *  standing in front of it? (#118)
+ *
+ *  Three sheets wrote this same identity test inline, one each, and #118's
+ *  whole safety argument is that **a downward drag is exactly the backdrop
+ *  tap** — same handler, same guard, same consequence. An argument that rests
+ *  on two exits agreeing is an argument that rests on nobody editing one of
+ *  them, so the hook now hands out both and this is the half that was loose.
+ *
+ *  The identity comparison is the rule and not an implementation detail: a
+ *  `.sheet-wrap` is a full-screen flex container with the sheet as its only
+ *  child, so every click inside the sheet bubbles to it. Reading anything
+ *  looser — `closest`, a bounding-box hit test — dismisses the sheet on a tap
+ *  meant for a macro field. */
+export function backdropTap(e: { target: unknown; currentTarget: unknown }): boolean {
+  return e.target === e.currentTarget;
+}
 
 export function useDragToDismiss(onDismiss: () => void) {
   /** The offset while a finger is down, null the rest of the time. A sheet
@@ -284,6 +356,24 @@ export function useDragToDismiss(onDismiss: () => void) {
 
   return {
     state,
+    /** Spread onto the sheet's `style`. Returned from the hook rather than left
+     *  to the caller so that a third sheet cannot arrive with a fourth opinion
+     *  about what "at rest" looks like — see `dragStyle`. */
+    style: dragStyle(state),
+    /** Spread onto the `.sheet-wrap` *behind* the sheet (#118).
+     *
+     *  **It comes out of the same call as the drag on purpose.** The gesture is
+     *  defensible only because it reaches nothing the backdrop did not already
+     *  reach — on the confirm sheet that means #81's discard confirmation and
+     *  #59's refusal mid-re-read, neither of which this file knows anything
+     *  about and neither of which it has to. Handing both exits out of one
+     *  `onDismiss` is what makes that a property of the code rather than a
+     *  claim in a comment: there is no second handler to drift. */
+    backdrop: {
+      onClick: (e: React.MouseEvent<HTMLElement>) => {
+        if (backdropTap(e)) onDismiss();
+      },
+    },
     /** Spread onto the sheet. `ref` is part of the gesture, not decoration —
      *  see `dragSurface`; without it the drag is cancelled out from under
      *  itself on the first list that has nothing to scroll. */

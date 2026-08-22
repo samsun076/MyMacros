@@ -4,7 +4,9 @@ import { api } from "../lib/api";
 import { MAX_MEAL_ITEMS } from "../lib/basket";
 import { fmtInt } from "../lib/format";
 import { blankItem, editableFromLog, setPortionQty, type EditableItem } from "../lib/portion";
+import { useDragToDismiss } from "../lib/sheet-drag";
 import { ItemRow } from "./ItemRow";
+import { SheetHandle } from "./SheetHandle";
 
 /** Reopen a saved timeline entry and correct it (#60).
  *
@@ -85,6 +87,30 @@ export function EditMealSheet({
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose, saving]);
 
+  /** …and a downward drag closes it too (#118).
+   *
+   *  **`onClose` itself, unwrapped, and that is the whole design of this
+   *  change.** The comment this replaces called the bar decoration and said a
+   *  drag "would be defensible"; what made it *cheap* is that the drag is
+   *  exactly the backdrop tap — the same handler the `sheet-wrap` click above
+   *  already calls, so there is no new consequence to reason about and nothing
+   *  new that can be lost. What a dismiss discards here is a page of unsaved
+   *  fields; the entry is in D1 either way.
+   *
+   *  **Escape's `!saving` guard is deliberately not copied.** It is there
+   *  because a keystroke can arrive while a request is in flight and closing
+   *  over it would leave the screen unable to say whether the save landed — and
+   *  the backdrop tap does not carry that guard today either. Adding it to the
+   *  drag alone would mean two pointer exits from one sheet with two different
+   *  rules, which is the disagreement this issue exists to remove. If the guard
+   *  is right it belongs on the backdrop, and that is #60's decision to revisit,
+   *  not this one's.
+   *
+   *  The backdrop's own tap comes out of this same call (`drag.backdrop`), so
+   *  the sentence above is a property of the code rather than a claim about
+   *  it — there is no second handler left to drift. */
+  const drag = useDragToDismiss(onClose);
+
   /* Which row's `source` a note is drawn from. Per row and not per sheet: a
      meal can now hold rows of different provenance — a photographed plate with
      a hand-typed olive oil added to it — and the row that says FROM THE BARCODE
@@ -159,20 +185,30 @@ export function EditMealSheet({
   }
 
   return (
-    <div
-      className="sheet-wrap"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
-    >
-      <div className="sheet" role="dialog" aria-label={`Edit ${entry.desc}`}>
-        {/* Decoration, and documented as decoration — the same position
-            `Log.tsx`'s confirm sheet takes and for the same unresolved reason
-            (#102). Dismissing here is cheap rather than destructive, so a drag
-            would be defensible; what it is not is *this* issue's decision, and
-            a third sheet inventing its own commit distance is exactly what
-            `gesture.ts` exists to prevent. */}
-        <div className="grab" aria-hidden="true" />
+    <div className="sheet-wrap" {...drag.backdrop}>
+      <div
+        className="sheet"
+        role="dialog"
+        aria-label={`Edit ${entry.desc}`}
+        style={drag.style}
+        {...drag.handlers}
+      >
+        {/* A target now, not a picture of one (#118). #60 shipped this bar as
+            documented decoration and #102 named the cost of that: two sheets on
+            one screen wearing the same bar where only one drags. It was three,
+            and Dave found it here first — this is the sheet a thumb reaches
+            most often, because it opens from a tap on the timeline.
+
+            The commit distance is not restated here and must not be: it is a
+            share of *this* sheet's rendered height (`dismissDistance`), which
+            is #114's rule and matters more here than on the panel it was
+            written for. The height comes from **stored rows** rather than from
+            anything this component chooses, and one day's timeline was enough
+            to span it: measured at 375x812, the same screen's entries opened at
+            298, 309, 321, 424 and 676px. A fixed 64px would be 21% of the first
+            and 9.5% of the last — the second of those below the 12% Dave
+            already rejected on the picks panel. */}
+        <SheetHandle />
 
         <div className="sheet-head">
           {/* The same chip the confirm sheet uses, and tapping still cycles it

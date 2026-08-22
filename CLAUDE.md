@@ -145,9 +145,12 @@ include `src/`, so `npm run check` type-checks tests with no extra project.
 `/log` and `/log#barcode` render their no-viewfinder fallback — a real screen, but not
 the primary one. `--camera` gives Chrome a synthetic device and auto-grants the
 permission; `--settle <ms>` waits past `document.fonts.ready`, which `getUserMedia`
-resolves long after. Both flags exist on `verify:viewport` too, and its live layout is
-the one worth checking — a viewfinder that failed to open is a centred paragraph, which
-overflows nothing.
+resolves long after. **`--camera` exists on `verify:viewport` too; `--settle` does NOT**
+— that line claimed both until #118 tried it. `verify-viewport.mjs` imports a `settle`
+*function* from `cdp.mjs` and calls it per page, but parses no such flag, so
+`--settle 1200` is swallowed as the base URL and the run dies with `Error: URL must have
+scheme http or https`. Its live camera layout is still the one worth checking — a
+viewfinder that failed to open is a centred paragraph, which overflows nothing.
 
 ```bash
 node tools/shot-matrix.mjs --camera --settle 1200 --cookie <name>=<token> \
@@ -504,6 +507,26 @@ each: when a finger has moved enough to mean anything, which axis wins, and whet
 a release commits or springs back. `src/shared/` is for quantities that cross the
 wire — this one never leaves the client, so it sits beside its two consumers instead.
 
+**#118 made the drag-to-dismiss half a THREE-sheet gesture, and nothing about it was
+restated to do it.** `useDragToDismiss` is now mounted by the picks panel, the confirm
+sheet and #60's edit sheet; `dismissDistance` reads each one's rendered height, so
+#114's share needed no new constant on either new surface. Two things moved down into
+`lib/sheet-drag.ts` in the same change, both for #86's reason — a third copy is a third
+chance to drift: **`dragStyle`** (what a dragged sheet says in its `style` attribute —
+identity at rest, no easing under a finger) and **`backdropTap`**. The second is the
+load-bearing one. #118's whole safety argument is that **a drag is exactly the backdrop
+tap**, so the hook hands out both exits from one `onDismiss` and the confirm sheet's
+drag inherits #81's more-than-one-capture confirmation and #59's mid-re-read refusal
+without knowing either exists. Wiring it to `discard` instead of `dismiss` is a
+one-word edit that would read as reasonable in a diff and would bin three captures on a
+gesture; `tools/sheet-drag.test.mjs` fails on it, because **nothing in this repo
+executes `Log.tsx`** and a structural check is the only oracle that layer has.
+Correspondingly `.grab-band` and the drag surface moved off `.sheet.picks-sheet` onto
+`.sheet` — a rule stated on the sheet that got the gesture first is a rule the next
+sheet has to remember to copy — and the band's markup is one component
+(`SheetHandle.tsx`), because its only job is to carry `SHEET_HANDLE_ATTR` and a copy
+that dropped it would render an identical bar that arms nothing.
+
 **Deliberately two, and each is correct:**
 
 - **`localDay()` vs `dayInTimezone()`** — the device owns the local day when a person is
@@ -819,6 +842,16 @@ result about the *inputs* and says nothing about this register.
   **Label the two differently in any report**: what the state machine does under
   synthetic input, and what a finger got. #114 is the same lesson one step over —
   a synthetic drag has no opinion about what "a little" means.
+  **And a sheet drag needs a viewport chosen to make the sheet scroll, or half
+  the rule never runs** (#118). Measured at 375x812 with real data: the edit
+  sheet is 298–676px, the confirm sheet 396px, #81's basket 585px — every one of
+  them under `.sheet`'s own 698px ceiling, so **not one of them scrolls on a 13
+  mini** and `armsDrag`'s "a body drag only dismisses from the top" branch has
+  nothing to bind. The first run of #118's drive set `scrollTop = 60`, got 0, and
+  printed a clean pass for two checks that never executed. The basket scrolls at
+  375x667 and #59's correction at 375x568; the picks panel is the only sheet that
+  scrolls at 812, because its 80dvh ceiling is lower than its list. Assert the
+  sheet is scrollable *before* driving anything that depends on it.
 - **No check in this repo has ever seen a software keyboard** (#120,
   2026-08-22). Headless Chrome has none, so `shot-matrix` and `cdp.mjs` render
   every screen keyboard-down, and `verify:viewport` measures **horizontal**

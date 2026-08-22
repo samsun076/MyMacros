@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { DISMISS_PX } from "../src/client/lib/sheet-drag.ts";
 
-/** The picks panel's drag handle, as tests rather than as prose (#102).
+/** Every sheet's drag handle, as tests rather than as prose (#102, #118).
  *
  *  Everything about this gesture that a CDP drive can reach is driven — what
  *  dismisses, what scrolls, what springs back. What it cannot reach is the
@@ -46,10 +46,18 @@ function decl(selector, prop) {
   return all.length ? all[all.length - 1][1].trim() : "";
 }
 
-const BAND = ".picks-sheet .grab-band {";
-const SHEET = ".sheet.picks-sheet {";
+/** **These moved off `.picks-sheet` in #118 and the move is the assertion.**
+ *  The band and the drag surface belong to `.sheet` now, because all three
+ *  sheets drag; stated on the picks panel they would be a rule the next sheet
+ *  has to remember to copy, which is the defect #118 was filed about wearing a
+ *  stylesheet. `.sheet.picks-sheet` still exists and still owns the one thing
+ *  that is genuinely the panel's — its lower ceiling — which the last block
+ *  here goes on checking. */
+const BAND = ".grab-band {";
+const SHEET = ".sheet {";
+const PICKS = ".sheet.picks-sheet {";
 
-describe("the drag handle's hit band (#102)", () => {
+describe("the drag handle's hit band (#102, #118)", () => {
   /** **A 4px-tall drag target is not a target.** `.grab` is 36 × 4 and stays
    *  that size; what changes is that it now sits inside a row you can actually
    *  put a thumb on. */
@@ -95,7 +103,7 @@ describe("the drag handle's hit band (#102)", () => {
   });
 });
 
-describe("the sheet under it (#102)", () => {
+describe("the sheet under it (#102, #118)", () => {
   /** iOS's own bounce would move the sheet at the same time the transform
    *  does — two things moving one surface, and the one this project's tooling
    *  can see is not the one that would be wrong. Nothing scrollable sits
@@ -144,7 +152,111 @@ describe("one quantity, one source (#86, #102)", () => {
    *  not restate, and it is still the number a `padding` or a `translate` would
    *  most plausibly collide with. */
   it("never restates the dismiss distance as a CSS length", () => {
-    const rules = code.slice(code.indexOf(SHEET), code.indexOf(".sheet-wrap {"));
+    const from = code.indexOf(PICKS);
+    const rules = code.slice(from, code.indexOf(".sheet-head {", from));
+    // The slice has to reach something, or this passes by measuring nothing —
+    // which is what it would have done after #118 moved `.sheet` below
+    // `.sheet-wrap`, the anchor this used to stop at.
+    expect(rules.length).toBeGreaterThan(200);
+    expect(rules).toMatch(/\.grab-band \{/);
     expect(rules).not.toMatch(new RegExp(`(^|[^\\d.])${DISMISS_PX}px`));
+  });
+});
+
+
+/** **The wiring, asserted from the source, because nothing here executes it.**
+ *
+ *  CLAUDE.md is explicit and has three mutations to prove it: `Log.tsx` has no
+ *  unit oracle at all — #81's `stow` was broken and 988 tests stayed green,
+ *  #59's note-spending was broken twice and 1036 stayed green, and #102's own
+ *  `sheet-drag.ts` was *corrupted* under 817 passing tests. #118 puts a
+ *  gesture on two more surfaces in that same blind layer, so the checks below
+ *  are structural for the same reason the CSS ones above are: they cannot see
+ *  whether the drag feels right, but they can see whether it is still attached.
+ *
+ *  Comments are stripped first, for the file's usual reason — every name below
+ *  is discussed at length in prose directly beside the code that uses it, and a
+ *  plain substring search would read the explanation as the thing itself. */
+const src = (rel) =>
+  readFileSync(join(process.cwd(), rel), "utf8")
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/^\s*\/\/.*$/gm, "");
+
+const EDIT = src("src/client/components/EditMealSheet.tsx");
+const LOG = src("src/client/routes/Log.tsx");
+const HANDLE = src("src/client/components/SheetHandle.tsx");
+
+describe("every sheet is actually wired to the gesture (#118)", () => {
+  /** The whole finding, as a check: a bar that looks draggable and is not. The
+   *  three sheets each spread the hook's handlers onto their own `.sheet`, and
+   *  dropping any one of them puts that sheet back where #118 found it. */
+  it("hands the edit sheet the handlers and the style", () => {
+    expect(EDIT).toMatch(/\{\.\.\.drag\.handlers\}/);
+    expect(EDIT).toMatch(/style=\{drag\.style\}/);
+  });
+
+  it("hands the confirm sheet the handlers and the style", () => {
+    expect(LOG).toMatch(/\{\.\.\.confirmDrag\.handlers\}/);
+    expect(LOG).toMatch(/style=\{confirmDrag\.style\}/);
+  });
+
+  it("leaves the picks panel wired as #102 left it", () => {
+    expect(LOG).toMatch(/\{\.\.\.picksDrag\.handlers\}/);
+    expect(LOG).toMatch(/style=\{picksDrag\.style\}/);
+  });
+
+  /** **`dismiss`, never `discard`, and this is the safety argument itself.**
+   *  `dismiss` is the backdrop's function and carries #81's more-than-one-
+   *  capture confirmation and #59's refusal mid-re-read; `discard` is the
+   *  destruction those guards stand in front of, with exactly one legitimate
+   *  caller. A one-word edit here turns the cheapest input in the app into the
+   *  one action in it with no undo, and would look entirely reasonable in a
+   *  diff. */
+  it("routes the confirm sheet's drag through the guard, not around it", () => {
+    expect(LOG).toMatch(/useDragToDismiss\(dismiss\)/);
+    expect(LOG).not.toMatch(/useDragToDismiss\(discard\)/);
+  });
+
+  /** The backdrop tap comes out of the same call, which is what makes "the drag
+   *  is exactly the backdrop tap" a property rather than a claim. A sheet that
+   *  goes back to writing its own `e.target === e.currentTarget` has re-opened
+   *  the gap even if both handlers happen to agree on the day it is written. */
+  it("takes the backdrop tap from the same hook call", () => {
+    for (const file of [EDIT, LOG]) {
+      expect(file).toMatch(/\{\.\.\.\w*[Dd]rag\.backdrop\}/);
+      expect(file).not.toMatch(/e\.target === e\.currentTarget/);
+    }
+  });
+});
+
+describe("one handle, drawn once (#118)", () => {
+  /** The band's whole job is to carry `SHEET_HANDLE_ATTR` — the attribute
+   *  `armsDrag` reads to tell the exit that works mid-list from a drag that
+   *  started in the content. Three copies of that markup is three chances to
+   *  render an identical-looking bar that arms nothing, and it would pass every
+   *  screenshot in the project. */
+  it("is the only component that renders the handle", () => {
+    expect(HANDLE).toMatch(/SHEET_HANDLE_ATTR/);
+    expect(EDIT).not.toMatch(/SHEET_HANDLE_ATTR/);
+    expect(LOG).not.toMatch(/SHEET_HANDLE_ATTR/);
+  });
+
+  /** And no sheet may go back to drawing the bare pill, which is exactly what
+   *  #60 and M2 shipped and what this issue is about. */
+  it("leaves no sheet drawing a bare .grab", () => {
+    for (const file of [EDIT, LOG]) {
+      expect(file).not.toMatch(/className="grab"/);
+      expect(file).toMatch(/<SheetHandle \/>/);
+    }
+  });
+
+  /** #116's trap, as a check. `touch-action: none` applies down through
+   *  whatever is inside the band, so content placed in there becomes
+   *  undraggable *and* unscrollable — which is precisely the sticky slot header
+   *  #116 is about to want. The element is self-closing over one child and
+   *  stays that way. */
+  it("wraps the pill and nothing else", () => {
+    const band = HANDLE.slice(HANDLE.indexOf("grab-band"));
+    expect(band).toMatch(/<div className="grab" \/>\s*<\/div>/);
   });
 });

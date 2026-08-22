@@ -1821,59 +1821,15 @@ section {
    panel" has been decoration since the day it shipped. A declaration test
    cannot see this — the property is there, spelled correctly, in a rule that
    never wins — which is why the drive measures the rendered height instead. */
+/* **What is left here after #118 is the ceiling, and only the ceiling.** The
+   band, the bounce and the spring-back moved down onto `.sheet`, because all
+   three sheets drag now and a rule stated on the one that got the gesture first
+   is a rule the next two have to remember to copy. The picks panel's computed
+   values are unchanged — nothing else declares them, so moving them from the
+   two-class selector to the one-class one loses no cascade — and this rule goes
+   on winning the property it exists for. */
 .sheet.picks-sheet {
-  /* The handle's hit band (#102). **Component-local rather than a `:root`
-     token on purpose**: this is the size of one control on one sheet, where
-     design/tokens.css is the contract three theme packs have to agree on, and
-     a length nothing outside these two rules reads has no business in it.
-     Same argument `.swipe` makes for `--swipe-panel-w`, and the same 44pt
-     minimum behind the number — `tools/sheet-drag.test.mjs` holds the floor. */
-  --grab-band-h: 44px;
   max-height: 80dvh;
-  /* The band supplies the top spacing now, and it must reach the sheet's own
-     edge or a sticky `top: 0` parks it below the padding. */
-  padding-top: 0;
-  /* The drag owns the first pixel at the top of the list. `contain` would keep
-     the scroller's own bounce, and on iOS that bounce moves the sheet at the
-     same time the transform does — two things moving one surface. Nothing
-     scrollable sits behind the panel, so there is no chain worth keeping. */
-  overscroll-behavior: none;
-  /* Springs back on the curve the swipe panel arrives on. Dropped to `none`
-     inline while a finger is down (lib/sheet-drag.ts), or the sheet eases
-     after the thumb instead of tracking it. */
-  transition: transform 0.18s cubic-bezier(0.2, 0.7, 0.2, 1);
-}
-
-/* The grab handle's band — the difference between an affordance and a picture
-   of one (#102). `.grab` is 36 × 4px; a 4px-tall drag target is not a target,
-   so the bar keeps its size and gets a 44px row around it.
-
-   **Sticky, and that is load-bearing rather than tidy.** A drag on the *body*
-   only dismisses while the list is at the top (lib/sheet-drag.ts explains
-   why); the handle dismisses always, and it can only do that if it is still on
-   screen once the list has scrolled. `.sheet` is the scroller, so without this
-   the one exit that works mid-list scrolls out of reach at exactly the moment
-   it is the only one that would have worked.
-
-   `touch-action: none` for the other half of the same claim: without it a
-   downward drag starting on the handle scrolls the list under the sheet the
-   browser is already moving. The band is 44px of sheet that never scrolls,
-   which is what makes that safe. */
-.picks-sheet .grab-band {
-  position: sticky;
-  top: 0;
-  height: var(--grab-band-h);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--surface);
-  touch-action: none;
-}
-
-/* The bar itself is unchanged and stays shared with the confirm sheet — only
-   the space around it moves into the band. */
-.picks-sheet .grab {
-  margin: 0;
 }
 
 /* ── confirm sheet ── */
@@ -1902,18 +1858,71 @@ section {
   border: 1px solid var(--line);
   border-bottom: none;
   border-radius: var(--radius-card) var(--radius-card) 0 0;
-  padding: 10px 20px calc(18px + env(safe-area-inset-bottom, 0px));
+  /* No top padding: the 44px band below supplies it, and it must reach the
+     sheet's own edge or a sticky `top: 0` parks it inside the padding instead
+     of at the top of the scroller. Costs the confirm and edit sheets 16px of
+     head space against the 10 + 4 + 14 they drew before #118 — the price of a
+     bar you can actually put a thumb on, paid once here rather than argued
+     three times. */
+  padding: 0 20px calc(18px + env(safe-area-inset-bottom, 0px));
   box-shadow: var(--shadow-sheet);
   max-height: 86dvh;
   overflow-y: auto;
+  /* The handle's hit band (#102, moved here by #118). **Component-local rather
+     than a `:root` token on purpose**: this is the size of one control, where
+     design/tokens.css is the contract three theme packs have to agree on, and a
+     length nothing outside these two rules reads has no business in it. Same
+     argument `.swipe` makes for `--swipe-panel-w`, and the same 44pt minimum
+     behind the number — `tools/sheet-drag.test.mjs` holds the floor. */
+  --grab-band-h: 44px;
+  /* The drag owns the first pixel at the top of the sheet. `contain` would keep
+     the scroller's own bounce, and on iOS that bounce moves the sheet at the
+     same time the transform does — two things moving one surface. Nothing
+     scrollable sits behind a sheet, so there is no chain worth keeping. */
+  overscroll-behavior: none;
+  /* Springs back on the curve the swipe panel arrives on. Dropped to `none`
+     inline while a finger is down (lib/sheet-drag.ts), or the sheet eases
+     after the thumb instead of tracking it. */
+  transition: transform 0.18s cubic-bezier(0.2, 0.7, 0.2, 1);
 }
 
+/* The grab handle's band — the difference between an affordance and a picture
+   of one (#102), on every sheet since #118. `.grab` is 36 × 4px; a 4px-tall
+   drag target is not a target, so the bar keeps its size and gets a 44px row
+   around it.
+
+   **Sticky, and that is load-bearing rather than tidy.** A drag on the *body*
+   only dismisses while the sheet is at the top (lib/sheet-drag.ts explains
+   why); the handle dismisses always, and it can only do that if it is still on
+   screen once the content has scrolled. `.sheet` is the scroller, so without
+   this the one exit that works mid-list scrolls out of reach at exactly the
+   moment it is the only one that would have worked. It matters more on the two
+   sheets #118 added than on the one it was written for: a four-item basket and
+   a corrected read are the tallest surfaces the app draws.
+
+   `touch-action: none` for the other half of the same claim: without it a
+   downward drag starting on the handle scrolls the content under the sheet the
+   browser is already moving. The band is 44px of sheet that never scrolls,
+   which is what makes that safe — and is why nothing but the bar may live
+   inside it (components/SheetHandle.tsx, #116's trap). */
+.grab-band {
+  position: sticky;
+  top: 0;
+  height: var(--grab-band-h);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface);
+  touch-action: none;
+}
+
+/* The bar itself is unchanged; the space around it is the band's. */
 .grab {
   width: 36px;
   height: 4px;
   border-radius: 2px;
   background: var(--track);
-  margin: 0 auto 14px;
+  margin: 0 auto;
 }
 
 .sheet-head {
