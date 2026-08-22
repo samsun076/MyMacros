@@ -1810,8 +1810,11 @@ section {
 }
 
 /* #82 — the same list inside the deck's pull-up panel. The rows, the star and
-   the "LOGS AS …" head are one component (components/Picks.tsx); all that
-   differs here is that the sheet supplies its own top spacing. */
+   the "LOGS AS …" head are one component (components/Picks.tsx); what differs
+   here is that the section starts at the sheet's own top edge, because since
+   #116 its first child is the grab band rather than a `.sec-head`. The band
+   must reach that edge or `sticky; top: 0` parks it inside the offset — the
+   same rule `.sheet`'s zero top padding states for the other two sheets. */
 .picks.in-sheet {
   margin-top: 0;
 }
@@ -1894,6 +1897,18 @@ section {
      argument `.swipe` makes for `--swipe-panel-w`, and the same 44pt minimum
      behind the number — `tools/sheet-drag.test.mjs` holds the floor. */
   --grab-band-h: 44px;
+  /* The same band with a line of chrome riding in it (#116). One number rather
+     than `height: auto`, for `--grab-band-h`'s reason exactly: this is a
+     *budget* inside an 80dvh ceiling, not whatever the content happens to
+     measure, and a bar that silently grows with its text is a bar nobody
+     costed. **Measured at 375, sheet edge to the top of row one:** it replaces
+     a 44px band plus a 40px `.sec-head` (a 24px box — 13px line, 10 padding,
+     1 rule — over a 16px margin), so 84px becomes 60px. The merged bar is
+     24px *cheaper* than the two it replaces, and all 56 of it is sticky where
+     only 44 of the old 84 were. #116's own estimate was 68px for two stacked
+     sticky bars; the saving over that comes from `.sec-head`'s rule and margin
+     going away with the merge, not from the text getting smaller. */
+  --grab-band-head-h: 56px;
   /* The drag owns the first pixel at the top of the sheet. `contain` would keep
      the scroller's own bounce, and on iOS that bounce moves the sheet at the
      same time the transform does — two things moving one surface. Nothing
@@ -1921,9 +1936,12 @@ section {
 
    `touch-action: none` for the other half of the same claim: without it a
    downward drag starting on the handle scrolls the content under the sheet the
-   browser is already moving. The band is 44px of sheet that never scrolls,
-   which is what makes that safe — and is why nothing but the bar may live
-   inside it (components/SheetHandle.tsx, #116's trap). */
+   browser is already moving. The band is a strip of sheet that never scrolls,
+   which is what makes that safe — and is why nothing that *does* scroll may
+   live inside it: `touch-action: none` on an ancestor disables panning for
+   every touch starting below it, whatever the descendant declares. #116 puts
+   the picks panel's "LOGS AS …" statement in here on exactly that reading —
+   a bar is fine, a list is not (components/SheetHandle.tsx). */
 .grab-band {
   position: sticky;
   top: 0;
@@ -1933,6 +1951,45 @@ section {
   justify-content: center;
   background: var(--surface);
   touch-action: none;
+}
+
+/* **The merged bar (#116): one sticky row, not two stacked ones.**
+
+   `ONE TAP · LOGS AS LUNCH` is a claim about what a tap *does* — on this panel
+   a tap is a `food_logs` write with no confirm sheet — and #115 made the list
+   long enough that it scrolled away from every row below the fold. The obvious
+   fix, `position: sticky; top: var(--grab-band-h)` on the head, is two sticky
+   bars inside an 80dvh ceiling and puts a `touch-action: none` band directly
+   above a scrolling one. This is the same statement inside the band that was
+   already sticky and already the drag surface.
+
+   `touch-action` is deliberately NOT restated here. The band's `none` above
+   covers the merged variant, which is what makes a drag starting on the
+   statement a dismissal rather than a scroll — and an `auto` here would be
+   #116's trap inverted: the bar would look like a handle and hand the touch
+   back to the list. The rows are siblings of this element, never children, so
+   the scroller still owns them; `tools/sheet-drag.test.mjs` asserts both halves
+   and the drive measures them.
+
+   A hairline under it because it is now permanent chrome over moving content:
+   without a rule the first scrolled row slides under the statement with nothing
+   between them. `.sec-head` drew the same line when the head was in the list. */
+.grab-band.with-head {
+  height: var(--grab-band-head-h);
+  flex-direction: column;
+  justify-content: center;
+  align-items: stretch;
+  gap: 9px;
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 4px;
+}
+
+/* The statement's own row inside the band — `.sec-head`'s bones without its
+   spacing, which the band now owns. */
+.grab-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
 }
 
 /* The bar itself is unchanged; the space around it is the band's. */

@@ -119,6 +119,17 @@ include `src/`, so `npm run check` type-checks tests with no extra project.
   did not happen are the same output, which makes this the one failure in the
   family that reads as *good* news. Diff the source, or have the mutation
   script fail loudly, before recording "the test held".
+  **And the REVERT's anchor needs the same uniqueness assertion as the
+  mutation's — the rule above is written about the edit going in and says
+  nothing about it coming out.** #116's M7 replaced a line with `"\n"`, and the
+  inverse `replace(to, from)` on the way back put the deleted line after the
+  **first newline in the file**, corrupting `Log.tsx` outright. Caught only by
+  the sha assertion; `npm test` could not have seen it, for the same reason
+  #102's corrupted `sheet-drag.ts` passed 817 tests — nothing in this repo
+  executes that file. Repaired by inverse hand-edit rather than `git checkout`,
+  because the tree was full of unrelated work. **Never mutate to a string that
+  occurs elsewhere**, and assert the replacement matches exactly once before
+  reverting, not just before writing.
   **And check that the check could ever have failed — a mutation's own oracle
   can be decorative.** #59's M10 broke the client so a typed note was never
   spent, and the check written to catch it asked "is the note field gone after

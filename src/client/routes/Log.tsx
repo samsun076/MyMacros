@@ -1195,13 +1195,19 @@ export function Log() {
             style={picksDrag.style}
             {...picksDrag.handlers}
           >
-            <SheetHandle />
+            {/* No `<SheetHandle />` of its own any more (#116). The panel's grab
+                band and its "LOGS AS …" statement are one bar, and the statement
+                belongs to the rows rather than to this caller — so `Picks` draws
+                the band when it is `inSheet`, and there is no arrangement of
+                this JSX that renders the list without the claim it makes above
+                it. The confirm sheet below still draws a bare handle; that is
+                what the slot being optional is for. */}
             <Picks
               picks={picks}
               saving={saving}
               onStar={(pick) => void toggleStar(pick)}
               onRelog={(pick) => void relog(pick)}
-              className="picks in-sheet"
+              inSheet
             />
           </div>
         </div>

@@ -54,6 +54,7 @@ function decl(selector, prop) {
  *  that is genuinely the panel's — its lower ceiling — which the last block
  *  here goes on checking. */
 const BAND = ".grab-band {";
+const BAND_HEAD = ".grab-band.with-head {";
 const SHEET = ".sheet {";
 const PICKS = ".sheet.picks-sheet {";
 
@@ -100,6 +101,49 @@ describe("the drag handle's hit band (#102, #118)", () => {
    *  one it was written for. */
   it("draws its surface from a token", () => {
     expect(decl(BAND, "background")).toMatch(/^var\(--/);
+  });
+});
+
+/** **#116 merged the picks panel's head into the band, so the band now has two
+ *  heights and both of them are budgets.**
+ *
+ *  The bare bar is still 44px on the confirm and edit sheets, which have no
+ *  head to merge. The merged bar carries `ONE TAP · LOGS AS LUNCH` — a claim
+ *  about what an unconfirmed one-tap write does — and it is a *stated* height
+ *  rather than `auto` for the reason the whole area keeps producing bugs: this
+ *  panel lives under an 80dvh ceiling, and a bar that grows with its content is
+ *  a bar nobody costed. */
+describe("the merged bar (#116)", () => {
+  /** Still a target, not a picture. The merge must not be paid for by shrinking
+   *  the thing #102 built the band to be. */
+  it("is at least a 44pt target down", () => {
+    expect(Number(decl(SHEET, "--grab-band-head-h").replace("px", ""))).toBeGreaterThanOrEqual(
+      44,
+    );
+  });
+
+  /** Same trap as the bare band's: a correct property beside a rule that reads
+   *  something else measures nothing. */
+  it("takes its height from that property", () => {
+    expect(decl(BAND_HEAD, "height")).toBe("var(--grab-band-head-h)");
+  });
+
+  /** **The half of #116's trap that is still live.** `.grab-band`'s
+   *  `touch-action: none` covers this variant, and that is what makes a drag
+   *  starting on the statement a dismissal rather than a scroll. Restating it
+   *  here as `auto` — the plausible edit, on the theory that a text bar should
+   *  not swallow touches — would give the panel a bar that looks like a handle
+   *  and hands the touch back to the list. Restating it as `none` would be a
+   *  second statement of a rule that already applies. Neither: say nothing. */
+  it("does not restate the band's touch-action", () => {
+    expect(ruleBody(BAND_HEAD)).not.toMatch(/touch-action/);
+  });
+
+  /** It stays one bar. Someone reintroducing `position: sticky` on a head below
+   *  the band is the alternative #116 costed and rejected, and it would show up
+   *  here as the merged rule losing the sticky it inherits from `.grab-band`. */
+  it("does not re-position itself out of the sticky band", () => {
+    expect(ruleBody(BAND_HEAD)).not.toMatch(/position\s*:/);
   });
 });
 
@@ -185,6 +229,10 @@ const src = (rel) =>
 const EDIT = src("src/client/components/EditMealSheet.tsx");
 const LOG = src("src/client/routes/Log.tsx");
 const HANDLE = src("src/client/components/SheetHandle.tsx");
+/** #116 moved the picks panel's band out of `Log.tsx` and into the component
+ *  that owns the rows, so this file is now part of the wiring the checks below
+ *  read. Nothing executes it either. */
+const PICKS_TSX = src("src/client/components/Picks.tsx");
 
 describe("every sheet is actually wired to the gesture (#118)", () => {
   /** The whole finding, as a check: a bar that looks draggable and is not. The
@@ -239,24 +287,171 @@ describe("one handle, drawn once (#118)", () => {
     expect(HANDLE).toMatch(/SHEET_HANDLE_ATTR/);
     expect(EDIT).not.toMatch(/SHEET_HANDLE_ATTR/);
     expect(LOG).not.toMatch(/SHEET_HANDLE_ATTR/);
+    expect(PICKS_TSX).not.toMatch(/SHEET_HANDLE_ATTR/);
   });
 
   /** And no sheet may go back to drawing the bare pill, which is exactly what
-   *  #60 and M2 shipped and what this issue is about. */
+   *  #60 and M2 shipped and what this issue is about. The confirm and edit
+   *  sheets take the handle with no head, which is what the slot being optional
+   *  is for — #116 must not have quietly made a head mandatory. */
   it("leaves no sheet drawing a bare .grab", () => {
-    for (const file of [EDIT, LOG]) {
+    for (const file of [EDIT, LOG, PICKS_TSX]) {
       expect(file).not.toMatch(/className="grab"/);
+    }
+    for (const file of [EDIT, LOG]) {
       expect(file).toMatch(/<SheetHandle \/>/);
     }
   });
 
-  /** #116's trap, as a check. `touch-action: none` applies down through
-   *  whatever is inside the band, so content placed in there becomes
-   *  undraggable *and* unscrollable — which is precisely the sticky slot header
-   *  #116 is about to want. The element is self-closing over one child and
-   *  stays that way. */
-  it("wraps the pill and nothing else", () => {
+  /** **The picks panel still wears a band, and since #116 it is `Picks` that
+   *  draws it.** `Log.tsx` renders the panel's `.sheet` and no handle inside
+   *  it, because the statement in that band is a claim about what tapping a row
+   *  does and belongs with the rows. A `Picks` that stopped drawing one would
+   *  leave the panel with no drag exit at all — #118's bug on the one sheet it
+   *  was originally written for — and every screenshot would still pass. */
+  it("gives the picks panel its band through the component that owns the rows", () => {
+    expect(PICKS_TSX).toMatch(/<SheetHandle>/);
+    expect(PICKS_TSX).toMatch(/<\/SheetHandle>/);
+  });
+});
+
+/** **What the band may wrap, restated for #116 — and this block is the reason
+ *  the old one-line rule is gone rather than broken.**
+ *
+ *  #118 asserted "the band wraps the pill and nothing else", on the strength of
+ *  a real trap: `touch-action: none` on an ancestor disables panning for every
+ *  touch that starts inside it, so anything in the band is unscrollable. #116
+ *  puts a bar of text in there deliberately, which retires the letter of that
+ *  rule and keeps all of its force:
+ *
+ *  **the band may wrap chrome, and may never wrap the sheet's scrolling
+ *  content.** A statement that was always going to be a drag surface costs
+ *  nothing; the row list costs the panel its scroll. The two assertions below
+ *  are that sentence, and the drive measures the same claim from the other side
+ *  — a drag on the first row still scrolls, a drag on the band still does not.
+ *  Neither alone is enough: the structural one cannot see the cascade (#82's
+ *  ceiling was correct, spelled right, and never applied) and the rendered one
+ *  cannot see a change that has not shipped yet. */
+describe("the band wraps chrome, never the list (#116, #118)", () => {
+  /** The pill comes first and is never inside the head slot — otherwise the
+   *  36×4 bar ends up laid out by the statement's row rather than by the band,
+   *  and the handle stops reading as a handle. One optional slot, after it. */
+  it("draws the pill first and the head slot after it", () => {
     const band = HANDLE.slice(HANDLE.indexOf("grab-band"));
-    expect(band).toMatch(/<div className="grab" \/>\s*<\/div>/);
+    expect(band).toMatch(/<div className="grab" aria-hidden="true" \/>/);
+    expect(band.indexOf('className="grab"')).toBeLessThan(band.indexOf('className="grab-head"'));
+    expect(band).toMatch(/className="grab-head">\{children\}<\/div>/);
+  });
+
+  /** **The half of #118's trap that is still live**, and the edit it guards
+   *  against is a plausible one: someone wanting the whole panel to drag from
+   *  anywhere moves the list inside the band, every screenshot still passes,
+   *  and the panel silently stops scrolling. The row loop stays a sibling. */
+  it("never hands the row list to the band", () => {
+    const open = PICKS_TSX.indexOf("<SheetHandle>");
+    const shut = PICKS_TSX.indexOf("</SheetHandle>");
+    expect(open).toBeGreaterThan(-1);
+    expect(shut).toBeGreaterThan(open);
+    const slot = PICKS_TSX.slice(open, shut);
+    expect(slot).not.toMatch(/\.map\(/);
+    expect(slot).not.toMatch(/className="pick"/);
+    // And the rows really are outside it, rather than merely not inside a slot
+    // that has been emptied of everything.
+    expect(PICKS_TSX.indexOf('className="pick"')).toBeGreaterThan(shut);
+  });
+
+  /** **A sheet that passes no head gets exactly what #118 gave it.** The
+   *  confirm and edit sheets have nothing to merge, and the two ways this could
+   *  quietly cost them head space are both here: an unconditional `with-head`
+   *  class (44px becomes 56, column layout, a rule under the pill on two sheets
+   *  that wanted none) and an empty `.grab-head` box rendered anyway. Neither
+   *  breaks a test that only looks at the picks panel, and neither is visible
+   *  in a diff of this file that stops at "the band got a slot". */
+  it("adds nothing to a sheet that passes no head", () => {
+    expect(HANDLE).toMatch(/children\?: ReactNode/);
+    expect(HANDLE).toMatch(/className=\{children \? "grab-band with-head" : "grab-band"\}/);
+    expect(HANDLE).toMatch(/\{children \? <div className="grab-head">/);
+  });
+
+  /** **`aria-hidden` sits on the pill, not on the band** (#116). #118 hid the
+   *  whole band because a bar advertising itself would offer a third exit that
+   *  does not exist for a keyboard — true of the pill and only of the pill.
+   *  Left on the band it would take the statement out of the accessibility tree
+   *  in the same change that made it permanently visible on screen, which is
+   *  the sighted user gaining a guarantee and the screen-reader user losing
+   *  one. No screenshot in this project can see that.
+   *
+   *  **The first version of this check was decorative and a mutation said so.**
+   *  It sliced from the first `grab-band` — which is *inside* the className
+   *  expression — so putting `aria-hidden="true"` back on the band's opening
+   *  tag *before* `className` landed outside the window and the whole suite
+   *  stayed green on the exact edit this exists to catch. CLAUDE.md's #59 rule
+   *  arriving in a new file: when a mutation comes back green, the first
+   *  question is whether the oracle distinguishes the two implementations at
+   *  all. Counting the attribute is what does; the slice is kept beneath it
+   *  because the count alone would pass if someone moved the one occurrence. */
+  it("keeps the head slot in the accessibility tree", () => {
+    expect([...HANDLE.matchAll(/aria-hidden/g)]).toHaveLength(1);
+    expect(HANDLE).toMatch(/<div className="grab" aria-hidden="true" \/>/);
+    const bandTag = HANDLE.slice(HANDLE.indexOf("<div"), HANDLE.indexOf('className="grab"'));
+    expect(bandTag).not.toMatch(/aria-hidden/);
+  });
+
+  /** **Which `Picks` is the panel's, asserted from the caller.** The band only
+   *  exists on the in-sheet placement, so dropping `inSheet` from the panel's
+   *  call site takes the whole merged bar away *and* the grab handle with it —
+   *  #116 and #118 undone in one deleted word, with the statement falling back
+   *  into the scrolling list where this issue found it. Everything else in this
+   *  file reads `Picks.tsx`, which would be untouched and still correct. */
+  it("gives the panel's list the in-sheet placement and the inline one not", () => {
+    const panelAt = LOG.indexOf('className="sheet picks-sheet"');
+    expect(panelAt).toBeGreaterThan(-1);
+    expect([...LOG.matchAll(/inSheet/g)]).toHaveLength(1);
+    // Asserted as a *set* boolean, not merely as a word that appears:
+    // `inSheet={false}` reads as the prop being handled and is the placement
+    // being switched off. The negative lookahead is what separates them.
+    expect(LOG.slice(panelAt)).toMatch(/inSheet(?!\s*=)/);
+    // the inline list under TEXT renders earlier in the file and stays plain
+    expect(LOG.indexOf("<Picks")).toBeLessThan(panelAt);
+  });
+});
+
+/** **A statement that cannot scroll away has to stay true** (#116).
+ *
+ *  This is the half of the merge that the geometry hides. `mealSlotFor()` reads
+ *  the clock at render, so before #116 the picks head was correct when the
+ *  panel opened and never again — 11:59 to 12:01 with the panel up left it
+ *  saying BREAKFAST while a tap wrote lunch. That was survivable while the
+ *  statement scrolled off; it is not survivable now that it is pinned to the
+ *  top of the panel for every row, because a permanently-visible wrong answer
+ *  is strictly worse than an accurate one you had to scroll back for.
+ *
+ *  The arithmetic has a real oracle in `lib/meal-slot.test.ts`. What only a
+ *  source read can state is that the component actually subscribes — a `Picks`
+ *  that went back to the one-shot call would render identically, pass every
+ *  screenshot, and be wrong for three minutes a day. */
+describe("the statement in the band stays true (#116)", () => {
+  it("subscribes to the slot rather than reading it once", () => {
+    expect(PICKS_TSX).toMatch(/useMealSlot\(\)/);
+    expect(PICKS_TSX).not.toMatch(/mealSlotFor\(/);
+  });
+
+  /** One statement, two frames. The text is written once and wrapped by
+   *  whichever placement is drawing it, so the inline list under TEXT and the
+   *  panel's band cannot drift into saying different things — the defect the
+   *  component's own comment has warned about since #82. */
+  it("writes the claim once for both placements", () => {
+    expect([...PICKS_TSX.matchAll(/LOGS AS /g)]).toHaveLength(1);
+    expect(PICKS_TSX).toMatch(/<SheetHandle>\{statement\}<\/SheetHandle>/);
+    expect(PICKS_TSX).toMatch(/className="sec-head">\{statement\}<\/div>/);
+  });
+
+  /** And the write is still stamped from the clock, not from what is on
+   *  screen. They are the same function and must stay two calls: the row's slot
+   *  is a fact about the moment of the tap, and reading it off a rendered bar
+   *  would make a stale frame *become* the truth rather than merely display a
+   *  stale one. */
+  it("leaves the row's own slot read at the moment of the tap", () => {
+    expect(LOG).toMatch(/meal_slot: mealSlotFor\(\)/);
   });
 });
