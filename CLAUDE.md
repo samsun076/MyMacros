@@ -808,6 +808,26 @@ result about the *inputs* and says nothing about this register.
   closes — is testable unattended. What it cannot tell you is **feel**: whether
   a row tracks the finger or lags it, whether a scroll goes sticky. Don't write
   off a gesture as untestable; write off its feel.
+  **But it is evidence about the state machine, not about what a finger will
+  produce — and the two have now disagreed** (#60, 2026-08-22). A CDP drive
+  reported "tap row B while row A is open closes A and **opens B**", verified in
+  the browser and written into the build report as a settled fact. On device it
+  closes A and **opens nothing**. The device behaviour was preferred and is
+  accepted as shipped, so nothing was fixed — but the report had stated the
+  wrong outcome with confidence, and a plain tap on a row *does* open the editor,
+  so the mechanism is unexplained rather than "a thumb drifts past `INTENT_PX`".
+  **Label the two differently in any report**: what the state machine does under
+  synthetic input, and what a finger got. #114 is the same lesson one step over —
+  a synthetic drag has no opinion about what "a little" means.
+- **No check in this repo has ever seen a software keyboard** (#120,
+  2026-08-22). Headless Chrome has none, so `shot-matrix` and `cdp.mjs` render
+  every screen keyboard-down, and `verify:viewport` measures **horizontal**
+  overflow only. #59's pre-capture note clipped the viewfinder to a strip and
+  left a dead band above the keyboard, and every automated check passed it.
+  This is a *different* blind spot from `env(safe-area-inset-*)` and it is
+  broader: it applies to **every text input in the app** — the text reader, the
+  macro fields, the correction note, Settings, Onboarding. Treat "what does this
+  look like with the keyboard up" as a device question, always.
 - **Design QA never sees loading states.**
   `cdp.mjs` forces `prefers-reduced-motion: reduce` on every page it opens. So
   every PNG this project has ever produced is of a fully-loaded, animation-free
