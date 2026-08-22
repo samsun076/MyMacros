@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { scanner } from "../lib/barcode";
 import { acquireCamera, openCamera } from "../lib/camera";
+import { useKeyboardLift } from "../lib/keyboard";
 import { frameFromFile, frameFromVideo } from "../lib/photo";
 import { HeldBar } from "./HeldBar";
 import { LogModes, type LogMode } from "./LogModes";
@@ -189,6 +190,8 @@ export function CameraStage({
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const stageRef = useRef<HTMLElement>(null);
+  const noteRowRef = useRef<HTMLDivElement>(null);
   // Seeded from the session rather than from null: mounting into a camera that
   // is already open (TEXT → PHOTO) should not spend a render on "starting".
   const [stream, setStream] = useState<MediaStream | null>(openCamera);
@@ -197,6 +200,33 @@ export function CameraStage({
   const [scanning, setScanning] = useState(false);
 
   const live = still === null;
+  // Up here rather than beside the render it used to sit in, because
+  // `canNote` below is derived from it and a second `mode === "barcode"`
+  // would be two statements of one thing.
+  const scan = mode === "barcode";
+
+  /** The note row is on screen — and, separately, the field on it is open.
+   *
+   *  Two booleans because they answer two questions: the row is drawn either
+   *  way, collapsed to a text button, and only the open field summons a
+   *  keyboard. Each is stated **once** and feeds both its own render condition
+   *  and the hook below, which is #112's rule — a condition added here cannot
+   *  fail to reach the effect that depends on it, because it *is* the
+   *  dependency. */
+  const canNote = !scan && !still && !busy;
+  const noteOpen = canNote && note !== null;
+
+  /** #120: with the keyboard up, the whole deck slides up so the note sits
+   *  above it — the viewfinder keeps its real size and crops off the top,
+   *  while the shutter and the mode tabs go off the bottom and come back when
+   *  the keyboard does. Dave's call, and the argument for it is that you are
+   *  typing rather than shooting: losing the shutter costs nothing, and a
+   *  clipped-but-real frame beats a squashed one.
+   *
+   *  Every number in that is `lib/keyboard.ts`, deliberately — nothing in this
+   *  repo executes this file, so a decision made here would have no oracle.
+   *  What is left is a transform on one element. */
+  const lift = useKeyboardLift(noteOpen, stageRef, noteRowRef);
 
   /** Open the session's camera — **once**, whatever happens afterwards.
    *
@@ -362,7 +392,6 @@ export function CameraStage({
     }
   }
 
-  const scan = mode === "barcode";
   const fallback = finder === "denied" || finder === "unsupported";
   const message = error ?? captureError;
   const hint = busy
@@ -387,7 +416,17 @@ export function CameraStage({
           : "FRAME THE PLATE — AI FILLS THE MACROS";
 
   return (
-    <main className="frame cam">
+    <main
+      className="frame cam"
+      ref={stageRef}
+      /* Identity at rest is the *absence* of the property, not
+         `translate3d(0,0,0)` — `dragStyle` makes the same choice for the same
+         reason: the stylesheet's `transition: transform` has nothing to ease
+         from if the property was never there, and a deck that snapped on the
+         way down while sliding on the way up is a difference nobody would
+         attribute to a style object. */
+      style={lift ? { transform: `translate3d(0,${-lift}px,0)` } : undefined}
+    >
       <div className="log-top">
         <button className="cam-x" aria-label="Close" onClick={onClose}>
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none" strokeWidth="1.8" strokeLinecap="round">
@@ -489,9 +528,16 @@ export function CameraStage({
           wide at 375. In ordinary flow rather than over the finder, like
           `HeldBar` above: `.finder` is the one element here that can give up
           the height. Gone while a frame is frozen or a read is running, both
-          of which are past the moment this can affect. */}
-      {!scan && !still && !busy && (
-        <div className="cam-note">
+          of which are past the moment this can affect.
+
+          **That trade has a limit and #120 found it.** Giving the finder's
+          height to a 44px bar is one thing; giving it to a keyboard that takes
+          half the screen left the viewfinder a strip that still said "FRAME
+          THE PLATE" over it. So the row still costs the finder its height —
+          and the *keyboard* costs it nothing, because the whole deck rises
+          instead and the finder crops rather than shrinks. See `lift`. */}
+      {canNote && (
+        <div className="cam-note" ref={noteRowRef}>
           {note === null ? (
             <button type="button" className="btn-text" onClick={() => onNote("")}>
               + Add a note

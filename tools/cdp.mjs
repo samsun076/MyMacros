@@ -124,6 +124,104 @@ export async function openPage(cdp, { reduceMotion = true } = {}) {
   };
 }
 
+/** A software keyboard, fabricated (#120).
+ *
+ * **No check in this repo had ever seen one.** Headless Chrome has no software
+ * keyboard, so every PNG this project has produced — on every screen, since the
+ * beginning — is of an app with the keyboard down. That is a *different* blind
+ * spot from `env(safe-area-inset-*)` reading 0, and a broader one: it covers
+ * every text input in the app, and #59's pre-capture note shipped through it.
+ *
+ * The app measures the keyboard the only way it can be measured (`lib/
+ * keyboard.ts`: the layout viewport less `window.visualViewport`), so what this
+ * fabricates is that **input** rather than any output. `window.visualViewport`
+ * is replaced before a line of app script runs; everything downstream — the
+ * measurement, the clamps, the transform — is the real code path.
+ *
+ * `window.__keyboard.set(px)` raises and lowers it afterwards, which is how a
+ * driver checks that something *reacts* rather than that it rendered once.
+ *
+ * **What it is not.** It is a rectangle of a chosen height. It has no accessory
+ * bar, no predictive row, no animation, no language, and iOS's own
+ * scroll-into-view does not happen — `offsetTop` stays 0 here and is exactly
+ * the term a device exercises and this cannot. It answers "does the deck move,
+ * by how much, and does anything overflow when it has" and nothing else.
+ *
+ * `paint` draws a labelled block over the fabricated area, so a screenshot
+ * shows what the keyboard would be standing in front of instead of a band of
+ * bare page. It is drawn by the tool, never by the app, and says so on itself.
+ */
+export function keyboardScript(px = 0, { paint = false } = {}) {
+  return `(() => {
+  let kb = ${Number(px) || 0};
+  const bus = new EventTarget();
+  const view = {
+    get width() { return window.innerWidth; },
+    get height() { return Math.max(0, window.innerHeight - kb); },
+    get offsetLeft() { return 0; },
+    get offsetTop() { return 0; },
+    get pageLeft() { return window.scrollX; },
+    get pageTop() { return window.scrollY; },
+    get scale() { return 1; },
+    onresize: null,
+    onscroll: null,
+    addEventListener: (...a) => bus.addEventListener(...a),
+    removeEventListener: (...a) => bus.removeEventListener(...a),
+    dispatchEvent: (e) => bus.dispatchEvent(e),
+  };
+  Object.defineProperty(window, "visualViewport", { configurable: true, get: () => view });
+  // The device metrics change under a screenshot run; a real visual viewport
+  // would report the new height with a resize, so this one does too.
+  window.addEventListener("resize", () => bus.dispatchEvent(new Event("resize")));
+
+  let plate = null;
+  const draw = () => {
+    if (!plate) return;
+    plate.style.height = kb + "px";
+    plate.style.display = kb > 0 ? "flex" : "none";
+    plate.textContent = "SYNTHETIC · " + kb + "px · NOT AN iOS KEYBOARD";
+  };
+  if (${paint ? "true" : "false"}) {
+    addEventListener("DOMContentLoaded", () => {
+      plate = document.createElement("div");
+      plate.setAttribute("data-fake-keyboard", "");
+      plate.style.cssText =
+        "position:fixed;left:0;right:0;bottom:0;z-index:2147483647;display:none;" +
+        "align-items:center;justify-content:center;box-sizing:border-box;" +
+        "background:#0b0e13;border-top:1px solid #2a3547;color:#55627a;" +
+        "font:600 11px/1 ui-monospace,monospace;letter-spacing:.1em;white-space:nowrap;" +
+        "pointer-events:none;";
+      document.body.appendChild(plate);
+      draw();
+    });
+  }
+
+  window.__keyboard = {
+    get px() { return kb; },
+    set(next) {
+      kb = Math.max(0, next | 0);
+      draw();
+      bus.dispatchEvent(new Event("resize"));
+      return kb;
+    },
+  };
+})();`;
+}
+
+/** Install the fabricated keyboard for every subsequent navigation on this
+ *  session. Returns a function that removes it again — the point of which is
+ *  that a route list can check one screen with the keyboard up without every
+ *  other screen in the same run being measured through it. */
+export async function fakeKeyboard(cdp, sessionId, px, opts) {
+  const { identifier } = await cdp.send(
+    "Page.addScriptToEvaluateOnNewDocument",
+    { source: keyboardScript(px, opts) },
+    sessionId,
+  );
+  return () =>
+    cdp.send("Page.removeScriptToEvaluateOnNewDocument", { identifier }, sessionId);
+}
+
 /** Wait for fonts + two frames, so a screenshot isn't mid-layout. */
 export async function settle(cdp, sessionId) {
   await cdp.send(

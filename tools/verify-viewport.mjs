@@ -25,8 +25,15 @@
 // `window.innerWidth === document.documentElement.clientWidth` in the remote
 // inspector — if that fails while this passes, the viewport was widened by
 // something other than the page's own content.
+//
+// It also measures HORIZONTAL overflow and nothing else, which is why it
+// passed #120 every day that bug existed: a viewfinder clipped to a strip and a
+// dead band above the keyboard are both vertical, and neither moves a single
+// box past the right edge. One route now runs with a fabricated keyboard
+// (KEYBOARD_ROUTES) — that widens what this file can *see*, not what it
+// asserts. What is under the keyboard is still a question for a device.
 
-import { evaluate, openPage, settle, withChrome } from "./cdp.mjs";
+import { evaluate, fakeKeyboard, openPage, settle, withChrome } from "./cdp.mjs";
 
 // ── args ─────────────────────────────────────────────
 const argv = process.argv.slice(2);
@@ -81,6 +88,13 @@ if (!routes) {
         // only sheet whose rows carry mixed provenance, so each one draws its
         // own label under the name.
         "/log#basket",
+        // #120's pre-capture note, **with a keyboard up** — the only route in
+        // this list measured through one, and the only reason this file can
+        // see the state at all is that `--keyboard` fabricates it (see
+        // KEYBOARD_ROUTES below). The deck is transformed up by a measured
+        // distance while the viewfinder keeps its full width, so what is being
+        // asked is whether a lifted, clipped stage still fits sideways.
+        "/log#note",
         // #59's correction, open with a note typed into it. The one state in
         // the app where a textarea and two buttons sit *inside* the item list
         // rather than in a footer, so it is the sheet at its tallest with a
@@ -120,6 +134,22 @@ if (!routes) {
       ]
     : ["/"];
 }
+
+/** Routes measured with a fabricated software keyboard (#120).
+ *
+ *  336px is iOS's portrait keyboard on a 13 mini plus its accessory bar,
+ *  near enough — and being near enough is all that is asked of it, because
+ *  nothing here is a claim about iOS. It is a tool-side number on purpose:
+ *  the app contains no keyboard height and must not, since one keyboard is
+ *  not another (Dave's own screenshot shows an `EN PL` space bar, so two
+ *  layouts are already in play on the reporting device). Any inset large
+ *  enough to make the deck move exercises the same code.
+ *
+ *  Per route rather than for the whole run: with a keyboard up on every
+ *  screen, the fifteen routes that have no field would be measured in a state
+ *  no user can reach. */
+const KEYBOARD_PX = 336;
+const KEYBOARD_ROUTES = new Set(["/log#note"]);
 
 // Runs in the page. Reports the document's overflow plus the elements whose
 // box actually crosses the viewport edge — children of an overflowing parent
@@ -190,6 +220,12 @@ await withChrome(async (cdp) => {
 
   for (const width of widths) {
     for (const route of routes) {
+      // Installed before the navigation, because the app reads the viewport as
+      // it mounts; removed after, so the next route is measured with the
+      // keyboard down like a user would have it.
+      const drop = KEYBOARD_ROUTES.has(route)
+        ? await fakeKeyboard(cdp, page.sessionId, KEYBOARD_PX)
+        : null;
       await page.navigate(base + route);
       await cdp.send(
         "Emulation.setDeviceMetricsOverride",
@@ -210,6 +246,7 @@ await withChrome(async (cdp) => {
         if (opened) await new Promise((r) => setTimeout(r, 300));
       }
       const { vw, scrollWidth, offenders } = await evaluate(cdp, page.sessionId, PROBE);
+      if (drop) await drop();
       // Both halves matter. scrollWidth catches in-flow overflow; the offender
       // list catches the rest, because a position:fixed element that crosses
       // the edge does NOT move documentElement.scrollWidth — the tab bar is
@@ -217,7 +254,7 @@ await withChrome(async (cdp) => {
       check(
         `${String(width).padStart(3)} ${route}`,
         scrollWidth <= vw && offenders.length === 0,
-        `content ${scrollWidth}px in ${vw}px`,
+        `content ${scrollWidth}px in ${vw}px` + (drop ? ` · keyboard ${KEYBOARD_PX}px` : ""),
       );
       for (const o of offenders) console.log(`        ↳ ${o.past}px past the edge · ${o.path}`);
     }

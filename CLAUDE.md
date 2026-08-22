@@ -155,8 +155,14 @@ viewfinder that failed to open is a centred paragraph, which overflows nothing.
 ```bash
 node tools/shot-matrix.mjs --camera --settle 1200 --cookie <name>=<token> \
   http://localhost:5173/log
+node tools/shot-matrix.mjs --camera --settle 1200 --keyboard 336 --cookie <name>=<token> \
+  "http://localhost:5173/log#note"        # the keyboard-up layout (#120)
 npm run verify:viewport -- --camera --cookie <name>=<token>
 ```
+
+`--keyboard <px>` fabricates a software keyboard (see the gotcha below) and names its
+output `…-kb336@375.png`, so the keyboard-up and keyboard-down shots of one route do not
+overwrite each other.
 
 The log flow's modes are addressable: `/log#photo`, `/log#barcode`, `/log#text`, plus
 `/log#picks` (#82 — PHOTO with the favourites/recents panel pulled up). Unlike
@@ -171,7 +177,10 @@ route list. `/log#correct` (#59) is DEV-gated and opens the correction form **wi
 already typed**, so the tall case is what gets measured; its capture's `photoKey` belongs
 to nobody, so "Read it again" from the stage drives the *refusal* path deterministically —
 which is the state #16 owns and the one worth a screenshot. Also in `verify:viewport`'s
-route list. Trends adds `/trends#empty`
+route list. `/log#note` (#120) is DEV-gated and opens the **pre-capture** note field
+with a note typed — the camera screen, not a sheet — and it is the one route measured
+through a fabricated keyboard (`--keyboard 336`), which is what makes the deck's lift
+visible to a PNG at all. Trends adds `/trends#empty`
 and `/trends#sparse` (#22), both DEV-gated — they build a real `TrendsResponse` by running
 `buildTrends` over fabricated inputs, so a stage can't drift into a shape the route would
 never produce.
@@ -852,15 +861,34 @@ result about the *inputs* and says nothing about this register.
   375x667 and #59's correction at 375x568; the picks panel is the only sheet that
   scrolls at 812, because its 80dvh ceiling is lower than its list. Assert the
   sheet is scrollable *before* driving anything that depends on it.
-- **No check in this repo has ever seen a software keyboard** (#120,
-  2026-08-22). Headless Chrome has none, so `shot-matrix` and `cdp.mjs` render
+- **No check in this repo had ever seen a software keyboard** (#120,
+  2026-08-22). Headless Chrome has none, so `shot-matrix` and `cdp.mjs` rendered
   every screen keyboard-down, and `verify:viewport` measures **horizontal**
   overflow only. #59's pre-capture note clipped the viewfinder to a strip and
   left a dead band above the keyboard, and every automated check passed it.
   This is a *different* blind spot from `env(safe-area-inset-*)` and it is
   broader: it applies to **every text input in the app** — the text reader, the
-  macro fields, the correction note, Settings, Onboarding. Treat "what does this
-  look like with the keyboard up" as a device question, always.
+  macro fields, the correction note, Settings, Onboarding.
+  **`--keyboard <px>` now fabricates one**, in `shot-matrix` and
+  `verify:viewport` (`keyboardScript`/`fakeKeyboard` in `cdp.mjs`). It replaces
+  `window.visualViewport` before app script runs, which is the *input* the app
+  measures — so the lift on screen is the real code path reading a fake
+  viewport, the same discipline `/trends#empty` follows. `/log#note` is the
+  stage; `verify:camera` raises and lowers it mid-run and asserts the deck
+  moved, which is the only oracle either half of that feature has.
+  **What it still is not is a keyboard.** No accessory bar, no predictive row,
+  no animation, no language — and crucially **no `visualViewport.offsetTop`**,
+  because iOS scrolls the visual viewport itself to reveal a focused field and
+  headless Chrome never does. That term is the one #120's arithmetic has to
+  cancel and the one nothing here exercises. Treat "what does this look like
+  with the keyboard up" as a device question, always.
+  **The sheets are where the rest of this lives.** Measured 2026-08-22 at
+  375x812 with a 336px inset: every macro field on the confirm, portion,
+  basket and edit sheets renders *under* the keyboard line, as does #59's
+  correction textarea — they sit in a `position: fixed`, bottom-anchored
+  `.sheet-wrap`, so the document scroll that saves Settings and Onboarding
+  cannot move them. Not fixed here, not filed as blocking anything; named so
+  the next person measures rather than assumes.
 - **Design QA never sees loading states.**
   `cdp.mjs` forces `prefers-reduced-motion: reduce` on every page it opens. So
   every PNG this project has ever produced is of a fully-loaded, animation-free

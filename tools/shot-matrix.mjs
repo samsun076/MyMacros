@@ -30,13 +30,21 @@
 // its own clock that settle() cannot see — a camera stream coming up, a
 // screen's own fetch landing.
 //
+// Headless Chrome has no software keyboard either, which is a blind spot that
+// covers every text input in the app (#120) — so --keyboard <px> fabricates
+// one: `window.visualViewport` is replaced before app script runs and the area
+// it would cover is painted with a labelled block. The app measures it and
+// reacts for real. The one screen that has a stage for it:
+//   node tools/shot-matrix.mjs --camera --settle 1200 --keyboard 336 \
+//     --cookie ... "http://localhost:5173/log#note"
+//
 // Limits: Chrome reports env(safe-area-inset-*) as 0 and can't reproduce iOS
 // Safari's chrome tinting — verify those in the Xcode Simulator (tier 2 in #31).
 
 import { mkdir, writeFile } from "node:fs/promises";
 import { basename, join, resolve } from "node:path";
 import { glob } from "node:fs/promises";
-import { connect, launchChrome, openPage, settle } from "./cdp.mjs";
+import { connect, fakeKeyboard, launchChrome, openPage, settle } from "./cdp.mjs";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 
@@ -56,8 +64,16 @@ let videoFile = null;
 // see either — it waits for document.fonts.ready and two frames, both of
 // which happen long before.
 let settleMs = 0;
+// --keyboard <px> fabricates a software keyboard (#120). Headless Chrome has
+// none, so until this flag existed no PNG in this project had ever shown a
+// keyboard-up layout — on this screen or any other. It replaces
+// `window.visualViewport` before app script runs and paints a labelled block
+// over the area the keyboard would occupy; the app's own measurement and its
+// own lift do the rest. See cdp.mjs.
+let keyboard = 0;
 for (let i = 0; i < argv.length; i++) {
   if (argv[i] === "--widths") widths = argv[++i].split(",").map(Number);
+  else if (argv[i] === "--keyboard") keyboard = Number(argv[++i]);
   else if (argv[i] === "--camera") camera = true;
   else if (argv[i] === "--video") {
     videoFile = argv[++i];
@@ -264,6 +280,11 @@ const cdp = await connect(wsUrl);
 try {
   const page = await openPage(cdp);
 
+  if (keyboard) {
+    await fakeKeyboard(cdp, page.sessionId, keyboard, { paint: true });
+    console.log(`  (synthetic keyboard: ${keyboard}px — headless Chrome has none, #120)`);
+  }
+
   // Always on, not only when cookies are set: `fullPageShot` waits on the
   // in-flight count to know a screen has finished fetching (#52).
   await cdp.send("Network.enable", {}, page.sessionId);
@@ -289,11 +310,16 @@ try {
     // flow's modes are addressable as /log#photo, #barcode and #text, so
     // shooting all three in one run silently overwrote a single app-log.png
     // and left two of the modes unshot.
+    // ...and the keyboard has to be in it for the same reason the hash does:
+    // the same route shot with and without one is two different screens, and
+    // a run that overwrote one with the other would leave the interesting half
+    // unshot with nothing to say so (#120).
+    const suffix = (hash ? `-${hash}` : "") + (keyboard ? `-kb${keyboard}` : "");
     const name = isUrl
       ? "app-" +
         (new URL(path).pathname.replace(/^\/|\/$/g, "").replace(/\//g, "-") || "home") +
-        (hash ? `-${hash}` : "")
-      : basename(path, ".html") + (hash ? `-${hash}` : "");
+        suffix
+      : basename(path, ".html") + suffix;
     const url = isUrl ? file : `file://${resolve(path)}${hash ? "#" + hash : ""}`;
     const shots = [];
     for (const width of widths) {

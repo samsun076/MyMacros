@@ -37,6 +37,9 @@
 //           for different frame sizes. Ends by leaving /log, where the camera
 //           is supposed to actually go out: every track `ended`.
 //   text    `/log#text` must never touch the camera at all. Zero, not one.
+//   note    #59's field and #120's lift: 27 keystrokes and a keyboard going up
+//           and down, all of them re-renders of a component holding a live
+//           camera. Still 1.
 //   denied  a refusal is an *answer*. Re-asking a user who said no is the
 //           prompt-storm #94 reports, in its most visible form. Produced by
 //           withholding `--use-fake-ui-for-media-stream`, so Chrome refuses
@@ -63,7 +66,7 @@
 // that. This pins the input to the platform's decision — how often we ask —
 // which is the only half of #94 we control.
 
-import { evaluate, openPage, settle, waitFor, withChrome } from "./cdp.mjs";
+import { evaluate, fakeKeyboard, openPage, settle, waitFor, withChrome } from "./cdp.mjs";
 
 // ── args ─────────────────────────────────────────────
 const argv = process.argv.slice(2);
@@ -122,12 +125,46 @@ const REPORT = `(() => {
     })),
     mode: [...document.querySelectorAll(".modes [role=tab]")]
       .find((e) => e.getAttribute("aria-selected") === "true")?.textContent || null,
+    note: document.querySelector(".cam-note-field")?.value ?? null,
+    /* #120's lift, read off the rendered transform rather than off any state:
+       the whole stage is translated up so the note clears the keyboard, and
+       every step of that is a re-render of a component holding a live camera. */
+    lift: (() => {
+      const el = document.querySelector(".frame.cam");
+      if (!el) return null;
+      const t = getComputedStyle(el).transform;
+      return t === "none" ? 0 : -new DOMMatrix(t).m42;
+    })(),
     live: !!document.querySelector(".cam-video.on"),
     still: !!document.querySelector(".cam-still"),
     sheet: !!document.querySelector(".sheet"),
     fallback: !!document.querySelector(".cam-fallback"),
     textbox: !!document.querySelector("#describe"),
   };
+})()`;
+
+/** 27 characters, which is the number #59 measured by hand when it added the
+ *  field: every one of them is a prop change on a component that owns a live
+ *  camera, and the whole of that issue's risk was whether re-rendering the
+ *  stage re-acquires. #120 adds a second source of the same re-render — a
+ *  visual-viewport listener firing as the keyboard moves — so the measurement
+ *  stops being an anecdote in an issue thread and becomes a step in here. */
+const NOTE = "wife's plate, no ham on her";
+
+/** Type it a character at a time, through the native value setter and a real
+ *  `input` event, because a controlled React input ignores `el.value = x`.
+ *  The existing text step sets the value directly on purpose — it only needs
+ *  the focus — but here the *number of renders* is the subject. */
+const TYPE_NOTE = `(() => {
+  const el = document.querySelector(".cam-note-field");
+  if (!el) return 0;
+  const set = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set;
+  el.focus();
+  for (const ch of ${JSON.stringify(NOTE)}) {
+    set.call(el, el.value + ch);
+    el.dispatchEvent(new Event("input", { bubbles: true }));
+  }
+  return el.value.length;
 })()`;
 
 const fail = [];
@@ -178,11 +215,15 @@ const clickMode = async (cdp, S, mode) => {
 
 /** A page with the patch installed, the session cookie set, and the reference
  *  width (rule 6) — before anything navigates. */
-async function stage(cdp, { block = [] } = {}) {
+async function stage(cdp, { block = [], keyboard = false } = {}) {
   const page = await openPage(cdp);
   const S = page.sessionId;
   await cdp.send("Network.enable", {}, S);
   await cdp.send("Page.addScriptToEvaluateOnNewDocument", { source: PATCH }, S);
+  // Down at 0 to start with — the section that wants it raises it itself, so
+  // what is measured is the *reaction* rather than a screen that mounted with
+  // a keyboard already up (#120).
+  if (keyboard) await fakeKeyboard(cdp, S, 0);
   await cdp.send(
     "Emulation.setDeviceMetricsOverride",
     { width: 375, height: 812, deviceScaleFactor: 2, mobile: true },
@@ -284,6 +325,55 @@ async function main() {
       await pause(400);
       await step(cdp, S, "2. typed a description", 0);
     }
+
+    // ── edge: the note, and the keyboard under it ────
+    // #59 put a text field on the camera screen and #120 made the screen move
+    // when the keyboard arrives. Both are re-renders of a mounted viewfinder —
+    // 27 keystrokes and then a visual-viewport listener firing through a
+    // keyboard going up and coming back down — which is exactly the shape #94
+    // was: a side effect running more times than anyone counted.
+    console.log("\nnote — a typed note and a moving keyboard re-acquire nothing");
+    {
+      const page = await stage(cdp, { keyboard: true });
+      const S = page.sessionId;
+      await page.navigate(`${base}/log`);
+      await settle(cdp, S);
+      await waitFor(cdp, S, `!!document.querySelector(".cam-video.on")`, {
+        label: "the viewfinder to go live",
+      });
+      await pause(400);
+      await step(cdp, S, "1. /log mounted (PHOTO)", 1);
+
+      await click(cdp, S, ".cam-note .btn-text");
+      await waitFor(cdp, S, `!!document.querySelector(".cam-note-field")`, {
+        label: "the note field",
+      });
+      await pause(200);
+      await step(cdp, S, "2. note field opened", 1);
+
+      const typed = await evaluate(cdp, S, TYPE_NOTE);
+      await pause(400);
+      const r3 = await step(cdp, S, `3. typed ${typed} character(s)`, 1);
+      // A field that never took the text is a screen that never re-rendered,
+      // which would pass the count above for entirely the wrong reason.
+      check(
+        "   the note reached the field",
+        r3.note === NOTE,
+        `note=${JSON.stringify(r3.note)}`,
+      );
+
+      await evaluate(cdp, S, `window.__keyboard.set(336)`);
+      await pause(500);
+      const up = await step(cdp, S, "4. keyboard up (336px)", 1);
+      // Same negative control one step over: a deck that did not move has not
+      // exercised the listener this section exists to count through.
+      check("   the deck lifted", up.lift > 0, `lift=${up.lift}px`);
+
+      await evaluate(cdp, S, `window.__keyboard.set(0)`);
+      await pause(500);
+      const down = await step(cdp, S, "5. keyboard down again", 1);
+      check("   the deck came back down", down.lift === 0, `lift=${down.lift}px`);
+    }
   }, [FAKE_DEVICE, FAKE_UI]);
 
   // ── edge: the refusal ──────────────────────────────
@@ -333,7 +423,8 @@ try {
 
 console.log(
   fail.length
-    ? `\n${fail.length} check(s) failed — the log flow is asking for the camera more than once (#94)\n`
-    : "\none getUserMedia call per visit, none on the text path, one on a refusal\n",
+    ? `\n${fail.length} check(s) failed — see the ✗ line(s) above (#94, #120)\n`
+    : "\none getUserMedia call per visit, none on the text path, one on a refusal;\n" +
+      "the note and the keyboard move the deck and acquire nothing\n",
 );
 process.exit(fail.length ? 1 : 0);

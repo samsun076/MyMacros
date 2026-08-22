@@ -1255,6 +1255,25 @@ section {
   background: var(--viewfinder-surface);
   display: flex;
   flex-direction: column;
+  /* #120: the deck rises when the keyboard does, and the stage is what moves.
+     The transform is set inline from `useKeyboardLift` — the *distance* is a
+     measurement and has no business in a stylesheet — and this is the easing
+     for it. iOS reports the new visual viewport once the keyboard has finished
+     animating, so without a transition the whole screen arrives in one frame,
+     late, which reads as a glitch rather than as a response.
+
+     A transform on this element and not a height change on `.finder`: the
+     viewfinder must keep its real size and crop, not squash. */
+  transition: transform 160ms ease-out;
+}
+
+/* Every PNG this project produces is taken under `reduce` (cdp.mjs forces it),
+   so this is also what makes a keyboard-up screenshot deterministic rather
+   than a race with an easing curve. */
+@media (prefers-reduced-motion: reduce) {
+  .frame.cam {
+    transition: none;
+  }
 }
 
 .cam .log-top {

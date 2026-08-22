@@ -238,6 +238,28 @@ function demoCorrection(): Correction | null {
   return { capture: 0, note: "there's no ham in it — just cheese", busy: false, error: null };
 }
 
+/** DEV-only: `/log#note` opens the **pre-capture** note field with a note
+ *  already typed (#120) — PHOTO's viewfinder behind it, not `#correct`'s sheet.
+ *
+ *  **It fakes nothing about the keyboard, and that is the point.** The stage
+ *  supplies the one thing a browser cannot be told to do — open the field —
+ *  and the keyboard itself is fabricated *as an input*, by the tooling
+ *  replacing `window.visualViewport` before any app script runs
+ *  (`--keyboard` in shot-matrix and verify-viewport). So the lift on screen is
+ *  the real `useKeyboardLift` reading a real measurement of a fake viewport,
+ *  which is the same discipline `/trends#empty` follows in running the real
+ *  `buildTrends` over fabricated inputs: fabricate what goes in, never what
+ *  comes out. A stage that hardcoded the lift would render a screen the app
+ *  cannot produce and call it evidence.
+ *
+ *  Without `--keyboard` it is still a legitimate screen — the note field open,
+ *  keyboard down — which is exactly what every check in this repo saw before
+ *  this issue, and exactly what it could not see the other half of. */
+function demoNote(): string | null {
+  if (!import.meta.env.DEV || window.location.hash !== "#note") return null;
+  return "wife's plate, no ham";
+}
+
 export function Log() {
   const navigate = useNavigate();
   const [mode, setMode] = useState<LogMode>(initialMode);
@@ -283,7 +305,7 @@ export function Log() {
    *  nothing on screen says so — which is the trap the obvious two-value
    *  version has: type a note, switch to TEXT and back (the stage unmounts),
    *  and a collapsed field would silently attach it to the next photo. */
-  const [note, setNote] = useState<string | null>(null);
+  const [note, setNote] = useState<string | null>(demoNote);
   const [still, setStill] = useState<string | null>(null);
   const [slot, setSlot] = useState<MealSlot>(() => mealSlotFor());
   const [editing, setEditing] = useState<number | null>(null);
