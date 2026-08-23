@@ -350,15 +350,26 @@ export function droppedCount(basket: readonly Capture[]): number {
  *  `calories: 6450`). The person's next move is the same in every case: type
  *  the food in by hand if they want it, which the sheet already lets them do.
  *
- *  It names no remedy of its own for that reason — the remedy is the rest of
- *  the subtitle, which is either #16's "type what you ate" or the standing
- *  "tap anything to change it", and a third instruction between them would be
- *  the noise `sheet-confirm` already refuses to stack. */
+ *  **It names `+ Add another`, and the first cut did not — that was wrong.**
+ *  The original reasoning was that the remedy is the rest of the subtitle,
+ *  either #16's "type what you ate" or the standing "tap anything to change
+ *  it", so a third instruction would be noise. The gap is that **"tap anything"
+ *  is about the rows that are THERE.** A dropped food has nothing to tap, so
+ *  the note stated a loss and pointed at a control that cannot undo it — the
+ *  same shape #113 was just fixed for one screen over, where a refusal named no
+ *  field. Dave found it by reading the sentence and asking the obvious
+ *  question: *"how does one fix that?"*
+ *
+ *  `+ Add another` is the answer and it is already in the footer (#81) —
+ *  it returns to the capture modes, so TEXT lets the person type the missing
+ *  food in and it appends to the same meal. Naming the control by its own label
+ *  rather than describing it, because a person scanning for a way out is
+ *  looking for words that match a button. */
 export function droppedNote(dropped: number): string | null {
   if (dropped < 1) return null;
   return dropped === 1
-    ? "One food came back with numbers that can't be right, so it was left out."
-    : `${dropped} foods came back with numbers that can't be right, so they were left out.`;
+    ? "One food came back with numbers that can't be right, so it was left out — + Add another to type it in."
+    : `${dropped} foods came back with numbers that can't be right, so they were left out — + Add another to type them in.`;
 }
 
 /** The confirm sheet's subtitle, whole (#110).

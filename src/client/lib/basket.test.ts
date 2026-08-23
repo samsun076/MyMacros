@@ -371,11 +371,11 @@ test("says nothing when nothing was dropped", () => {
 });
 
 test("says it in the singular for one food", () => {
-  expect(droppedNote(1)).toBe("One food came back with numbers that can't be right, so it was left out.");
+  expect(droppedNote(1)).toBe("One food came back with numbers that can't be right, so it was left out — + Add another to type it in.");
 });
 
 test("says it in the plural, with the count, for more than one", () => {
-  expect(droppedNote(3)).toBe("3 foods came back with numbers that can't be right, so they were left out.");
+  expect(droppedNote(3)).toBe("3 foods came back with numbers that can't be right, so they were left out — + Add another to type them in.");
 });
 
 test("counts a capture's drops", () => {
@@ -423,7 +423,7 @@ test("a dropped food is named, and the instruction stays", () => {
   // It displaces nothing: "tap anything to change it" is discoverable by
   // tapping, and a food that is silently absent is discoverable by nothing.
   expect(sheetSubtitle([{ ...typed, dropped: 1 }])).toBe(
-    "One food came back with numbers that can't be right, so it was left out. Tap anything to change it before it saves.",
+    "One food came back with numbers that can't be right, so it was left out — + Add another to type it in. Tap anything to change it before it saves.",
   );
 });
 
@@ -434,7 +434,7 @@ test("#16's recovery row still leads with why the sheet is blank", () => {
 });
 
 test("a refused-whole read does not say the same thing twice", () => {
-  const manual = "One food came back with numbers that can't be right, so it was left out.";
+  const manual = "One food came back with numbers that can't be right, so it was left out — + Add another to type it in.";
   expect(sheetSubtitle([{ ...photographed, manual, dropped: 1 }])).toBe(
     `${manual} Your photo is saved — type what you ate, or close this to retake.`,
   );
@@ -448,7 +448,7 @@ test("a recovery row beside a lossy capture says both", () => {
     { ...typed, dropped: 1 },
   ];
   expect(sheetSubtitle(basket)).toBe(
-    "No food found in that photo. One food came back with numbers that can't be right, so it was left out. Your photo is saved — type what you ate, or close this to retake.",
+    "No food found in that photo. One food came back with numbers that can't be right, so it was left out — + Add another to type it in. Your photo is saved — type what you ate, or close this to retake.",
   );
 });
 
