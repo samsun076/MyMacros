@@ -2517,11 +2517,28 @@ section {
    and it inherits the camera stage's 20px inset the way `.held-bar` does —
    `.finder` gives up the height, which is the right trade here for the same
    reason it was there. */
+/* **The top margin is the focus ring's, not decoration** (#122).
+ *
+ *  `:focus-visible` is `outline: 2px` at `outline-offset: 2px`, so a focused
+ *  field paints 4px outside its own border box — and `.finder` above it is
+ *  `position: relative`, which makes it a positioned element that paints
+ *  *above* this static sibling. At `margin-top: 0` the ring's top 4px went
+ *  under the viewfinder and the field read as clipped. Measured, not inferred:
+ *  finder bottom 622, row top 622, ring top 618.
+ *
+ *  8px rather than 4px, matching the 8px below it, because clearing the ring
+ *  is the floor and not the goal — the row was jammed against a live camera
+ *  preview with no breathing room at all, which is what Dave saw first and
+ *  reported even unfocused.
+ *
+ *  **Do not close this gap to buy deck height.** #120's lift is computed from
+ *  the row's live rect, so shrinking it moves the keyboard clearance rather
+ *  than gaining anything. */
 .cam-note {
   display: flex;
   align-items: center;
   gap: 10px;
-  margin: 0 20px 8px;
+  margin: 8px 20px 8px;
 }
 
 .cam-note .btn-text {

@@ -448,7 +448,39 @@ export function CameraStage({
           trade: the finder is the one element here that can afford it. */}
       {held > 0 && !reviewing && <HeldBar held={held} onReview={onReview} />}
 
-      <div className="finder">
+      {/* **Tapping the viewfinder puts the keyboard away** (#122).
+       *
+       *  #120's lift scrolls the close button and the header off the top while
+       *  a note is being typed — the deliberate consequence of lifting the
+       *  whole deck — so for that moment there is no visible way out of `/log`.
+       *  Dave asked the right question about it: *"does a swipe down gesture
+       *  work to either close the keyboard and or close the screen?"*
+       *
+       *  This is the plain answer and the platform's own: **tap outside the
+       *  field.** The viewfinder is the largest target on the screen, it had no
+       *  tap handler of its own (checked — only the buttons inside it do), and
+       *  dismissing the keyboard drops the deck, which brings the close button
+       *  straight back. Two taps to leave, neither of them hidden.
+       *
+       *  **Not a downward swipe**, though iOS's own `interactive` dismissal is
+       *  that: three sheets on this app already read a vertical drag as
+       *  dismiss-me (#102, #118), and teaching one more surface a fourth
+       *  meaning for the same finger movement is how gesture systems rot. A tap
+       *  is unambiguous here precisely because nothing else claims it.
+       *
+       *  `onPointerDown`, not `onClick`: iOS fires the click *after* the
+       *  keyboard has begun animating away, and blurring on the down stroke
+       *  keeps the deck and the keyboard moving together. It is deliberately
+       *  not `capture` — a tap on the fallback button or the retake control
+       *  inside the finder should still do its own job, and blurring first is
+       *  harmless to both. */}
+      <div
+        className="finder"
+        onPointerDown={() => {
+          const el = document.activeElement;
+          if (el instanceof HTMLElement && el.classList.contains("cam-note-field")) el.blur();
+        }}
+      >
         {/* rendered unconditionally so the ref exists when getUserMedia
             resolves; `dimmed` is the sketch's own behind-the-sheet treatment,
             reused here so the read runs over the photo it is reading */}

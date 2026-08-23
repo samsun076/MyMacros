@@ -135,6 +135,21 @@ const REPORT = `(() => {
       const t = getComputedStyle(el).transform;
       return t === "none" ? 0 : -new DOMMatrix(t).m42;
     })(),
+    /* #122. closeVisible is a RENDERED answer, not "does the element exist" —
+       the close button is never unmounted by the lift, it is translated off the
+       top of the screen, so an existence check would pass while nobody could
+       reach it. */
+    focused: document.activeElement ? document.activeElement.className : null,
+    closeTop: (() => {
+      const el = document.querySelector(".cam-x");
+      return el ? Math.round(el.getBoundingClientRect().top) : null;
+    })(),
+    closeVisible: (() => {
+      const el = document.querySelector(".cam-x");
+      if (!el) return null;
+      const r = el.getBoundingClientRect();
+      return r.top >= 0 && r.bottom <= window.innerHeight;
+    })(),
     live: !!document.querySelector(".cam-video.on"),
     still: !!document.querySelector(".cam-still"),
     sheet: !!document.querySelector(".sheet"),
@@ -369,10 +384,59 @@ async function main() {
       // exercised the listener this section exists to count through.
       check("   the deck lifted", up.lift > 0, `lift=${up.lift}px`);
 
+      /* #122: the focused field's ring must not paint under the viewfinder.
+         `:focus-visible` is a 2px outline at 2px offset, so a focused field
+         reaches 4px above its own border box — and `.finder` is
+         `position: relative`, i.e. a positioned element painting above its
+         static siblings. At `margin-top: 0` the top of the ring went under the
+         preview and the field read as clipped.
+
+         **Only a rendered measurement can see this.** The declaration was
+         present and correct the whole time; what was wrong was the geometry
+         two elements made together, which is #82's `80dvh` lesson in a
+         different property. Asserted as a gap in pixels rather than as a
+         margin value, so it survives anyone changing which side pays for it. */
+      const ring = await evaluate(
+        cdp,
+        S,
+        `(() => {
+          const f = document.querySelector('.cam-note-field');
+          const finder = document.querySelector('.finder');
+          const cs = getComputedStyle(f);
+          const need = (parseFloat(cs.outlineWidth) || 0) + (parseFloat(cs.outlineOffset) || 0);
+          return { gap: f.getBoundingClientRect().top - finder.getBoundingClientRect().bottom, need };
+        })()`,
+      );
+      check(
+        "   the focus ring clears the viewfinder",
+        ring.gap >= ring.need,
+        `gap=${ring.gap}px needs>=${ring.need}px`,
+      );
+
+      /* #122: and there is a way out while the keyboard is up. The lift scrolls
+         the close button off the top, so tapping the viewfinder — the largest
+         target on screen, and one that had no handler of its own — puts the
+         keyboard away and brings the deck, and the close button, back. */
+      await evaluate(
+        cdp,
+        S,
+        `(() => { const f = document.querySelector('.finder');
+          f.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true })); })()`,
+      );
       await evaluate(cdp, S, `window.__keyboard.set(0)`);
       await pause(500);
-      const down = await step(cdp, S, "5. keyboard down again", 1);
-      check("   the deck came back down", down.lift === 0, `lift=${down.lift}px`);
+      const tapped = await step(cdp, S, "5. tapped the viewfinder", 1);
+      check(
+        "   the field gave up focus",
+        tapped.focused !== "cam-note-field",
+        `focused=${tapped.focused}`,
+      );
+      check("   the deck came back down", tapped.lift === 0, `lift=${tapped.lift}px`);
+      check(
+        "   the close button is reachable again",
+        tapped.closeVisible === true,
+        `closeTop=${tapped.closeTop}`,
+      );
     }
   }, [FAKE_DEVICE, FAKE_UI]);
 
