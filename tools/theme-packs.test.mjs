@@ -113,3 +113,58 @@ describe("theme packs (#29, #30)", () => {
     });
   }
 });
+
+/** Chrome-backed surfaces must take their ink from `--on-chrome` (#123).
+ *
+ *  **The rule already existed in prose and nothing executed it.** `.tab`'s
+ *  comment states it exactly — *"a pack is free to make `--chrome` a surface
+ *  the page's ink cannot be read on — Field Notes' is the notebook's pine cover
+ *  under ivory paper, where page ink is invisible"* — and `.cam-x svg` used
+ *  `--ink-secondary` anyway, from the moment the light packs landed until build
+ *  rule 4's render check found it:
+ *
+ *      field-notes    #6e6a5c on #24513f   1.67:1
+ *      instrument     #5e574a on #1b1712   2.49:1
+ *      night-athletic #9fadc0 on #111720   7.89:1   <- and this is why
+ *
+ *  **Night Athletic is the reason it survived.** Build rule 1 puts all polish
+ *  there, and there `--ink-secondary` and `--on-chrome` happen to agree, so the
+ *  pairing was wrong on two packs and right on the only one anyone renders.
+ *
+ *  This walks the stylesheet rather than the tokens, because the defect is a
+ *  *pairing* — both values were correct on their own and neither file was
+ *  wrong in isolation. That is the same shape as `.picks-sheet`'s `80dvh`
+ *  losing the cascade (#82) and the note field's focus ring painting under the
+ *  viewfinder (#122): a rule that reads right in the file and is wrong in the
+ *  layout two elements make together. */
+describe("chrome-backed surfaces take chrome ink (#123)", () => {
+  const css = readFileSync(join(import.meta.dirname, "../src/client/styles/app.css"), "utf8");
+
+  /** Selectors whose own background is `--chrome`, however they reach it —
+   *  a bare `var(--chrome)` or a `color-mix` of it, which is how `.cam-x`
+   *  spelt it and is exactly the spelling a naive substring check would have
+   *  missed. */
+  const chromeBacked = [...css.matchAll(/([^{}]+)\{([^}]*)\}/g)]
+    .filter(([, , body]) => /background[^;]*var\(--chrome\)/.test(body))
+    .map(([, sel]) => sel.trim().split("\n").pop().trim());
+
+  it("finds the chrome-backed rules at all, so the rest of this block is not vacuous", () => {
+    expect(chromeBacked.length).toBeGreaterThan(0);
+  });
+
+  /* The glyph rules are separate selectors from the surface ones (`.cam-x` sets
+     the background, `.cam-x svg` sets the stroke), so the check is: for every
+     chrome-backed selector, no rule scoped under it may take a page-ink token.
+     `--ink`, `--ink-secondary`, `--ink-muted`, `--ink-dim` are all page ink. */
+  for (const base of ["\\.cam-x", "\\.tab"]) {
+    it(`nothing under ${base.replace(/\\/g, "")} uses page ink`, () => {
+      const scoped = [...css.matchAll(/([^{}]+)\{([^}]*)\}/g)].filter(([, sel]) =>
+        new RegExp(`(^|[\\s,])${base}([\\s.:\\[]|$)`).test(sel),
+      );
+      const offenders = scoped
+        .filter(([, , body]) => /(color|stroke|fill)[^;]*var\(--ink(-[a-z]+)?\)/.test(body))
+        .map(([, sel]) => sel.trim().split("\n").pop().trim());
+      expect(offenders).toEqual([]);
+    });
+  }
+});

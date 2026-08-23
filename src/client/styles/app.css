@@ -1201,8 +1201,26 @@ section {
   cursor: pointer;
 }
 
+/* **`--on-chrome`, not page ink** — the same rule `.tab` states above, and this
+ *  is the consumer that was missed when #30 introduced the token.
+ *
+ *  The button's own background is `--chrome`, and #30's comment on `.tab` says
+ *  why that matters in as many words: *a pack is free to make that a surface
+ *  the page's ink cannot be read on.* Both light packs do. `--ink-secondary`
+ *  flips dark when the page goes light, while `--chrome` stays dark in every
+ *  pack, so the glyph and its circle converged:
+ *
+ *      field-notes    #6e6a5c on #24513f   1.67:1   ->  --on-chrome  3.69:1
+ *      instrument     #5e574a on #1b1712   2.49:1   ->  --on-chrome  5.42:1
+ *      night-athletic #9fadc0 on #111720   7.89:1       (unchanged, 6.09:1)
+ *
+ *  **Night Athletic is why nobody saw it.** Build rule 1 puts all polish there,
+ *  and there the two tokens happen to agree — so the pairing was wrong from the
+ *  moment the light packs landed and correct on the only screen anyone looked
+ *  at. Found by build rule 4's milestone-close render check, which is the only
+ *  thing in this project that would ever have looked. */
 .cam-x svg {
-  stroke: var(--ink-secondary);
+  stroke: var(--on-chrome);
 }
 
 .modes {

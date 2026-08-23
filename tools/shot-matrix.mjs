@@ -44,7 +44,7 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { basename, join, resolve } from "node:path";
 import { glob } from "node:fs/promises";
-import { connect, fakeKeyboard, launchChrome, openPage, settle } from "./cdp.mjs";
+import { connect, evaluate, fakeKeyboard, launchChrome, openPage, settle } from "./cdp.mjs";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 
@@ -71,10 +71,26 @@ let settleMs = 0;
 // over the area the keyboard would occupy; the app's own measurement and its
 // own lift do the rest. See cdp.mjs.
 let keyboard = 0;
+
+/* --theme <pack> shoots a light pack (#30, build rule 4).
+ *
+ *  **Build rule 1 says polish happens in Night Athletic**, so every screen this
+ *  project builds is designed, driven and screenshotted in one theme — and
+ *  rule 4 then owes a render check of the light packs at every milestone close.
+ *  Until now that check had no instrument: the theme lives in `localStorage`
+ *  (and `profiles.theme`), which a screenshot tool that only navigates cannot
+ *  reach. So the QA rule existed and the tool to honour it did not, which is
+ *  its own small version of the gap this project keeps finding.
+ *
+ *  Written before any app script runs, for the reason `--keyboard` is: the
+ *  theme is read at boot, and a value set after load would shoot the *default*
+ *  pack repainted, which looks like a pass. */
+let theme = "";
 for (let i = 0; i < argv.length; i++) {
   if (argv[i] === "--widths") widths = argv[++i].split(",").map(Number);
   else if (argv[i] === "--keyboard") keyboard = Number(argv[++i]);
   else if (argv[i] === "--camera") camera = true;
+  else if (argv[i] === "--theme") theme = argv[++i];
   else if (argv[i] === "--video") {
     videoFile = argv[++i];
     camera = true; // a feed with no camera is a contradiction
@@ -280,6 +296,58 @@ const cdp = await connect(wsUrl);
 try {
   const page = await openPage(cdp);
 
+  if (theme) {
+    await cdp.send(
+      "Page.addScriptToEvaluateOnNewDocument",
+      { source: `try { localStorage.setItem("mymacros.theme", ${JSON.stringify(theme)}); } catch {}` },
+      page.sessionId,
+    );
+    console.log(`  (theme: ${theme} — build rule 4's light-pack check)`);
+  }
+
+  /* **And it must prove the pack it asked for is the pack that rendered.**
+   *
+   *  The first cut of this flag only *set* `localStorage`, and shot a perfect
+   *  Night Athletic screen into a file named `…-field-notes@375.png`. `App.tsx`
+   *  applies `me.profile.theme` when the profile lands, so for a signed-in shot
+   *  — which is every shot that matters — the stored value is overwritten a
+   *  moment after boot. Nothing failed. The PNG simply lied, and it lied in the
+   *  format this project treats as evidence.
+   *
+   *  So the flag asserts the rendered `data-theme` instead of trusting the one
+   *  it wrote. That is the whole difference between a QA tool and a QA-shaped
+   *  one: shooting the default pack twice under two names is exactly the pass a
+   *  milestone-close check must never be able to produce. */
+  const assertTheme = async (sessionId) => {
+    if (!theme) return;
+    /* **Polled, not read once — the theme arrives late and that is the point.**
+       `data-theme` boots to whatever `index.html`/localStorage says and only
+       becomes the user's pack when `/api/me` lands and `ThemeFromProfile`'s
+       effect runs. Measured: night-athletic at t+0, field-notes by t+500ms.
+       `settle()` returns before that, so the first cut of this assertion read
+       the boot value and reported the wrong pack — a check that fails for a
+       reason unrelated to the thing it guards is as useless as one that passes
+       for the wrong reason, and this one did both in two runs.
+
+       The wait is also the finding: a light-pack user gets a dark frame first
+       on every cold load. Recorded on #30's thread rather than fixed here. */
+    let got = "(none)";
+    for (let i = 0; i < 40; i++) {
+      got = await evaluate(cdp, sessionId, `document.documentElement.dataset.theme || "(none)"`);
+      if (got === theme) break;
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    if (got !== theme) {
+      throw new Error(
+        `--theme ${theme} did not render: the document says ${got}.\n` +
+          `  A signed-in profile's theme overrides localStorage (App.tsx applies me.profile.theme).\n` +
+          `  Set it on the row instead:\n` +
+          `    sqlite3 "$(ls -t .wrangler/state/v3/d1/miniflare-D1DatabaseObject/*.sqlite | head -1)" \\\n` +
+          `      "UPDATE profiles SET theme='${theme}';"`,
+      );
+    }
+  };
+
   if (keyboard) {
     await fakeKeyboard(cdp, page.sessionId, keyboard, { paint: true });
     console.log(`  (synthetic keyboard: ${keyboard}px — headless Chrome has none, #120)`);
@@ -314,7 +382,13 @@ try {
     // the same route shot with and without one is two different screens, and
     // a run that overwrote one with the other would leave the interesting half
     // unshot with nothing to say so (#120).
-    const suffix = (hash ? `-${hash}` : "") + (keyboard ? `-kb${keyboard}` : "");
+    const suffix =
+      (hash ? `-${hash}` : "") +
+      (keyboard ? `-kb${keyboard}` : "") +
+      // Same reason the hash and the keyboard are in the name: one route in two
+      // themes is two screens, and a run that overwrote one with the other
+      // would leave a pack unshot with nothing to say so.
+      (theme ? `-${theme}` : "");
     const name = isUrl
       ? "app-" +
         (new URL(path).pathname.replace(/^\/|\/$/g, "").replace(/\//g, "-") || "home") +
@@ -327,6 +401,12 @@ try {
       // — fail with the URL rather than hanging the design loop
       inflight.reset();
       await deadline(page.navigate(url), `navigate ${url}`);
+      // On the APP page, never on the composite sheet below — the sheet is a
+      // local file:// document with no app on it, so asserting there reports
+      // "(none)" for every run and fails a check that was passing. First cut
+      // did exactly that: an assertion built to stop this tool producing
+      // evidence about the wrong thing, pointed at the wrong thing.
+      await assertTheme(page.sessionId);
       const { png, height } = await deadline(
         fullPageShot(cdp, page.sessionId, width, inflight),
         `render ${name}@${width}`,

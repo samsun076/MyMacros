@@ -51,6 +51,7 @@ npm run verify:routing -- https://fuel.debrief.run   # /api survives navigation;
 npm run verify:viewport -- --cookie <name>=<token>   # no screen overflows horizontally (#51)
 npm run verify:firstpaint   # needs `npm run build` first — the document paints the app alone (#53)
 node tools/shot-matrix.mjs <file.html|url>   # 375/390/428 render matrix
+node tools/shot-matrix.mjs --theme field-notes --cookie <c> <url>   # build rule 4's light-pack check (#123)
 ```
 
 ## Tests (#47)
@@ -435,7 +436,23 @@ reorder.
 3. **Motif slots need a named variant per theme** before a component is done
    (placeholder variants OK until M5). The four slots: earned-kcal
    annotation, budget meter, log button, timeline row chrome. See TOKENS.md.
-4. **Theme QA at the end of each milestone** — render check of the light packs.
+4. **Theme QA at the end of each milestone** — render check of the light packs,
+   with `shot-matrix --theme field-notes|instrument`. **The flag asserts the pack
+   that rendered**, and that is load-bearing rather than tidy: its first cut only
+   set `localStorage` and shot a perfect Night Athletic screen into a file named
+   `…-field-notes@375.png`, because `App.tsx` applies `me.profile.theme` when the
+   profile lands and overwrites it. Shooting the default pack twice under two
+   names is exactly the pass this rule must never be able to produce. **Set the
+   pack on the row** — `UPDATE profiles SET theme='…'` on local D1 — the flag
+   alone cannot beat a signed-in profile.
+   **This rule went years without an instrument.** The theme lives in
+   `localStorage` and `profiles.theme`, neither of which a navigating screenshot
+   tool reached, so rule 4 was a discipline nobody could execute. Its first real
+   run (M11 close, 2026-08-23) found #123 immediately: `.cam-x` drew its glyph
+   from page ink on a `--chrome` circle, giving **1.67:1 in Field Notes** against
+   7.89:1 in Night Athletic. Build rule 1 puts all polish in Night Athletic, so
+   a token pairing can be wrong on every other pack and right on the only one
+   anyone renders. That is what this rule is for, and it earns its place.
 4b. **Reconcile one real number whenever a milestone changes how a number is
    computed.** Recorded in [RECONCILIATIONS.md](RECONCILIATIONS.md). Take a figure
    the app is showing a real user, pull its inputs out of *production*, and
