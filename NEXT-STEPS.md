@@ -2855,7 +2855,7 @@ is three weeks old — re-measure before assuming it still holds.
 
 - **Ten of ten findings on 2026-08-20, and every finding this session, came from
   a thumb, from production rows, or from driving a route.** The suite went
-  516 → 1,129 across two weeks and has never once found a defect first.
+  516 → 1,198 across two weeks and has never once found a defect first.
 - **A field that is noise becomes a statement without anyone editing it.** #119
   is #112's shape one more time: `photo_key` rode the wire harmlessly for two
   weeks and became a 400 the moment #81 gave it meaning. Expect this whenever a
@@ -2863,63 +2863,152 @@ is three weeks old — re-measure before assuming it still holds.
 - **`--settle` is not a flag `verify:viewport` parses.** CLAUDE.md claimed it
   did until #118 tried it.
 
+## Session X, continued — the tail nobody planned for
+
+The write-up above was committed before the session actually ended. What
+followed is worth recording, because most of it came from Dave reading rather
+than tapping.
+
+**#110 and #113 shipped** (`d42e228`). #110 took his call — an out-of-range
+macro **drops the whole item** rather than pinning it to a ceiling — and grew
+two decisions of its own: the *floor* drops too (`-200` was being rewritten to
+`0` just as silently), and a non-number drops rather than becoming zero, because
+"unknown" and "none" must not read the same. #113 makes the route **name the
+field**: `{"error":"item_over_limit","fields":["portion_qty"],"over":"kcal"}`,
+rendered against the HOW MUCH box. **No bound's value moved** — the numbers were
+fine and the reporting was not.
+
+**Two of that work's nine mutations were deliberate controls and both returned
+1198/1198 green**, bringing the week's count of "the suite cannot see this
+screen" to eight. This time the breakage was *proved* rather than assumed: M8
+was re-applied, `/log#dropped@375` re-shot, and `MUTATED-NO-SUBTITLE` read off
+the PNG.
+
+**Dave then found a defect by reading a sentence.** The dropped-food note said
+what was lost and named no way back; its docstring argued that was deliberate,
+because "the remedy is the rest of the subtitle — tap anything to change it."
+**"Tap anything" is about the rows that are THERE.** A dropped food has nothing
+to tap. So the note pointed at a control that could not undo it — the same
+defect #113 was being fixed for, in the same commit. Fixed in `ef49f6d`; four
+tests went red on the copy, which is them working.
+
+He then pushed once more on the *form* of that fix — bold and colour the
+control rather than bury it in prose with an em dash — which is #59's shipped
+`.correct-open` pattern he had already praised. Filed as **#125**, with the
+constraint that matters: `.correct-open` is a real `<button>`, and a coloured
+phrase that is not tappable is a dead affordance, which is #118 exactly.
+
+**And a claim of mine was falsified inside an hour.** #123 reported the camera's
+close button as "a dark disc with nothing in it" in both light packs. Dave
+checked on the build he was already running: *"I know from using all the themes
+there has always been an x."* Sampled from his screenshots: **2.15:1 and
+1.53:1** — under the 3:1 floor, so the defect and the fix stand, but **faint,
+not invisible**, and in the opposite order from the one reported. The claim came
+from eyeballing a downscaled PNG *and* computing contrast from the token file
+against a solid `--chrome` where the circle carries 70% alpha. **Two bad methods
+agreeing read as confirmation.** Rule 4a exists because of it.
+
+## Three milestones closed, and one of them was hiding a stale deferral
+
+**M7, M11 and M8 are all closed.** Eleven of twelve.
+
+M8's last issue, **#67**, was marked *"deferred until trends sum runs — #22"*.
+**#22 closed on 2026-08-10.** `trends.ts:327` has been doing
+`days.reduce((s, d) => s + d.runKcal, 0)` for thirteen days, so the trigger had
+fired and the label went stale unread.
+
+Measured before deciding: every run diffed by `external_id` against debrief
+across 60 days — **33 and 33, no phantoms, no misses.** (A first count of 24 vs
+23 was a boundary artefact of comparing `start_time_ms` against `ran_on`. The
+count nearly became the finding; the ID diff is the only honest form.)
+
+**The reframe is what settled it: this is not fixable in this repository.**
+debrief never deletes — `ON CONFLICT DO UPDATE`, always — so a workout removed
+in Suunto survives there forever, and MyMacros learns about runs *from* debrief.
+#66 solved the same problem for Garmin weigh-ins only because that source was
+authoritative about *absence*; debrief's absence and its silence are identical.
+Moved out of M8 and retitled to say where the fix lives, so the next reader does
+not spend an hour looking for it here.
+
+## Where it really stands
+
+Live at the SHA `git log --oneline -1` reports. **1,198 tests. Eleven of twelve
+milestones closed. 92 issues closed.**
+
+| | | |
+|---|---|---|
+| **M6** | 13 | OSS-ready — the only milestone left |
+| none | 6 | #125, #124, #121, #67, #49, #32 |
+
+**Nothing on that list blocks anything.** All six are cosmetic, stale, or
+upstream.
+
+## The recommendation, and it is not to start M6
+
+**Use the app for two weeks before building anything else.**
+
+Every defect this session came from Dave opening it — none from 1,198 tests, and
+eight mutations proved the suite structurally cannot see the screens. The log
+flow changed substantially in three days: multi-capture meals, post-save
+editing, photo corrections, dropped foods, a refusal that names its field.
+**None of it has been lived with.** #58's per-item portion control has *still*
+never run in production, on real data, for anyone.
+
+M6 is a different project wearing this repo — BYOK, signup restrictions,
+self-host directives, a landing page. Its user is a stranger, and a stranger
+cannot provide the thing that has found every bug in this codebase. If a
+fortnight of ordinary logging surfaces nothing, that is the signal M6 is worth
+starting. If it surfaces three things, the fortnight was better spent.
+
 ## Starter prompt (paste verbatim)
 
 ```
 Working on MyMacros (~/Projects/MyMacros). Read CLAUDE.md, then the Session X
-section of NEXT-STEPS.md — it runs to the end of the file.
+sections of NEXT-STEPS.md — they run to the end of the file.
 
-Run `git log --oneline -1` for the real HEAD and do not trust any SHA written
-below it. This file has shipped a stale one three sessions running, for a reason
-that is now understood: writing the prompt changes the answer, because
-committing the write-up moves HEAD past the commit the prompt names.
+Run `git log --oneline -1` for the real HEAD. This prompt names no SHA on
+purpose: three sessions running shipped one that was stale before it was read,
+because committing the write-up that carries the prompt moves HEAD past the
+commit it cites.
 
-M7 and M11 are both CLOSED. 1,129 tests. Production D1 on 0009_portion.sql — no
-migration has shipped since 2026-08-16, so if you write one, show it to Dave
-first and remember the order: migrate remote, then push.
+ELEVEN OF TWELVE MILESTONES ARE CLOSED. 1,198 tests. Production D1 on
+0009_portion.sql — no migration since 2026-08-16. If you write one, show Dave
+first, and remember the order: migrate remote, then push.
 
 Dave does not review diffs or run builds. That is yours end to end — build,
-test, commit, push, verify the deploy. His only job is testing with a thumb on
-an iPhone 13 mini, plus decisions no tool can make. Do not hand him a diff; hand
-him a short numbered list of things to go tap, and get the work DEPLOYED before
-asking, because he cannot test what is not on his phone.
+test, commit, push, verify the deploy. His job is a thumb on an iPhone 13 mini
+and decisions no tool can make. Never hand him a diff; hand him a short numbered
+list of things to go tap, and GET IT DEPLOYED FIRST, because he cannot test what
+is not on his phone. DEV hash stages are compiled out of production — do not
+send him a /log#something URL, it will not exist for him.
 
-START WITH #110, and it needs a decision from Dave before any code. normalize()
-silently clamps macros the way #109 used to clamp the portion qty — a captured
-response shows carbs_g pinned at its 1000 ceiling beside an unclamped
-calories: 6450, a row that contradicts itself with nothing saying a number was
-rewritten. #109 could drop a bad portion to null; a macro has no null, so
-refusing means dropping the whole item. That is the call. The standing
-recommendation is drop the item — the other items survive, #16's blank row
-exists, and it fires only on absurd input — but Dave has not answered.
+THE STANDING RECOMMENDATION IS TO BUILD NOTHING YET. The app is finished for its
+one user and the board says so. Every defect last session came from Dave opening
+it; none from 1,198 tests, and eight mutations proved the suite structurally
+cannot see Log.tsx, Picks.tsx, CameraStage.tsx or Today.tsx. The log flow
+changed substantially over three days and none of it has been lived with — #58's
+per-item portion control has still never run in production for anyone. Two weeks
+of ordinary use will say more than any queue. If Dave asks for work anyway, the
+six loose issues are #125, #124, #121, #67, #49 and #32, all cosmetic, stale or
+upstream, and none blocking.
 
-#113 is the same family and should land in the same pass. After that, #49 is
-the other real candidate: production analyze latency measured 33s against 4.6s
-local on 2026-08-05, on the app's core loop. The figure is three weeks old —
-re-measure before assuming it still holds.
+M6 (13 issues, OSS-ready) is the only milestone left and it is a different
+project wearing this repo — BYOK, signup restrictions, self-host directives, a
+landing page. Its user is a stranger, and a stranger cannot provide the thing
+that has found every bug here. Do not start it without Dave saying he wants
+other people running this.
 
-Six mutations last session returned a fully green suite, because nothing in this
-repo executes Log.tsx, Picks.tsx, CameraStage.tsx or Today.tsx. When you break
-something on purpose and the suite stays green, that is the expected result and
-not a reason to trust the code — push the decision into a lib/-shaped function
-so an oracle exists, and drive the screen with CDP for the rest. No drive runs
-in CI, so name that gap rather than implying coverage.
-
-Three oracles last session were decorative — they could not distinguish the two
-implementations they existed for — and two drives left assertions that never ran
-while printing like suites that had. Before believing a green mutation, ask
-whether the check could ever have failed.
-
-Rule 4a is new and was earned the hard way: a claim about what a screen LOOKS
-like must cite a measurement, not an impression. Sample the pixels. Do not
-compute contrast from a token when the surface carries alpha, and when two
-checks agree, ask whether they are actually independent.
+When you do build: push decisions into lib/-shaped functions so an oracle
+exists, drive the screen with CDP for the rest, and say plainly that no drive
+runs in CI. Before believing a green mutation, ask whether your check could ever
+have failed — three oracles last session could not. Rule 4a: a claim about what
+a screen LOOKS like must cite a measurement, not an impression; sample the
+pixels, never compute contrast from a token when the surface carries alpha, and
+when two checks agree ask whether they are actually independent.
 
 Read production rows when the work touches stored numbers — read-only, never
-write. It is still the check with the best hit rate here, and rule 4b's last
-pass left one open question: a barcode row claims 155 g of a bar whose pack
-serving is 55 g, 564 kcal, 22% of that day. Only Dave can settle it, and #60
-now makes it inspectable in the app.
+write. Diff by ID, never by count: a 24-vs-23 nearly became a finding last
+session and the IDs matched exactly.
 
 Environment, if starting cold: kill any orphan dev server on 5173,
 npm run db:migrate, node tools/seed-demo.mjs --weeks 12, and mint a session
