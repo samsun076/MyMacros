@@ -2733,3 +2733,206 @@ and must match APP_URL, or better-auth answers 403).
 4. **One device round across all three.** That is the pass that will find
    whatever is actually wrong.
 5. Decide #116, which unblocks M11.
+
+## Session X — M7 and M11 both closed, and the suite found none of it — ✅ done 2026-08-23
+
+Opened at `23ac888`, closed at `f89587b`. **13 commits across three days**
+(unattended 08-21, attended 08-22/23). **838 tests → 1,129. Two milestones
+closed. Zero regressions survived the session.**
+
+Sixteen issues closed. Seven filed: #118, #119, #120, #121, #122, #123, #124 —
+five of them closed the same day they were filed.
+
+## What shipped
+
+| | |
+|---|---|
+| **#60** `4cd1f3f` | Tap a timeline entry to reopen and edit it. Promoted to the front of M7 because it was load-bearing: there was no in-app way to verify a stored portion. **Its first cut set `edited` on every portion change** — the sheet rescales before sending, so "four slices not two" arrived as a 360 kcal difference and was recorded as a correction. The route's docstring asserted the correct behaviour directly above code doing the opposite. Found by driving the route, not reading it. |
+| **#81** `3a849f1` | Scan the patty, scan the bun, type the mustard → one meal. Almost nothing had to be built; the sheet, the save route and the fold already supported it. **What it found is the bigger half: `POST /api/food-logs` 500'd at five foods** — D1 binds 100 parameters, a `food_logs` row is 22 columns. Live since 2026-08-04, needing no basket. Production's largest meal is four items. |
+| **#59** `2599d45` | Tell the reader it got the food wrong and re-read the stored photo. The prompt contract had been built and unreachable since M3. Corrections carry the previous answer as **names only** — sending old macros anchors a model that is supposed to re-derive them. |
+| **#119** `529974c` | Every starred meal 400'd on the app's most-used shortcut. `mergePicks` puts the `Favorite` row in as a pick's meal and `relog` spread it, so `photo_key` went on the wire — junk for two weeks, until #81 made it a *statement* three commits earlier. |
+| **#118** `68d8fb9` | All three sheets drag to dismiss, through one hook. #102 deferred it and named the cost — "two sheets wear the same bar and only one drags". #81's guard is what retired the objection. |
+| **#120** `4ac5717` | The note field lifts the camera deck instead of squashing the viewfinder. **The first screenshot of a keyboard this project has ever taken**, and the tooling to take one. |
+| **#116** `0ea37a4` | `LOGS AS LUNCH` rides in the grab bar. Came out **24px cheaper** than the header it replaced, and fixed a live bug the issue only predicted: the slot was read once at render and never updated, so 12:01 showed BREAKFAST over rows that write to lunch. |
+| **#122** `fe757d2` | The note field's focus ring painted under the viewfinder (measured: 0px gap, ring reaching 4px in). Tapping the viewfinder now dismisses the keyboard — the way out that #120's lift had removed. |
+| **#24** `829666e` | Rescoped from "polish pass" after an audit found three of its four items already shipped. The real defect: `Today.tsx` destructured `data` and `reload` and **threw `error` away**, so a failed load was a header and permanent blankness. |
+| **#123** `e0ccee1` | Build rule 4's first real run. `.cam-x` drew its glyph from page ink on a `--chrome` circle — the token pairing `.tab`'s own comment forbids. |
+| **Rule 4b** `25ea61b` | M7's reconciliation. Arithmetic clean — four totals recomputed by hand, all exact. Found a question only Dave can answer (155 g of a 55 g bar, 22% of a day) and a coverage fact: **#58's per-item rescale has never run in production.** |
+
+## Nothing in this repo executes the screens, and six mutations proved it
+
+`Log.tsx`, `Picks.tsx`, `CameraStage.tsx` and `Today.tsx` have **no unit
+oracle**. Six deliberate breakages returned a fully green suite:
+
+- #81's `stow` set to *replace* instead of append — the original bug, restored — **988/988 green**
+- #59's `Log.tsx` stopping sending a correction's `previous` context — **1036/1036**
+- #59's `Log.tsx` never spending the typed note — **1036/1036**
+- #120's deck moving *down into* the keyboard — **1083/1083**
+- #116's slot hook gutted so it stops re-arming — **1103/1103**
+- #24's failure card deleted from `Today.tsx` and again from `Trends.tsx` — **1126/1126 twice**
+
+Every one was caught by a CDP drive, and **no drive is in `npm test` or runs in
+CI.** The mitigation applied throughout — push decisions into `lib/`-shaped
+functions (#100's rule) — is why `basket.ts`, `keyboard.ts`, `load-failure.ts`,
+`meal-slot.ts`, `shared/portion.ts` and `gesture.ts` exist. It is not a
+substitute for the gap.
+
+## Three oracles were decorative, and one was the mutation's own
+
+- **#59's M10** asked "is the note field gone after a capture?" — true either
+  way, because the row unmounts behind the frozen still. It stayed green under
+  the mutation it existed to detect.
+- **#24's M8** compared `performance.getEntriesByType("navigation").length`
+  before and after a retry — 1 either way, because a reload starts a new
+  document whose navigation list also has one entry.
+- **#123's own a11y check** sliced from the first `grab-band`, which sits inside
+  a `className` expression, so the attribute it was counting landed outside the
+  window.
+
+Plus two **never-ran** incidents outside vitest: #24's drive threw at its first
+wait and left 27 checks unexecuted while printing like a suite that had run, and
+#118's drive reported the scrolled-body case as passing when **no sheet at
+375×812 is taller than its own ceiling**, so the setup line set nothing.
+
+## Two harness rules earned on real incidents
+
+- **The revert's anchor needs the same uniqueness assertion as the mutation's.**
+  #116's M7 replaced a line with `"\n"` and the inverse replacement put it back
+  after the **first newline in the file**, corrupting `Log.tsx`. Caught by the
+  sha, not the suite. It fired again the same afternoon on #122, where
+  `margin: 0 20px 8px;` already occurred elsewhere in `app.css`.
+- **Rule 4a: a visual claim must cite a measurement, not an impression.** #123
+  was reported as "a dark disc with nothing in it" on the strength of eyeballing
+  a *downscaled* PNG and computing contrast from the **token file** — against a
+  solid `--chrome` where the circle is `color-mix(… 70%, transparent)`. Two bad
+  methods agreeing read as confirmation. Dave falsified it in under an hour:
+  measured on device, **2.15:1 and 1.53:1** — a real failure against the 3:1
+  floor, but faint rather than invisible, and in the opposite order from the one
+  reported.
+
+## Build rule 4 had no instrument for its entire existence
+
+The theme lives in `localStorage` and `profiles.theme`, neither reachable by a
+tool that only navigates — so "render check the light packs at every milestone
+close" was a discipline nobody could execute. `shot-matrix --theme` now exists
+and **asserts the pack that rendered**: its first cut only set `localStorage`
+and shot a perfect Night Athletic screen into a file named `…-field-notes.png`,
+because `App.tsx` applies `me.profile.theme` when the profile lands.
+
+## Where it stands
+
+Live at **`f89587b`**. 1,129 tests. Production D1 still on `0009_portion.sql` —
+**no migration all session.**
+
+| | | |
+|---|---|---|
+| **M7** | **0** | ✅ closed |
+| **M11** | **0** | ✅ closed |
+| **M6** | 13 | OSS-ready, not started |
+| **M8** | 1 | #67, deferred |
+| none | 6 | #124, #121, #113, #110, #49, #32 |
+
+## Tomorrow — #110 leads, and it needs a decision first
+
+**#110 + #113 are one family**: the app silently rewriting a number you gave it.
+`normalize()` clamps macros with `Math.min(Math.max(v, 0), max)` — exactly what
+#109 removed from the portion qty one field over. A captured response shows
+`carbs_g: 1000` (the ceiling) beside an unclamped `calories: 6450`; 1,000 g of
+carbohydrate is 4,000 kcal, so the row contradicts itself and nothing says a
+number was rewritten.
+
+**The decision #109 deliberately did not make:** a portion is all-or-nothing and
+has a null representation, so a bad qty can drop to null. **A macro has none.**
+Refusing means dropping the whole item, which is larger than #109's scope.
+Recommended to Dave as *drop the item* — the other items survive, #16's blank
+row exists, and it fires only on absurd input. **Not yet answered.**
+
+Then **#49** is the other real candidate: production analyze latency measured at
+33s against 4.6s local, on 2026-08-05. It is the app's core loop and the figure
+is three weeks old — re-measure before assuming it still holds.
+
+## Standing facts worth carrying
+
+- **Ten of ten findings on 2026-08-20, and every finding this session, came from
+  a thumb, from production rows, or from driving a route.** The suite went
+  516 → 1,129 across two weeks and has never once found a defect first.
+- **A field that is noise becomes a statement without anyone editing it.** #119
+  is #112's shape one more time: `photo_key` rode the wire harmlessly for two
+  weeks and became a 400 the moment #81 gave it meaning. Expect this whenever a
+  contract tightens.
+- **`--settle` is not a flag `verify:viewport` parses.** CLAUDE.md claimed it
+  did until #118 tried it.
+
+## Starter prompt (paste verbatim)
+
+```
+Working on MyMacros (~/Projects/MyMacros). Read CLAUDE.md, then the Session X
+section of NEXT-STEPS.md — it runs to the end of the file.
+
+Run `git log --oneline -1` for the real HEAD and do not trust any SHA written
+below it. This file has shipped a stale one three sessions running, for a reason
+that is now understood: writing the prompt changes the answer, because
+committing the write-up moves HEAD past the commit the prompt names.
+
+M7 and M11 are both CLOSED. 1,129 tests. Production D1 on 0009_portion.sql — no
+migration has shipped since 2026-08-16, so if you write one, show it to Dave
+first and remember the order: migrate remote, then push.
+
+Dave does not review diffs or run builds. That is yours end to end — build,
+test, commit, push, verify the deploy. His only job is testing with a thumb on
+an iPhone 13 mini, plus decisions no tool can make. Do not hand him a diff; hand
+him a short numbered list of things to go tap, and get the work DEPLOYED before
+asking, because he cannot test what is not on his phone.
+
+START WITH #110, and it needs a decision from Dave before any code. normalize()
+silently clamps macros the way #109 used to clamp the portion qty — a captured
+response shows carbs_g pinned at its 1000 ceiling beside an unclamped
+calories: 6450, a row that contradicts itself with nothing saying a number was
+rewritten. #109 could drop a bad portion to null; a macro has no null, so
+refusing means dropping the whole item. That is the call. The standing
+recommendation is drop the item — the other items survive, #16's blank row
+exists, and it fires only on absurd input — but Dave has not answered.
+
+#113 is the same family and should land in the same pass. After that, #49 is
+the other real candidate: production analyze latency measured 33s against 4.6s
+local on 2026-08-05, on the app's core loop. The figure is three weeks old —
+re-measure before assuming it still holds.
+
+Six mutations last session returned a fully green suite, because nothing in this
+repo executes Log.tsx, Picks.tsx, CameraStage.tsx or Today.tsx. When you break
+something on purpose and the suite stays green, that is the expected result and
+not a reason to trust the code — push the decision into a lib/-shaped function
+so an oracle exists, and drive the screen with CDP for the rest. No drive runs
+in CI, so name that gap rather than implying coverage.
+
+Three oracles last session were decorative — they could not distinguish the two
+implementations they existed for — and two drives left assertions that never ran
+while printing like suites that had. Before believing a green mutation, ask
+whether the check could ever have failed.
+
+Rule 4a is new and was earned the hard way: a claim about what a screen LOOKS
+like must cite a measurement, not an impression. Sample the pixels. Do not
+compute contrast from a token when the surface carries alpha, and when two
+checks agree, ask whether they are actually independent.
+
+Read production rows when the work touches stored numbers — read-only, never
+write. It is still the check with the best hit rate here, and rule 4b's last
+pass left one open question: a barcode row claims 155 g of a bar whose pack
+serving is 55 g, 564 kcal, 22% of that day. Only Dave can settle it, and #60
+now makes it inspectable in the app.
+
+Environment, if starting cold: kill any orphan dev server on 5173,
+npm run db:migrate, node tools/seed-demo.mjs --weeks 12, and mint a session
+cookie from the DEV-only email/password route (the Origin header is required and
+must match APP_URL, or better-auth answers 403).
+```
+
+## The SHA problem, solved by not naming one
+
+Sessions U, V and W each shipped a starter prompt naming a commit that was stale
+before anyone read it, because the write-up containing the prompt lands *after*
+the commit it cites. Session V caught it four minutes later and wrote the
+mechanism down; the fix was still to name a SHA and hope.
+
+This one names none. `git log --oneline -1` is the only source, the prompt says
+so in its second paragraph, and there is nothing left to go stale.
