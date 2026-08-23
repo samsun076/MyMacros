@@ -436,6 +436,35 @@ reorder.
 3. **Motif slots need a named variant per theme** before a component is done
    (placeholder variants OK until M5). The four slots: earned-kcal
    annotation, budget meter, log button, timeline row chrome. See TOKENS.md.
+4a. **A claim about what a screen LOOKS like must cite a measurement, not an
+   impression** (#123, 2026-08-23). A rendered PNG is evidence; *glancing at a
+   downscaled one* is not. If the claim is "you can't see X", sample the pixels
+   — luminance of the glyph against luminance of what it sits on — and put the
+   ratio in the report.
+
+   **Earned by getting it wrong in the direction that is hardest to catch: two
+   bad methods agreeing.** The camera's close button was reported as "a dark
+   disc with nothing in it" on the strength of (a) eyeballing a downscaled
+   screenshot and (b) computing contrast from the token file. Both said fail, so
+   it read as confirmed. Both were wrong: the glance was of a scaled image, and
+   the arithmetic used the SOLID `--chrome` value where the circle is
+   `color-mix(… 70%, transparent)` composited over the header. Measured on
+   device afterwards: **2.15:1 in Field Notes and 1.53:1 in Instrument** — a
+   real failure against the 3:1 floor, **but not invisible**, and in the
+   opposite order from the one reported.
+
+   Dave found it in under an hour by opening the app: *"I know from using all
+   the themes there has always been an x."*
+
+   **Two rules fall out.** Never compute a contrast against a token when the
+   surface has alpha — composite it, or sample the render. And when two checks
+   agree, ask whether they are actually independent: an eyeball and a
+   calculation that share one assumption are one check, not two.
+
+   The underlying defect was real and the fix stands. **The overstatement is
+   the thing to avoid**, because a report that cries wolf costs the one
+   reviewer this project has — and he is the only bug-finder that works.
+
 4. **Theme QA at the end of each milestone** — render check of the light packs,
    with `shot-matrix --theme field-notes|instrument`. **The flag asserts the pack
    that rendered**, and that is load-bearing rather than tidy: its first cut only
