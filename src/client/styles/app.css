@@ -2080,6 +2080,16 @@ section {
   border-radius: var(--radius-thumb);
 }
 
+/* #113: a save refused because of the amount typed above, drawn against the
+   field rather than only under the save button. It carries `.signin-error` for
+   its colour and size — the screen's existing error treatment, unchanged —
+   and adds nothing but the gap. A second colour for a second kind of error
+   would be a decision this issue has no reason to make, and build rule 9
+   keeps `--danger` narrow and sign-carrying on purpose. */
+.portion-error {
+  margin-top: 8px;
+}
+
 .portion-row input {
   width: 88px;
   text-align: right;

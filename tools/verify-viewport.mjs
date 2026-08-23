@@ -81,6 +81,11 @@ if (!routes) {
         // this is the only route that draws the three-column grid — and the
         // field the bug report names by name had nothing that could reach it.
         "/log#portion",
+        // #113's save refusal, on that same sheet. The one place a message is
+        // drawn *against a field* rather than in a footer, and the longest
+        // sentence the sheet prints — two lines at 375, inside a row whose
+        // grid is already three columns wide.
+        "/log#refused",
         // #81's basket: three captures, four foods, two sources. The tallest
         // the confirm sheet gets, and the only state where its footer holds
         // two controls side by side — "+ Add another" beside `Log N kcal`,
@@ -88,6 +93,12 @@ if (!routes) {
         // only sheet whose rows carry mixed provenance, so each one draws its
         // own label under the name.
         "/log#basket",
+        // #110's dropped food. The one state where the confirm sheet's
+        // subtitle carries TWO sentences instead of one — a statement about
+        // the read followed by the standing instruction — so it is where that
+        // paragraph is longest, and the longest paragraph is where a wrap
+        // failure would show.
+        "/log#dropped",
         // #120's pre-capture note, **with a keyboard up** — the only route in
         // this list measured through one, and the only reason this file can
         // see the state at all is that `--keyboard` fabricates it (see

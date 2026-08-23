@@ -66,6 +66,15 @@ export type Capture = {
    *  for the user to fill in. The photo is already stored — `photoKey` is set
    *  even here, which is the whole point of writing R2 before calling Claude. */
   manual?: string;
+  /** How many foods this read returned that the Worker refused (#110).
+   *
+   *  `normalize()` drops an item outright when one of its four figures is out
+   *  of range — a macro has no null representation to refuse into the way a
+   *  portion does — so a photograph of a plate can come back with fewer foods
+   *  on it than the plate has. The count rides on the capture rather than
+   *  being derived from it because nothing on this side *can* derive it: the
+   *  items that were dropped are exactly the ones that never arrived. */
+  dropped?: number;
   /** What the person told the reader when they last corrected it (#59), shown
    *  back to them under the rows it produced.
    *
@@ -226,13 +235,20 @@ export function roomForReread(
  *  checked by the caller with a sentence to say — same split as `stow`: this
  *  guard cannot speak, so on its own it would be a silent discard. An empty
  *  read is refused here rather than emptying the capture, which is #16's rule
- *  exactly: a failed re-read leaves what is on screen on screen. */
+ *  exactly: a failed re-read leaves what is on screen on screen.
+ *
+ *  **`dropped` is REPLACED, not accumulated** (#110). It describes the read
+ *  that is on the sheet now, and the previous read's items are gone — adding
+ *  the two would report foods that were dropped from an answer nobody can see
+ *  any more, and a re-read that comes back clean has to be able to take the
+ *  sentence back off the sheet. */
 export function reread(
   basket: readonly Capture[],
   capture: number,
   items: readonly AnalyzedItem[],
   readMs: number,
   note: string,
+  dropped = 0,
 ): Capture[] {
   const target = basket[capture];
   if (!target || !correctable(target)) return [...basket];
@@ -241,7 +257,7 @@ export function reread(
   return basket.map((c, i) => {
     if (i !== capture) return c;
     const { manual: _cleared, ...kept } = c;
-    return { ...kept, items: items.map(editable), readMs, note };
+    return { ...kept, items: items.map(editable), readMs, note, dropped };
   });
 }
 
@@ -306,4 +322,77 @@ export function needsDismissConfirm(basket: readonly Capture[]): boolean {
  *  — the one path this issue must leave alone. */
 export function showsGrams(basket: readonly Capture[]): boolean {
   return basket.length === 1 && basket[0]?.grams !== undefined;
+}
+
+/** How many foods this sheet is NOT showing because the reader's numbers for
+ *  them were out of range (#110).
+ *
+ *  **A capture that was refused WHOLE is skipped**, and that is the rule that
+ *  keeps the sentence from being printed twice: when every item of a read is
+ *  dropped there is nothing to put on the sheet, so the client takes #16's
+ *  blank-recovery path and `manual` already carries the reason as the
+ *  subtitle's first sentence. Counting it here as well would say the same
+ *  thing twice in one paragraph. A basket where capture 0 was refused whole
+ *  and capture 2 lost one food still reports capture 2's — which is why this
+ *  sums over the basket rather than reading `basket[0]`. */
+export function droppedCount(basket: readonly Capture[]): number {
+  return basket.reduce((n, c) => n + (c.manual ? 0 : (c.dropped ?? 0)), 0);
+}
+
+/** What to say about it. `null` is a positive statement that there is nothing
+ *  to report, the way `FieldAction`'s `note: null` is (#95).
+ *
+ *  **"can't be right" rather than a number**, deliberately. The figure that
+ *  fired is 1,000 g of one macro or 10,000 kcal in one food, and quoting
+ *  either invites the reading that a smaller one would have been kept — which
+ *  is true of the bound and false of the item, because what was actually
+ *  returned was a row that contradicted itself (`carbs_g: 1000` beside
+ *  `calories: 6450`). The person's next move is the same in every case: type
+ *  the food in by hand if they want it, which the sheet already lets them do.
+ *
+ *  It names no remedy of its own for that reason — the remedy is the rest of
+ *  the subtitle, which is either #16's "type what you ate" or the standing
+ *  "tap anything to change it", and a third instruction between them would be
+ *  the noise `sheet-confirm` already refuses to stack. */
+export function droppedNote(dropped: number): string | null {
+  if (dropped < 1) return null;
+  return dropped === 1
+    ? "One food came back with numbers that can't be right, so it was left out."
+    : `${dropped} foods came back with numbers that can't be right, so they were left out.`;
+}
+
+/** The confirm sheet's subtitle, whole (#110).
+ *
+ *  **Here rather than in the JSX** for the reason this file exists at all:
+ *  nothing in this repo executes `Log.tsx`, and eight mutations of component
+ *  files across #81, #59, #102, #112 and #116 came back green across the whole
+ *  suite. The copy is a decision — which of four things the sheet has to say
+ *  are true right now, and in what order — so it belongs somewhere a test can
+ *  reach it.
+ *
+ *  **Three parts, composed rather than branched**, because the cases genuinely
+ *  overlap: a read can be refused whole *and* another capture in the same
+ *  basket can have lost one food, and the nested ternary this replaces could
+ *  only ever print one of them.
+ *
+ *  1. `manual` — why there is a blank row instead of items (#16). First
+ *     because it explains the thing the eye lands on.
+ *  2. the dropped note — what is missing from the rows that *are* there.
+ *  3. the tail — what to do next, which is a different sentence when the sheet
+ *     is a recovery row than when it is a read.
+ *
+ *  **The dropped note displaces nothing.** The standing instruction stays,
+ *  because "tap anything to change it" is discoverable by tapping and a food
+ *  that is silently absent is discoverable by nothing at all — but the
+ *  instruction is not *replaced* either, since the sheet still needs it. Two
+ *  sentences is not the page of editing instructions `confirmDismiss`
+ *  deliberately refuses to stack above its own question. */
+export function sheetSubtitle(basket: readonly Capture[]): string {
+  const manual = basket[0]?.manual;
+  const tail = manual
+    ? "Your photo is saved — type what you ate, or close this to retake."
+    : basket.length > 1
+      ? "Tap anything to change it. One save, one entry on Today."
+      : "Tap anything to change it before it saves.";
+  return [manual, droppedNote(droppedCount(basket)), tail].filter(Boolean).join(" ");
 }

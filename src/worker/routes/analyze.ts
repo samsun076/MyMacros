@@ -205,9 +205,9 @@ analyze.post("/text", async (c) => {
     return c.json({ error: "analyze_failed" }, 502);
   }
 
-  const items = Array.isArray(parsed.items) ? parsed.items.map(normalize).filter(Boolean) : [];
-  run.done("ok");
-  return c.json<AnalyzeResponse>({ items: items as AnalyzedItem[] });
+  const read = usable(parsed.items);
+  run.done("ok", { items: read.items.length, dropped: read.dropped });
+  return c.json<AnalyzeResponse>(read);
 });
 
 /** Largest upload accepted. The client downscales to 1568px on the long edge
@@ -443,9 +443,9 @@ analyze.post("/photo", async (c) => {
     return c.json({ error: "analyze_failed", photo_key: key }, 502);
   }
 
-  const items = Array.isArray(parsed.items) ? parsed.items.map(normalize).filter(Boolean) : [];
-  run.done("ok", { ...stat, items: items.length });
-  return c.json<AnalyzeResponse>({ items: items as AnalyzedItem[], photo_key: key });
+  const read = usable(parsed.items);
+  run.done("ok", { ...stat, items: read.items.length, dropped: read.dropped });
+  return c.json<AnalyzeResponse>({ ...read, photo_key: key });
 });
 
 /** Workers have btoa but no Buffer, and String.fromCharCode(...bytes) blows
@@ -548,23 +548,136 @@ function upstreamHeaders(headers: Headers) {
   return out;
 }
 
+/** Everything the reader returned, split into what the sheet can show and a
+ *  count of what it cannot (#110). Exported for its tests (#47).
+ *
+ *  **The count is the whole point.** Dropping an item is the honest answer to
+ *  a figure no food reaches — but a person who photographed a plate and got
+ *  back fewer foods than are on it has been told nothing, and a silent drop is
+ *  the same defect as the silent clamp it replaces, one level up. So the
+ *  number crosses the wire and the confirm sheet says it (`droppedNote` in
+ *  `src/client/lib/basket.ts`).
+ *
+ *  **It counts every unusable item, not only the out-of-range ones**, because
+ *  the sheet has one sentence to say about all of them: a food came back that
+ *  we could not show you. A nameless item has been dropped silently since #9
+ *  and is the same experience from the user's side; separating the causes
+ *  would put a taxonomy on screen that answers a question nobody asked.
+ *
+ *  **`dropped: 0` is emitted rather than omitted**, for #69's reason exactly:
+ *  present-and-zero says "the reader returned nothing we refused", where an
+ *  absent key says nothing at all — and the only thing that can produce an
+ *  absent key on this route is a worker older than this issue. */
+export function usable(returned: unknown): { items: AnalyzedItem[]; dropped: number } {
+  const all = Array.isArray(returned) ? returned : [];
+  const items = all.map(normalize).filter((it): it is AnalyzedItem => it !== null);
+  return { items, dropped: all.length - items.length };
+}
+
+/** The ceilings the four figures have to sit under, restating `FOOD_LIMITS`'
+ *  `kcal.max` and `macro_g.max` in `src/client/lib/numeric.ts` and `energy()`
+ *  and `grams()` in `routes/food-logs.ts` — the same deliberate carry the
+ *  portion ceilings below are, for the same reason, and named here only
+ *  because #110 gave them a second reader in this file. */
+const MAX_KCAL = 10000;
+const MAX_MACRO_G = 1000;
+
 /** The schema guarantees presence and type; this guards the ranges the
  *  schema can't. Exported for its tests (#47) — it is the only thing standing
- *  between a model's out-of-range number and the database. */
+ *  between a model's out-of-range number and the database.
+ *
+ *  **An out-of-range figure drops the whole ITEM; nothing here is clamped
+ *  (#110).** This used to be `Math.min(Math.max(v, 0), max)` on all four
+ *  numbers, which is the silent truncation #109 had just removed from the
+ *  portion qty one function down. It is visible in a real response: `5000g of
+ *  white rice` came back `carbs_g: 1000` — pinned at the ceiling — beside an
+ *  **unclamped** `calories: 6450`, so the row contradicted itself (1,000 g of
+ *  carbohydrate is 4,000 kcal) and nothing anywhere said a number had been
+ *  rewritten. Consistently wrong is indistinguishable from correct until
+ *  someone reads a row; *inconsistently* wrong is worse.
+ *
+ *  **Why dropping, and why #109 could not do it here.** A portion is
+ *  all-or-nothing and has a null representation, so #109 could refuse a qty by
+ *  answering `null` — no control drawn, a hand-edit invited, nothing claimed.
+ *  A macro has no such representation: `AnalyzedItem.protein_g` is a `number`
+ *  and `0` is a real answer, so "absent" and "none" would read the same, which
+ *  is its own bug. Refusing therefore means refusing the item, which is a
+ *  larger decision than #109 was scoped to make — left alone on purpose there
+ *  rather than overlooked, and **decided by Dave on 2026-08-23** over the
+ *  alternative of clamping with the confidence zeroed.
+ *
+ *  It is defensible because it is narrow three ways: the other items in the
+ *  same read are untouched and still land on the sheet; #16's blank recovery
+ *  row already exists for typing a food in by hand; and the bound only fires
+ *  on input no single food reaches — 1,000 g of one macro is not a food, and
+ *  10,000 kcal is four days of eating for the person this app is built for.
+ *
+ *  **The floor drops too, and that is the same rule rather than an extra
+ *  one.** `Math.max(v, 0)` rewrote `-200` to `0` exactly as silently as the
+ *  ceiling rewrote `999999` to `10000`; the old test's own name ("rather than
+ *  logging a meal that gives calories back") shows the fear was the negative
+ *  reaching a day's total, and dropping the item keeps it out of the total
+ *  *without* inventing a zero-calorie food to do it.
+ *
+ *  **A number that is not a number drops the item too.** The schema promises
+ *  presence and type, so `NaN`, `Infinity`, `null` and `"41"` can only arrive
+ *  when the wire has broken its own contract — and substituting `0` there is
+ *  the "unknown and none read the same" bug the paragraph above refuses.
+ *
+ *  **Rounded first, then tested**, at both ends and for the same reason
+ *  `portion()` does it: 1dp is the resolution the macro columns hold and whole
+ *  kcal is what `calories` stores, so landing on a bound *through rounding*
+ *  (`10000.4` → `10000`, `-0.04` → `0`) is quantisation, not the clamp #110
+ *  killed.
+ *
+ *  **`confidence` is still clamped, deliberately, and it is now the only
+ *  silent rewrite left in this function.** Say so rather than let the carry
+ *  read as an oversight: it is a statement *about* the four numbers and not
+ *  one of them, so clamping it cannot make a row contradict itself, which is
+ *  the specific defect #110 is about; and a probability outside 0..1 is a
+ *  broken scale rather than a broken food, where throwing the item away would
+ *  cost four usable macros to report a malformed meta field. The honest
+ *  alternative exists and is representable — `AnalyzedItem.confidence` is
+ *  `number | null` already, because a barcode read has no confidence to give —
+ *  so `null` is available if this is ever revisited. It was not part of #110's
+ *  decision and is not changed here. */
 export function normalize(item: unknown): AnalyzedItem | null {
   const it = item as Record<string, unknown>;
   if (typeof it?.name !== "string" || !it.name.trim()) return null;
-  const num = (v: unknown, max: number) =>
-    typeof v === "number" && Number.isFinite(v) ? Math.min(Math.max(v, 0), max) : 0;
+
+  /** The value as it would be stored, or `null` for "this item is not usable".
+   *  `+ 0` normalises `-0`, which `Math.round` produces from `-0.04` and which
+   *  is a different value from `0` to anything comparing with `Object.is`. */
+  const num = (v: unknown, max: number, decimals: number) => {
+    if (typeof v !== "number" || !Number.isFinite(v)) return null;
+    const f = 10 ** decimals;
+    const n = Math.round(v * f) / f + 0;
+    return n >= 0 && n <= max ? n : null;
+  };
+
+  const calories = num(it.calories, MAX_KCAL, 0);
+  const protein = num(it.protein_g, MAX_MACRO_G, 1);
+  const carbs = num(it.carbs_g, MAX_MACRO_G, 1);
+  const fat = num(it.fat_g, MAX_MACRO_G, 1);
+  if (calories === null || protein === null || carbs === null || fat === null) return null;
+
   return {
     name: it.name.trim().slice(0, 120),
-    calories: Math.round(num(it.calories, 10000)),
-    protein_g: round1(num(it.protein_g, 1000)),
-    carbs_g: round1(num(it.carbs_g, 1000)),
-    fat_g: round1(num(it.fat_g, 1000)),
-    confidence: round2(num(it.confidence, 1)),
+    calories,
+    protein_g: protein,
+    carbs_g: carbs,
+    fat_g: fat,
+    confidence: confidenceOf(it.confidence),
     portion: portion(it.portion),
   };
+}
+
+/** The one figure `normalize` still clamps rather than refuses — argued in
+ *  full in its docstring, and kept apart from `num` above so the asymmetry is
+ *  visible in the code and not only in a comment. */
+function confidenceOf(v: unknown): number {
+  const n = typeof v === "number" && Number.isFinite(v) ? v : 0;
+  return round2(Math.min(Math.max(n, 0), 1));
 }
 
 /** #58's half of normalize, and the same rule as everything above it: the

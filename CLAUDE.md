@@ -202,7 +202,18 @@ way to reach a mixed basket unattended: doing it for real needs two barcodes in 
 camera headless Chrome does not have. Deliberately the tall case — four rows, a per-row
 provenance line each, a footer holding two controls side by side — because a stage that
 shoots the easy case produces a PNG that looks like evidence. It is in `verify:viewport`'s
-route list. `/log#correct` (#59) is DEV-gated and opens the correction form **with a note
+route list. `/log#dropped` (#110) is DEV-gated and is a read that landed two foods out of three,
+because the third came back with a figure no food reaches — the one state where the
+confirm sheet's subtitle carries **two** sentences, a statement about the read followed
+by the standing instruction. Deliberately the *partial* case: the all-dropped case falls
+into #16's recovery row, which is already drawn and already shot. `/log#refused` (#113)
+is DEV-gated and is `#portion`'s barcode sheet with the save already refused — the only
+way to see a message drawn **against a field** rather than under the save button, since
+producing it for real needs a barcode in front of a camera and then a portion big enough
+to break the calorie ceiling. It fabricates the *failed request* and runs the real
+`describeSaveFailure` over it, the same fabricate-the-input discipline `/trends#empty`
+and `#offline` follow. Both are in `verify:viewport`'s route list.
+`/log#correct` (#59) is DEV-gated and opens the correction form **with a note
 already typed**, so the tall case is what gets measured; its capture's `photoKey` belongs
 to nobody, so "Read it again" from the stage drives the *refusal* path deterministically —
 which is the state #16 owns and the one worth a screenshot. Also in `verify:viewport`'s

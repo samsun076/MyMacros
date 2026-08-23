@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { normalize, photoTurn } from "./analyze";
+import { normalize, photoTurn, usable } from "./analyze";
 
 /** Structured outputs guarantee the *shape* of what Claude returns and
  *  silently drop `minimum`/`maximum` from the schema that is sent (#45). So
@@ -29,24 +29,69 @@ describe("normalize", () => {
     });
   });
 
-  it("floors negatives at zero rather than logging a meal that gives calories back", () => {
-    expect(normalize(item({ calories: -200, protein_g: -1, confidence: -0.5 }))).toMatchObject({
-      calories: 0,
-      protein_g: 0,
-      confidence: 0,
-    });
+  /* #110. The three tests this replaces asserted the CLAMP — negatives floored
+     to zero, absurd values pinned at the ceiling, junk substituted with zero —
+     and each one is now the behaviour being refused rather than the behaviour
+     being kept. Every case is its own `it`, for #109's reason: a table with
+     four assertions in it tells a red run about the first line and nothing
+     about the rest. */
+
+  it("drops an item whose calories are over the ceiling (#110)", () => {
+    expect(normalize(item({ calories: 999999 }))).toBeNull();
   });
 
-  it("caps absurd values", () => {
-    expect(normalize(item({ calories: 999999, protein_g: 50000 }))).toMatchObject({
-      calories: 10000,
+  it("drops an item whose macro is over the ceiling, rather than pinning it", () => {
+    // #110's own captured response, before the clamp got to it: `5000g of
+    // white rice` returned ~1,400 g of carbohydrate and 6,450 kcal, and what
+    // reached the sheet was `carbs_g: 1000` pinned at the ceiling beside an
+    // UNCLAMPED 6,450 — a row contradicting itself, since 1,000 g of
+    // carbohydrate is 4,000 kcal.
+    expect(normalize(item({ calories: 6450, carbs_g: 1400 }))).toBeNull();
+  });
+
+  it("drops on any one of the four, not only calories", () => {
+    expect(normalize(item({ protein_g: 1000.1 }))).toBeNull();
+    expect(normalize(item({ carbs_g: 1000.1 }))).toBeNull();
+    expect(normalize(item({ fat_g: 1000.1 }))).toBeNull();
+  });
+
+  it("accepts the ceilings themselves — the bound is not off by one", () => {
+    expect(normalize(item({ calories: 10000 }))).toMatchObject({ calories: 10000 });
+    expect(normalize(item({ protein_g: 1000, carbs_g: 1000, fat_g: 1000 }))).toMatchObject({
       protein_g: 1000,
+      carbs_g: 1000,
+      fat_g: 1000,
     });
   });
 
-  it("keeps confidence a probability", () => {
+  it("drops a negative rather than flooring it to zero (#110)", () => {
+    // The old name for this was "floors negatives at zero rather than logging a
+    // meal that gives calories back". The fear was right and the remedy
+    // invented a zero-calorie food to satisfy it; dropping keeps the negative
+    // out of the day's total without claiming anything.
+    expect(normalize(item({ calories: -200 }))).toBeNull();
+    expect(normalize(item({ protein_g: -1 }))).toBeNull();
+  });
+
+  it("drops a figure that is not a number at all", () => {
+    expect(normalize(item({ calories: NaN }))).toBeNull();
+    expect(normalize(item({ calories: Infinity }))).toBeNull();
+    expect(normalize(item({ protein_g: "41" }))).toBeNull();
+    expect(normalize(item({ carbs_g: null }))).toBeNull();
+    expect(normalize(item({ fat_g: undefined }))).toBeNull();
+  });
+
+  it("still clamps confidence — the one figure #110 deliberately left", () => {
     expect(normalize(item({ confidence: 42 }))?.confidence).toBe(1);
+    expect(normalize(item({ confidence: -0.5 }))?.confidence).toBe(0);
     expect(normalize(item({ confidence: 0.876 }))?.confidence).toBe(0.88);
+  });
+
+  it("does not drop an item over a malformed confidence", () => {
+    // It is a statement ABOUT the four numbers, not one of them, so it cannot
+    // make a row contradict itself — and throwing the item away would cost
+    // four usable macros to report a broken meta field.
+    expect(normalize(item({ confidence: "high" }))).toMatchObject({ calories: 640, confidence: 0 });
   });
 
   it("rounds calories to whole and macros to one place", () => {
@@ -56,11 +101,25 @@ describe("normalize", () => {
     });
   });
 
-  it("substitutes zero for a number that isn't one", () => {
-    expect(
-      normalize(item({ calories: NaN, protein_g: "41", carbs_g: null, fat_g: undefined })),
-    ).toMatchObject({ calories: 0, protein_g: 0, carbs_g: 0, fat_g: 0 });
-    expect(normalize(item({ calories: Infinity }))?.calories).toBe(0);
+  /** Not the clamp coming back, and the same rule `portion()` keeps: whole
+   *  kcal and 1dp are the resolutions these values are stored at, so a number
+   *  that lands on a bound *through rounding* has been quantised, not
+   *  rewritten. Tested at both ends. */
+  it("rounds before testing the ceiling", () => {
+    expect(normalize(item({ calories: 10000.4 }))).toMatchObject({ calories: 10000 });
+    expect(normalize(item({ protein_g: 1000.04 }))).toMatchObject({ protein_g: 1000 });
+  });
+
+  it("rounds before testing the floor, and never reports -0", () => {
+    const got = normalize(item({ protein_g: -0.04 }));
+    expect(got).toMatchObject({ protein_g: 0 });
+    expect(Object.is(got?.protein_g, -0)).toBe(false);
+  });
+
+  it("drops the whole item, not the offending figure", () => {
+    // A macro has no null representation — `0` is a real answer — so nulling
+    // the figure would make "unknown" and "none" read the same.
+    expect(normalize(item({ calories: 999999 }))).toBeNull();
   });
 
   it("drops an item with no name — there is nothing to show on the sheet", () => {
@@ -191,6 +250,55 @@ describe("normalize", () => {
       expect(p({ qty: 1, unit: "x".repeat(500) })?.unit).toHaveLength(24);
       expect(p({ qty: 1, unit: "  slices  " })?.unit).toBe("slices");
     });
+  });
+});
+
+/** #110's other half: the count that tells the sheet a food is missing.
+ *
+ *  A silent drop is the same defect as the silent clamp it replaces, one level
+ *  up — a person who photographed a plate and got back fewer foods than are on
+ *  it has been told nothing. These are the assertions that fail if the count
+ *  stops being computed, or starts being computed off the wrong list. */
+describe("usable", () => {
+  const ok = (name: string) => ({
+    name,
+    calories: 200,
+    protein_g: 10,
+    carbs_g: 20,
+    fat_g: 5,
+    confidence: 0.7,
+  });
+
+  it("reports zero when everything came back usable", () => {
+    expect(usable([ok("Rice"), ok("Chicken")])).toEqual({
+      items: [expect.objectContaining({ name: "Rice" }), expect.objectContaining({ name: "Chicken" })],
+      dropped: 0,
+    });
+  });
+
+  it("keeps the survivors of a read that lost one food", () => {
+    const read = usable([ok("Rice"), { ...ok("White rice"), calories: 6450, carbs_g: 1400 }, ok("Chicken")]);
+    expect(read.items.map((i) => i.name)).toEqual(["Rice", "Chicken"]);
+  });
+
+  it("counts the food it lost", () => {
+    const read = usable([ok("Rice"), { ...ok("White rice"), calories: 6450, carbs_g: 1400 }, ok("Chicken")]);
+    expect(read.dropped).toBe(1);
+  });
+
+  it("counts every unusable item, not only the out-of-range ones", () => {
+    // A nameless item has been dropped silently since #9 and is the same
+    // experience from the user's side: a food came back that we cannot show.
+    expect(usable([ok("Rice"), { ...ok(""), name: "" }, "junk"]).dropped).toBe(2);
+  });
+
+  it("reports an all-dropped read as zero items and the full count", () => {
+    expect(usable([{ ...ok("White rice"), carbs_g: 1000.1 }])).toEqual({ items: [], dropped: 1 });
+  });
+
+  it("survives a model that did not return an array at all", () => {
+    expect(usable(undefined)).toEqual({ items: [], dropped: 0 });
+    expect(usable({ items: [] })).toEqual({ items: [], dropped: 0 });
   });
 });
 

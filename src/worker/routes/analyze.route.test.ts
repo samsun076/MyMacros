@@ -94,9 +94,15 @@ async function withModel<T>(
   globalThis.fetch = (async (_input: RequestInfo, init?: RequestInit) => {
     session.calls += 1;
     const body = JSON.parse(String(init?.body)) as {
-      messages: { content: { type: string; text?: string }[] }[];
+      messages: { content: string | { type: string; text?: string }[] }[];
     };
-    const text = body.messages[0]?.content.find((b) => b.type === "text")?.text;
+    // The photo route sends a content ARRAY (image block + text block); the
+    // text route sends a bare string. Both are the turn, and reading only the
+    // first shape threw a TypeError inside the stub — which surfaced as a 502
+    // from a route that was working, so widening this is what lets #110's
+    // text-path tests exist at all.
+    const content = body.messages[0]?.content;
+    const text = Array.isArray(content) ? content.find((b) => b.type === "text")?.text : content;
     if (text !== undefined) session.turns.push(text);
     return new Response(
       JSON.stringify({
@@ -383,5 +389,94 @@ describe("a re-read is not an edit (#59)", () => {
   it("stores the corrected food, not the one the person said was wrong", async () => {
     const [log] = await correctedMeal();
     expect(log?.name).toBe("Cheese toastie");
+  });
+});
+
+
+/** #110 — an out-of-range figure drops the whole food, and the wire says so.
+ *
+ *  The unit tests in `analyze.test.ts` prove `normalize` and `usable`; this
+ *  proves the *route* calls them and that the count survives serialisation.
+ *  Driven through the same `globalThis.fetch` stub every other test here uses,
+ *  so the schema, the abort signal and the whole handler run for real and the
+ *  only thing replaced is Anthropic answering.
+ *
+ *  `RICE` is #110's own captured response, before the clamp got to it: 5,000 g
+ *  of cooked white rice at 6,450 kcal and ~1,400 g of carbohydrate. What
+ *  reached the sheet used to be `carbs_g: 1000` — pinned at the ceiling —
+ *  sitting beside an unclamped 6,450, a row contradicting itself with nothing
+ *  anywhere saying a number had been rewritten. */
+describe("an unusable food is dropped and counted (#110)", () => {
+  const RICE = {
+    name: "White rice, cooked",
+    calories: 6450,
+    protein_g: 133,
+    carbs_g: 1400,
+    fat_g: 7,
+    confidence: 0.9,
+    portion: null,
+  } as unknown as AnalyzedItem;
+
+  const text = async (items: AnalyzedItem[]) => {
+    const { result } = await withModel(items, async () =>
+      app.fetch(
+        new Request("https://fuel.debrief.run/api/analyze/text", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ text: "5000g of white rice" }),
+        }),
+        testEnv,
+      ),
+    );
+    return await result.json<AnalyzeResponse>();
+  };
+
+  it("does not put the out-of-range food on the sheet", async () => {
+    expect((await text([RICE])).items).toEqual([]);
+  });
+
+  it("says one food was dropped", async () => {
+    expect((await text([RICE])).dropped).toBe(1);
+  });
+
+  it("never returns a clamped macro beside an unclamped calorie count again", async () => {
+    // The assertion that separates this implementation from the one it
+    // replaces: the old normalize answered `carbs_g: 1000, calories: 6450`.
+    const { items } = await text([RICE]);
+    expect(items.find((i) => i.carbs_g === 1000)).toBeUndefined();
+  });
+
+  it("keeps the rest of the read", async () => {
+    const { items } = await text([HAM, RICE, CHEESE]);
+    expect(items.map((i) => i.name)).toEqual(["Ham and cheese toastie", "Cheese toastie"]);
+  });
+
+  it("counts the one it lost out of three", async () => {
+    expect((await text([HAM, RICE, CHEESE])).dropped).toBe(1);
+  });
+
+  it("reports dropped: 0 on a clean read rather than omitting the key", async () => {
+    // #69's rule: present-and-zero says "nothing was refused", where an absent
+    // key says nothing at all.
+    const read = await text([HAM]);
+    expect(read.dropped).toBe(0);
+    expect("dropped" in read).toBe(true);
+  });
+
+  it("carries the count on the photo route too, beside the photo key", async () => {
+    const { result } = await withModel([HAM, RICE], () => post(upload()));
+    const read = await result.json<AnalyzeResponse>();
+    expect(read.dropped).toBe(1);
+    expect(read.photo_key).toMatch(new RegExp(`^${USER}/`));
+  });
+
+  it("still returns the photo key when every food was dropped", async () => {
+    // #16's rule: the photo survives a read that produced nothing usable, so
+    // the manual save path stays open.
+    const { result } = await withModel([RICE], () => post(upload()));
+    const read = await result.json<AnalyzeResponse>();
+    expect(read.items).toEqual([]);
+    expect(read.dropped).toBe(1);
+    expect(read.photo_key).toMatch(new RegExp(`^${USER}/`));
   });
 });

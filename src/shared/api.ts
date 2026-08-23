@@ -185,6 +185,19 @@ export type AnalyzedItem = {
 export type AnalyzeResponse = {
   items: AnalyzedItem[];
   photo_key?: string;
+  /** How many foods the reader returned that `normalize()` refused (#110).
+   *
+   *  A macro out of range drops the whole item, because a macro has no null
+   *  representation to refuse into the way a portion does — so the read can
+   *  come back with fewer foods than the photograph has on it, and the sheet
+   *  has to be able to say so. **Present and 0 is the ordinary answer**, not
+   *  an omission: absent means an analyze route older than #110, and #69's
+   *  rule is that silence and nothing-to-report must not look identical.
+   *
+   *  Optional because the barcode route (#15) shares this type and refuses
+   *  nothing — it reads one product from an exact match, and there is no
+   *  second item to drop. */
+  dropped?: number;
   /** Barcode reads only (#15): the scanned code, and the gram weight the
    *  numbers above are scaled to. The sheet's grams field rescales linearly
    *  from there, so no separate per-100g basis has to cross the wire. */

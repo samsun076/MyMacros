@@ -10,6 +10,7 @@ import type {
 import { foldMeals, mealNameKey } from "../../shared/meals";
 import { sameMacros, scaleMacros } from "../../shared/portion";
 import { insertChunks } from "../db";
+import { type BoundedField, itemRefusal } from "../item-refusal";
 import { ownedPhotoKey } from "../photos";
 import type { AppEnv } from "../types";
 import { isDay, isInstant, isNum, oneOf } from "../validate";
@@ -142,6 +143,30 @@ function round1(n: number) {
  *  quantised differently from the other. `null` means "not a valid figure". */
 const energy = (v: unknown) => (isNum(v) && v >= 0 && v <= 10000 ? Math.round(v) : null);
 const grams = (v: unknown) => (isNum(v) && v >= 0 && v <= 1000 ? Math.round(v * 10) / 10 : null);
+
+/** Which of the four bounded figures the validators above turned down (#113).
+ *
+ *  It reads the *results*, never the inputs, so there is no second statement
+ *  of a ceiling anywhere in this file — `energy` and `grams` remain the only
+ *  things that know what 10,000 and 1,000 are, and a change to either cannot
+ *  leave this disagreeing with them. */
+const overFields = (v: {
+  kcal: number | null;
+  protein: number | null;
+  carbs: number | null;
+  fat: number | null;
+}): BoundedField[] =>
+  [
+    v.kcal === null && "kcal",
+    v.protein === null && "protein_g",
+    v.carbs === null && "carbs_g",
+    v.fat === null && "fat_g",
+  ].filter((f): f is BoundedField => f !== false);
+
+/** Did this item state a portion at all? `undefined` is "unchanged / none";
+ *  an explicit `null` is the all-or-nothing triple being withheld, which is a
+ *  save that names no amount either way (#104). */
+const states = (v: unknown) => v !== undefined && v !== null;
 
 /** The portion's two shapes (#104) — the saved count and #58's as-read one,
  *  same bounds on both, so a stored pair can be compared without one of them
@@ -415,7 +440,18 @@ foodLogs.post("/", async (c) => {
           ? item.confidence
           : undefined;
     if (!name || kcal === null || protein === null || carbs === null || fat === null || confidence === undefined) {
-      return c.json({ error: "invalid_item" }, 400);
+      // #113: name the portion when the portion is what put the item over a
+      // ceiling. `states` reads the RAW body rather than the validated triple
+      // below, because that block never runs — this return is above it — and
+      // "did the person type an amount" is a question about what they sent.
+      return c.json(
+        itemRefusal({
+          named: !!name,
+          over: overFields({ kcal, protein, carbs, fat }),
+          portioned: states(item?.portion_qty),
+        }),
+        400,
+      );
     }
 
     /* What the reader proposed, before this item was edited (#76).
@@ -804,7 +840,18 @@ foodLogs.patch("/", async (c) => {
     const carbs = grams(item?.carbs_g);
     const fat = grams(item?.fat_g);
     if (!name || kcal === null || protein === null || carbs === null || fat === null) {
-      return c.json({ error: "invalid_item" }, 400);
+      // #113, the same classification POST makes and for the same reason: the
+      // edit sheet rescales every macro from HOW MUCH the moment it is
+      // touched, so a portion typed here reaches the same two ceilings by the
+      // same multiplication. One function, two call sites (#86).
+      return c.json(
+        itemRefusal({
+          named: !!name,
+          over: overFields({ kcal, protein, carbs, fat }),
+          portioned: states(item?.portion_qty),
+        }),
+        400,
+      );
     }
 
     /* No id: an item being ADDED to a saved meal (#60).

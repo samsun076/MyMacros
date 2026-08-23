@@ -25,11 +25,13 @@ import {
   basketItemCount,
   basketRows,
   correctable,
+  droppedNote,
   needsDismissConfirm,
   reread,
   roomFor,
   roomForReread,
   sheetOpen,
+  sheetSubtitle,
   showsGrams,
 } from "../lib/basket";
 import { releaseCamera } from "../lib/camera";
@@ -46,6 +48,7 @@ import {
   savedPortion,
   setPortionQty,
 } from "../lib/portion";
+import { type SaveFailure, describeSaveFailure, stagedSaveFailure } from "../lib/save-failure";
 import { useDragToDismiss } from "../lib/sheet-drag";
 
 /** The log flow: capture → editable confirm sheet → saved.
@@ -94,8 +97,10 @@ function initialMode(): LogMode {
     case "#text":
     case "#confirm":
     case "#portion":
+    case "#refused":
     case "#basket":
     case "#correct":
+    case "#dropped":
       return "text";
     case "#barcode":
       return "barcode";
@@ -122,6 +127,13 @@ const DEMO_PHOTO_KEY = "demo-user/00000000-0000-4000-8000-000000000000.jpg";
  *  tools/shot-matrix.mjs can shoot the sheet without a Claude round trip.
  *  import.meta.env.DEV is a build-time literal — compiled out in prod.
  *
+ *  `/log#refused` is #113's, and it is `#portion`'s sheet with the save already
+ *  refused: the only way to see the sentence drawn against HOW MUCH rather
+ *  than under the save button, since producing it for real needs a barcode in
+ *  front of a camera and then a portion big enough to break the calorie
+ *  ceiling. See `demoRefusal` below for what it fabricates and what it does
+ *  not.
+ *
  *  `/log#portion` is the same sheet as a **barcode** read, which is the only
  *  shape that renders the portion row (#15). It had no stage until #95, and so
  *  no screenshot and no way to drive its field in a browser: the one control
@@ -146,6 +158,12 @@ const DEMO_PHOTO_KEY = "demo-user/00000000-0000-4000-8000-000000000000.jpg";
  *  calls Claude — so faking one would put a state on screen the app cannot
  *  reach. The mixed-source save including a photographed row is covered where
  *  it can be honest, in `food-logs.route.test.ts`.
+ *
+ *  `/log#dropped` is #110's: a read that came back with three foods and landed
+ *  two, because the third carried a figure no food reaches. It is the only way
+ *  to see that sentence without a model returning `carbs_g: 1000` on demand,
+ *  and it is the *partial* case deliberately — the all-dropped case falls into
+ *  #16's recovery row, which is already drawn and already shot.
  *
  *  `/log#correct` is #59's, and it is the one stage that DOES carry a photo
  *  capture — it has to, because the affordance it draws exists only on one
@@ -190,6 +208,24 @@ function demoBasket(): Capture[] {
       { items: typed.map(editable), readMs: 1600, source: "text" },
     ];
   }
+  if (window.location.hash === "#dropped") {
+    // #110's own read, from the issue: `5000g of white rice` came back
+    // `carbs_g: 1000` beside an unclamped `calories: 6450` and is now refused
+    // whole. The stage is the PARTIAL case on purpose — two foods kept, one
+    // dropped — because the all-dropped case is #16's recovery row, which
+    // `/log#confirm` cannot reach either but which already has a screenshot's
+    // worth of copy behind it. A stage that shot the easy case would produce a
+    // PNG that looks like evidence and measures nothing.
+    //
+    // `dropped` is fabricated, the sentence is not: the subtitle is built by
+    // the real `sheetSubtitle` over a real basket, the same discipline
+    // `/trends#empty` follows in running the real `buildTrends`.
+    const items: AnalyzedItem[] = [
+      { name: "Grilled chicken breast", calories: 280, protein_g: 52, carbs_g: 0, fat_g: 6, confidence: 0.9, portion: { qty: 1, unit: "breast" } },
+      { name: "Steamed broccoli", calories: 55, protein_g: 4, carbs_g: 11, fat_g: 1, confidence: 0.85, portion: { qty: 1.5, unit: "cups" } },
+    ];
+    return [{ items: items.map(editable), readMs: 2100, source: "text", dropped: 1 }];
+  }
   if (window.location.hash === "#confirm") {
     // Portions are #58's subject, so the demo meal carries them — three items,
     // three different units, one of them fractional, so the control is
@@ -202,7 +238,7 @@ function demoBasket(): Capture[] {
     ];
     return [{ items: items.map(editable), readMs: 1800, source: "text" }];
   }
-  if (window.location.hash === "#portion") {
+  if (window.location.hash === "#portion" || window.location.hash === "#refused") {
     // per-100g figures, the way OpenFoodFacts returns them, scaled to 150g
     const base: AnalyzedItem[] = [
       { name: "Greek yoghurt, 2%", calories: 97, protein_g: 9, carbs_g: 3.9, fat_g: 2.6, confidence: null },
@@ -240,6 +276,21 @@ function demoCorrection(): Correction | null {
   return { capture: 0, note: "there's no ham in it — just cheese", busy: false, error: null };
 }
 
+/** DEV-only: `/log#refused` is `/log#portion`'s barcode sheet with #113's save
+ *  refusal already on it — the one state where the message is drawn against
+ *  the HOW MUCH field instead of under the save button.
+ *
+ *  It fabricates the *failed request* and runs the real `describeSaveFailure`
+ *  over it (`stagedSaveFailure`), so the sentence and the placement are both
+ *  the shipped decision rather than a fixture. Reaching it for real needs a
+ *  barcode in front of a camera headless Chrome does not have, and then a
+ *  portion big enough to break the calorie ceiling — which is exactly the
+ *  class of state `#offline` and `/trends#empty` exist for. */
+function demoRefusal(): SaveFailure | null {
+  if (!import.meta.env.DEV) return null;
+  return describeSaveFailure(stagedSaveFailure(window.location.hash));
+}
+
 /** DEV-only: `/log#note` opens the **pre-capture** note field with a note
  *  already typed (#120) — PHOTO's viewfinder behind it, not `#correct`'s sheet.
  *
@@ -268,7 +319,21 @@ export function Log() {
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setErrorText] = useState<string | null>(() => demoRefusal()?.message ?? null);
+  /** Which control the current error belongs beside (#113). `null` is "the
+   *  screen as a whole", which is every error but one.
+   *
+   *  **Cleared by `setError`, not tracked separately.** Nine call sites set an
+   *  error string on this screen and exactly one of them has a field to point
+   *  at; a placement that outlived its message would put a save refusal beside
+   *  the HOW MUCH field of a *scan* that failed afterwards. So the two move
+   *  together by construction rather than by nine people remembering — #86's
+   *  rule at its smallest scale. */
+  const [errorAt, setErrorAt] = useState<SaveFailure["at"]>(() => demoRefusal()?.at ?? null);
+  const setError = useCallback((message: string | null) => {
+    setErrorText(message);
+    setErrorAt(null);
+  }, []);
   /** The basket: every capture that will become one meal (#81). One reading was
    *  a `Read | null` until this issue; it is now a list, and everything the
    *  sheet renders is derived from it rather than from a "current" read. */
@@ -606,9 +671,14 @@ export function Log() {
     setError(null);
     const t0 = Date.now();
     try {
-      const { items } = await api.post<AnalyzeResponse>("/api/analyze/text", { text: text.trim() });
+      const { items, dropped = 0 } = await api.post<AnalyzeResponse>("/api/analyze/text", { text: text.trim() });
       if (!items.length) {
-        setError("Couldn't find any food in that — try describing what you ate.");
+        // #110: nothing usable came back, and *why* is a different sentence
+        // depending on whether the reader found no food or found food it
+        // returned impossible numbers for. TEXT needs no recovery row — what
+        // was typed is still in the box — so the note goes straight to the
+        // error line, which is the one this screen already has.
+        setError(droppedNote(dropped) ?? "Couldn't find any food in that — try describing what you ate.");
         return;
       }
       if (!roomFor(held, items.length)) {
@@ -616,7 +686,7 @@ export function Log() {
         return;
       }
       setSlot(mealSlotFor());
-      stow({ items: items.map(editable), readMs: Date.now() - t0, source: "text" });
+      stow({ items: items.map(editable), readMs: Date.now() - t0, source: "text", dropped });
     } catch (err) {
       // Text needs no manual-entry rescue: what the user typed is still in the
       // box, so retrying is one tap and nothing was lost (#16).
@@ -659,7 +729,7 @@ export function Log() {
     if (said) form.append("note", said);
     setNote(null);
     try {
-      const { items, photo_key } = await api.postForm<AnalyzeResponse>("/api/analyze/photo", form);
+      const { items, photo_key, dropped = 0 } = await api.postForm<AnalyzeResponse>("/api/analyze/photo", form);
       // The one read that can overflow the cap in a single step: a plate can
       // come back as five foods, and only a photograph does that. Refused
       // whole rather than truncated — dropping foods off the end of a read to
@@ -674,7 +744,21 @@ export function Log() {
       if (!items.length) {
         // #16: no food found is a failure of the read, not of the user. The
         // photo is stored; open the sheet so it can still be logged.
-        stow(manualRead("No food found in that photo.", photo_key, Date.now() - t0, said));
+        //
+        // #110: "no food found" is FALSE when the reader did find food and the
+        // numbers it gave for it were impossible — the two are different
+        // failures and the recovery row is the same one, so the reason is the
+        // only thing that changes. `dropped` is not set on this capture: the
+        // sentence is already the subtitle's first clause and `droppedCount`
+        // skips a manual capture so it cannot be printed twice.
+        stow(
+          manualRead(
+            droppedNote(dropped) ?? "No food found in that photo.",
+            photo_key,
+            Date.now() - t0,
+            said,
+          ),
+        );
         setEditing(held);
         return;
       }
@@ -684,6 +768,7 @@ export function Log() {
         source: "photo",
         photoKey: photo_key,
         note: said || undefined,
+        dropped,
       });
     } catch (err) {
       // The photo survives an analysis failure by construction — the Worker
@@ -754,9 +839,16 @@ export function Log() {
       setCorrection((c) => (c ? { ...c, busy: false, error: why } : c));
 
     try {
-      const { items } = await api.postForm<AnalyzeResponse>("/api/analyze/photo", form);
+      const { items, dropped = 0 } = await api.postForm<AnalyzeResponse>("/api/analyze/photo", form);
       if (!items.length) {
-        fail("It read the photo again and still found no food in it. Your items are untouched.");
+        // #110: the same two failures the first read separates. "Still found
+        // no food" is a false statement about a re-read that found food and
+        // returned impossible numbers for it.
+        fail(
+          droppedNote(dropped)
+            ? `${droppedNote(dropped)} Your items are untouched.`
+            : "It read the photo again and still found no food in it. Your items are untouched.",
+        );
         return;
       }
       if (!roomForReread(basket, index, items.length)) {
@@ -765,7 +857,7 @@ export function Log() {
         );
         return;
       }
-      setBasket((b) => reread(b, index, items, Date.now() - t0, said));
+      setBasket((b) => reread(b, index, items, Date.now() - t0, said, dropped));
       // The rows underneath have just been replaced, so an open editor is
       // pointing at a food that no longer exists at that index.
       setEditing(null);
@@ -1086,8 +1178,16 @@ export function Log() {
           },
         },
       });
-    } catch {
-      setError("Couldn't save — check your connection and try again.");
+    } catch (err) {
+      // #113: the route now says *which* bound fired and whether a portion put
+      // the item past it, so the sheet stops blaming the connection for a 400
+      // and stops leaving the field unnamed. `describeSaveFailure` owns both
+      // decisions — the sentence, and which control it belongs beside.
+      const failure = describeSaveFailure(
+        err instanceof ApiError ? { status: err.status, code: err.code } : { status: 0, code: "network" },
+      );
+      setErrorText(failure?.message ?? null);
+      setErrorAt(failure?.at ?? null);
       setSaving(false);
     }
   }
@@ -1378,13 +1478,11 @@ export function Log() {
                 </div>
               </div>
             ) : (
-              <p className="sheet-sub">
-                {first.manual
-                  ? `${first.manual} Your photo is saved — type what you ate, or close this to retake.`
-                  : basket.length > 1
-                    ? "Tap anything to change it. One save, one entry on Today."
-                    : "Tap anything to change it before it saves."}
-              </p>
+              /* The whole sentence is decided by `sheetSubtitle` (#110) —
+                 nothing in this repo executes this file, and "which of the
+                 things the sheet has to say are true right now" is a rule, not
+                 markup. What stays here is the element. */
+              <p className="sheet-sub">{sheetSubtitle(basket)}</p>
             )}
 
             {/* Barcode reads land per-100g or per-package, so the portion is
@@ -1409,6 +1507,23 @@ export function Log() {
                 <NumericField id="grams" value={first.grams} onCommit={setGrams} live {...FOOD_LIMITS.grams} />
                 <span className="mono">GRAMS</span>
               </div>
+            )}
+
+            {/* #113: the refusal, beside the field that caused it.
+                `FOOD_LIMITS.grams.max` and `FOOD_LIMITS.kcal.max` do not know
+                each other exists and the portion multiplies into the second,
+                so a legal 2,000 g of a dense product computes past the calorie
+                ceiling and the save is refused whole. The route is the only
+                side that knows which bound fired; this is the only place on
+                screen where the field it names is drawn. It renders here as
+                well as in the footer because a tall sheet can scroll the save
+                button out of sight of the field, and BOTH would be one
+                message twice — so the footer suppresses it when this one is
+                showing. */}
+            {errorAt === "portion" && showsGrams(basket) && error && (
+              <p className="signin-error portion-error" role="alert">
+                {error}
+              </p>
             )}
 
             {/* **The retirement, said rather than silently applied — and the
@@ -1545,7 +1660,9 @@ export function Log() {
                   That's as many foods as one meal holds. Log these and start another.
                 </p>
               )}
-              {error && (
+              {/* Suppressed when the same message is already drawn against the
+                  HOW MUCH field above (#113) — one refusal, one sentence. */}
+              {error && !(errorAt === "portion" && showsGrams(basket)) && (
                 <p className="signin-error" role="alert">
                   {error}
                 </p>

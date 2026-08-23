@@ -6,11 +6,14 @@ import {
   basketItemCount,
   basketRows,
   correctable,
+  droppedCount,
+  droppedNote,
   needsDismissConfirm,
   reread,
   roomFor,
   roomForReread,
   sheetOpen,
+  sheetSubtitle,
   showsGrams,
 } from "./basket";
 import { type EditableItem, editable, isEdited } from "./portion";
@@ -353,4 +356,116 @@ test("a capture that cannot be corrected is refused here too", () => {
   // the one that cannot be forgotten by a fourth caller added later — the same
   // split `stow` has between a refusal that can speak and one that cannot.
   expect(reread([patty], 0, hamless, 3900, "no ham")).toEqual([patty]);
+});
+
+// ── #110: a dropped food is not allowed to be silent ─
+// `normalize()` refuses an item outright when one of its four figures is out
+// of range, because a macro has no null representation to refuse into the way
+// a portion does. So a photograph of a plate can come back with fewer foods on
+// it than the plate has — and a silent drop is the same defect as the silent
+// clamp it replaces, one level up.
+
+test("says nothing when nothing was dropped", () => {
+  expect(droppedNote(0)).toBeNull();
+  expect(droppedNote(-1)).toBeNull();
+});
+
+test("says it in the singular for one food", () => {
+  expect(droppedNote(1)).toBe("One food came back with numbers that can't be right, so it was left out.");
+});
+
+test("says it in the plural, with the count, for more than one", () => {
+  expect(droppedNote(3)).toBe("3 foods came back with numbers that can't be right, so they were left out.");
+});
+
+test("counts a capture's drops", () => {
+  expect(droppedCount([{ ...typed, dropped: 2 }])).toBe(2);
+});
+
+test("counts across the basket, not just the first capture", () => {
+  // #16's recovery row aside, every capture in a basket can lose a food and
+  // the sheet has one paragraph to say so in.
+  expect(droppedCount([typed, { ...patty, dropped: 1 }, { ...bun, dropped: 2 }])).toBe(3);
+});
+
+test("counts zero for a basket that dropped nothing", () => {
+  expect(droppedCount([typed, patty, bun])).toBe(0);
+});
+
+test("skips a capture that was refused whole — its `manual` already says so", () => {
+  // Counting it too would print the same fact twice in one paragraph: the
+  // subtitle leads with `manual` and would then add the note behind it.
+  expect(droppedCount([{ ...photographed, manual: "One food came back…", dropped: 1 }])).toBe(0);
+});
+
+test("still counts another capture's drops when the first was refused whole", () => {
+  const basket: Capture[] = [
+    { ...photographed, manual: "One food came back…", dropped: 1 },
+    { ...typed, dropped: 2 },
+  ];
+  expect(droppedCount(basket)).toBe(2);
+});
+
+// ── the subtitle, whole ──────────────────────────────
+// Nothing in this repo executes `Log.tsx`, so the copy is only a rule if it
+// lives somewhere a test can reach. These are the assertions that go red when
+// a sentence stops being said.
+
+test("a plain read gets the standing instruction and nothing else", () => {
+  expect(sheetSubtitle([typed])).toBe("Tap anything to change it before it saves.");
+});
+
+test("a basket says what a save of it will produce", () => {
+  expect(sheetSubtitle([patty, bun])).toBe("Tap anything to change it. One save, one entry on Today.");
+});
+
+test("a dropped food is named, and the instruction stays", () => {
+  // It displaces nothing: "tap anything to change it" is discoverable by
+  // tapping, and a food that is silently absent is discoverable by nothing.
+  expect(sheetSubtitle([{ ...typed, dropped: 1 }])).toBe(
+    "One food came back with numbers that can't be right, so it was left out. Tap anything to change it before it saves.",
+  );
+});
+
+test("#16's recovery row still leads with why the sheet is blank", () => {
+  expect(sheetSubtitle([{ ...photographed, manual: "No food found in that photo." }])).toBe(
+    "No food found in that photo. Your photo is saved — type what you ate, or close this to retake.",
+  );
+});
+
+test("a refused-whole read does not say the same thing twice", () => {
+  const manual = "One food came back with numbers that can't be right, so it was left out.";
+  expect(sheetSubtitle([{ ...photographed, manual, dropped: 1 }])).toBe(
+    `${manual} Your photo is saved — type what you ate, or close this to retake.`,
+  );
+});
+
+test("a recovery row beside a lossy capture says both", () => {
+  // The case the nested ternary this replaced could not express: it could only
+  // ever print one of the two.
+  const basket: Capture[] = [
+    { ...photographed, manual: "No food found in that photo.", dropped: 0 },
+    { ...typed, dropped: 1 },
+  ];
+  expect(sheetSubtitle(basket)).toBe(
+    "No food found in that photo. One food came back with numbers that can't be right, so it was left out. Your photo is saved — type what you ate, or close this to retake.",
+  );
+});
+
+test("an empty basket still returns a sentence rather than an empty paragraph", () => {
+  expect(sheetSubtitle([])).toBe("Tap anything to change it before it saves.");
+});
+
+// ── #110 on the re-read path ─────────────────────────
+
+test("a re-read replaces the dropped count rather than adding to it", () => {
+  // It describes the read that is on the sheet NOW. Accumulating would report
+  // foods dropped from an answer nobody can see any more.
+  const after = reread([{ ...photographed, dropped: 2 }], 0, hamless, 3900, "no ham", 1);
+  expect(after[0]?.dropped).toBe(1);
+});
+
+test("a clean re-read takes the sentence back off the sheet", () => {
+  const after = reread([{ ...photographed, dropped: 2 }], 0, hamless, 3900, "no ham");
+  expect(after[0]?.dropped).toBe(0);
 });

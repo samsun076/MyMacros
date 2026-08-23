@@ -2213,3 +2213,167 @@ describe("POST /api/food-logs — the one-tap re-log (#118)", () => {
     expect((await res.json<{ error: string }>()).error).toBe("invalid_item_provenance");
   });
 });
+
+
+/** #113 — the refusal says which field caused it.
+ *
+ *  **The bug, verbatim from the issue.** Type `2000` into HOW MUCH for Nutella
+ *  (539 kcal/100 g) and the row computes 10,780 kcal. `FOOD_LIMITS.grams.max`
+ *  is 2,000 so the field takes the number happily; `energy()`'s ceiling is
+ *  10,000 so the save is refused whole — and it was refused with a bare
+ *  `invalid_item`, naming no field, on a sheet where the last thing the person
+ *  touched was the portion.
+ *
+ *  **Neither bound is changed and neither should be.** They do not know each
+ *  other exists and the portion multiplies into the thing the second one
+ *  bounds, so the effective portion ceiling is a *product* — 2,000 g for a
+ *  lettuce, about 1,850 g for Nutella, lower the denser the product. That band
+ *  sits entirely inside the region both ceilings already agree is a typo, and
+ *  narrowing either one to make the pair consistent would refuse honest input
+ *  to tidy up a case nobody reaches. The defect is the reporting, and only the
+ *  reporting.
+ *
+ *  These drive the real route through real workerd; `item-refusal.test.ts`
+ *  proves the classification underneath. */
+describe("a refusal caused by the portion says so (#113)", () => {
+  /** 2,000 g of Nutella at 539 kcal/100 g, as the sheet would have rescaled it
+   *  before sending: over the kcal ceiling, and over two macro ceilings too. */
+  const NUTELLA = item({
+    name: "Nutella",
+    kcal: 10_780,
+    protein_g: 120,
+    carbs_g: 1148,
+    fat_g: 618,
+    confidence: null,
+    ai_kcal: 10_780,
+    ai_protein_g: 120,
+    ai_carbs_g: 1148,
+    ai_fat_g: 618,
+    portion_qty: 2000,
+    portion_unit: "g",
+    ai_portion_qty: 2000,
+  });
+
+  const body = async (res: Response) => await res.json<{ error: string; fields?: string[]; over?: string }>();
+
+  it("still refuses the save — the bound is unchanged", async () => {
+    expect((await save(meal({ items: [NUTELLA] }))).status).toBe(400);
+  });
+
+  it("names the portion as the cause instead of answering invalid_item", async () => {
+    const got = await body(await save(meal({ items: [NUTELLA] })));
+    expect(got.error).toBe("item_over_limit");
+    expect(got.fields).toEqual(["portion_qty"]);
+  });
+
+  it("names which ceiling fired", async () => {
+    expect((await body(await save(meal({ items: [NUTELLA] })))).over).toBe("kcal");
+  });
+
+  it("writes nothing — a refused save is refused whole", async () => {
+    await save(meal({ items: [NUTELLA] }));
+    const rows = await env.DB.prepare("SELECT COUNT(*) AS n FROM food_logs WHERE user_id = ?")
+      .bind(USER)
+      .first<{ n: number }>();
+    expect(rows?.n).toBe(0);
+  });
+
+  /** The comparison that made #113 provable rather than plausible: posting the
+   *  same over-limit item WITHOUT the three portion columns returned the
+   *  identical `invalid_item`, which is how the issue established the defect
+   *  was pre-existing rather than introduced by #107. It still returns the
+   *  generic error, and it should — there is no field to blame. */
+  it("stays generic for the same numbers with no portion stated", async () => {
+    const { portion_qty: _q, portion_unit: _u, ai_portion_qty: _a, ...bare } = NUTELLA;
+    const got = await body(await save(meal({ items: [bare] })));
+    expect(got.error).toBe("invalid_item");
+    expect(got.fields).toBeUndefined();
+  });
+
+  it("is still generic when the item is nameless, portion or not", async () => {
+    const got = await body(await save(meal({ items: [{ ...NUTELLA, name: "   " }] })));
+    expect(got.error).toBe("invalid_item");
+  });
+
+  it("names a macro when the macro is what fired and the kcal are fine", async () => {
+    // 2,000 g of a low-calorie, high-carb food: under 10,000 kcal, over the
+    // 1,000 g macro ceiling. The generic error could not tell these apart.
+    const got = await body(
+      await save(
+        meal({
+          items: [
+            item({
+              name: "Boiled sweets",
+              kcal: 7800,
+              protein_g: 0,
+              carbs_g: 1960,
+              fat_g: 0,
+              ai_kcal: 7800,
+              ai_protein_g: 0,
+              ai_carbs_g: 1960,
+              ai_fat_g: 0,
+              portion_qty: 2000,
+              portion_unit: "g",
+              ai_portion_qty: 2000,
+            }),
+          ],
+        }),
+      ),
+    );
+    expect(got.error).toBe("item_over_limit");
+    expect(got.over).toBe("carbs_g");
+  });
+
+  it("accepts the largest portion that stays inside both ceilings", async () => {
+    // ~1,850 g of Nutella. The effective ceiling this issue describes, still
+    // reachable and still saved — the fix changed the reporting and nothing
+    // about what is accepted.
+    const res = await save(
+      meal({
+        items: [
+          item({
+            name: "Nutella",
+            kcal: 9971,
+            protein_g: 111,
+            carbs_g: 995,
+            fat_g: 572,
+            ai_kcal: 9971,
+            ai_protein_g: 111,
+            ai_carbs_g: 995,
+            ai_fat_g: 572,
+            portion_qty: 1850,
+            portion_unit: "g",
+            ai_portion_qty: 1850,
+          }),
+        ],
+      }),
+    );
+    expect(res.status).toBe(201);
+  });
+
+  /** PATCH rescales from HOW MUCH exactly as the confirm sheet does (#60), so
+   *  the same multiplication reaches the same two ceilings. One classifier,
+   *  two call sites (#86). */
+  it("PATCH names the portion too", async () => {
+    const { logs, ids } = await saveEntry({ items: [PIZZA] });
+    const res = await patch({
+      ids,
+      meal_slot: "dinner",
+      items: [{ ...asIs(logs[0] as FoodLog), kcal: 99_000, portion_qty: 900 }],
+    });
+    expect(res.status).toBe(400);
+    const got = await body(res);
+    expect(got.error).toBe("item_over_limit");
+    expect(got.fields).toEqual(["portion_qty"]);
+  });
+
+  it("PATCH stays generic when no portion was touched", async () => {
+    const { logs, ids } = await saveEntry({ items: [item({ name: "One" })] });
+    const res = await patch({
+      ids,
+      meal_slot: "dinner",
+      items: [{ ...asIs(logs[0] as FoodLog), kcal: 99_000 }],
+    });
+    expect((await body(res)).error).toBe("invalid_item");
+  });
+});
