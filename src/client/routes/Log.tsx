@@ -11,6 +11,7 @@ import type {
 import { CameraStage } from "../components/CameraStage";
 import { HeldBar } from "../components/HeldBar";
 import { ItemRow } from "../components/ItemRow";
+import { LoadFailureNote } from "../components/LoadFailureNote";
 import { LogModes, type LogMode } from "../components/LogModes";
 import { NumericField } from "../components/NumericField";
 import { type Correction, PhotoCorrection } from "../components/PhotoCorrection";
@@ -34,6 +35,7 @@ import {
 import { releaseCamera } from "../lib/camera";
 import { deviceTimezone, localDay, mealSlotFor } from "../lib/day";
 import { fmtInt } from "../lib/format";
+import { useLoadFailure } from "../lib/load-failure";
 import { FOOD_LIMITS } from "../lib/numeric";
 import { type Pick, favoriteDraft, favoriteNamed, mergePicks, relogItem } from "../lib/picks";
 import {
@@ -314,8 +316,33 @@ export function Log() {
   // `/log#picks` is the shootable stage; it injects nothing, it just opens.
   const [picksOpen, setPicksOpen] = useState(() => window.location.hash === "#picks");
   const openedAt = useRef(Date.now());
-  const { data: favData, reload: reloadFavs } = useApi<FavoritesResponse>("/api/favorites");
-  const { data: recentData, reload: reloadRecents } = useApi<RecentsResponse>("/api/food-logs/recent");
+  const { data: favData, error: favError, reload: reloadFavs } = useApi<FavoritesResponse>("/api/favorites");
+  const {
+    data: recentData,
+    error: recentError,
+    reload: reloadRecents,
+  } = useApi<RecentsResponse>("/api/food-logs/recent");
+  /** #24. An empty picks list and a picks list that failed to arrive render
+   *  identically — "you have no favourites" is a claim about the data, and on
+   *  a dropped connection it is false.
+   *
+   *  Two departures from how the other screens use this, both deliberate:
+   *
+   *  - **the data is not blanked.** Everywhere else a failure hides what it
+   *    failed to refresh, because those are *figures about today* and a stale
+   *    one is worse than none. A pick row is a shortcut, not a figure; a star
+   *    that failed to re-read leaves the list one row out of date and nothing
+   *    on it is wrong.
+   *  - **the card only appears when the list is empty**, which is the only
+   *    state that misleads. A half-loaded list (favourites in, recents out)
+   *    shows what it has and says nothing — named here rather than fixed,
+   *    because a card over a working list on a live viewfinder buys less than
+   *    it costs.
+   *
+   *  It is drawn in the TEXT branch only. PHOTO and BARCODE reach the list
+   *  through the deck's picks button, which is already absent at zero picks —
+   *  a server message over a viewfinder is not the trade. */
+  const picksFailure = useLoadFailure(favError ?? recentError);
 
   /** A star changes BOTH feeds, so a star re-reads both (#117).
    *
@@ -1123,14 +1150,20 @@ export function Log() {
             )}
           </section>
 
-          {picks.length > 0 && (
+          {picks.length > 0 ? (
             <Picks
               picks={picks}
               saving={saving}
               onStar={(pick) => void toggleStar(pick)}
               onRelog={(pick) => void relog(pick)}
             />
-          )}
+          ) : picksFailure ? (
+            <LoadFailureNote
+              what="Your favourites and recents"
+              failure={picksFailure}
+              onRetry={reloadPicks}
+            />
+          ) : null}
         </main>
       ) : (
         <CameraStage

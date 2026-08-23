@@ -3,8 +3,10 @@ import { useNavigate } from "react-router";
 import type { Me, WeightsResponse } from "../../shared/api";
 import { displayWeight, lbToKg } from "../../shared/units";
 import { weightBounds } from "../../shared/weight";
+import { LoadFailureNote } from "../components/LoadFailureNote";
 import { ApiError, api, useApi } from "../lib/api";
 import { localDay } from "../lib/day";
+import { useLoadFailure } from "../lib/load-failure";
 
 /** Manual weigh-in (#18). Garmin's sync (#20) writes the same rows, which is
  *  why this screen is the fallback rather than the main event — but it is the
@@ -16,9 +18,30 @@ import { localDay } from "../lib/day";
  *  will read a two-pound water swing as progress or failure.
  */
 export function Weight() {
-  const { data: me } = useApi<Me>("/api/me");
-  const { data, reload } = useApi<WeightsResponse>("/api/weights");
+  const meRead = useApi<Me>("/api/me");
+  const weightsRead = useApi<WeightsResponse>("/api/weights");
+  const reload = weightsRead.reload;
   const navigate = useNavigate();
+
+  /* #24, and this screen had the sharper version of the defect: with `error`
+     dropped, a failed `GET /api/weights` fell through to "No weigh-ins yet.
+     The first one starts the trend." — a placeholder that is *false*. An empty
+     state is a claim about the data, and it may only be made when the data is
+     known to be empty.
+
+     The profile matters here for a second reason beyond the copy: `units`
+     decides whether the number being typed is pounds or kilograms. If it
+     didn't load, the field is labelled from a default nobody chose, and a
+     76 typed as kg and written as lb is the silent unit change this project
+     has already been bitten by twice upstream (Garmin's grams, debrief's
+     `energy_kj`). So a failed profile disables the save rather than guessing —
+     the entry is one tap of Try again away, and the wrong unit is a row that
+     moves the target and looks plausible for weeks. */
+  const weightsFailure = useLoadFailure(weightsRead.error);
+  const meFailure = useLoadFailure(meRead.error);
+  const failure = weightsFailure ?? meFailure;
+  const me = meFailure ? null : meRead.data;
+  const data = weightsFailure ? null : weightsRead.data;
 
   const imperial = (me?.profile.units ?? "imperial") === "imperial";
   const unit = imperial ? "LB" : "KG";
@@ -106,6 +129,20 @@ export function Weight() {
         </button>
       </header>
 
+      {failure && (
+        <LoadFailureNote
+          /* The subject that failed (see Today). A failed profile is the one
+             that also holds the save button, and saying "your weigh-ins" over
+             a list that arrived fine would point at the wrong thing. */
+          what={weightsFailure ? "Your weigh-ins" : "Your profile"}
+          failure={failure}
+          onRetry={() => {
+            weightsRead.reload();
+            meRead.reload();
+          }}
+        />
+      )}
+
       <section>
         <div className="field">
           <span className="eyebrow">Today's weight</span>
@@ -137,7 +174,15 @@ export function Weight() {
           </span>
         </div>
 
-        <button className="btn btn-accent" disabled={saving || !entry.trim()} onClick={() => void save()}>
+        {/* `meFailure`, not `failure`: a failed weigh-in *list* costs the trend
+            and the recent rows, and there is no reason a new reading can't be
+            written without them. A failed *profile* is the one that makes the
+            unit a guess (see above). */}
+        <button
+          className="btn btn-accent"
+          disabled={saving || !entry.trim() || meFailure !== null}
+          onClick={() => void save()}
+        >
           {saving ? "Saving…" : "Log weight"}
         </button>
         {error && (
@@ -163,9 +208,12 @@ export function Weight() {
               the reading on any one morning.
             </p>
           </>
-        ) : (
+        ) : data ? (
+          /* Only once the list has actually landed. "No weigh-ins yet" is a
+             claim about the data, and until `data` is non-null the only true
+             statement is the card above (#24). */
           <p className="placeholder-note">No weigh-ins yet. The first one starts the trend.</p>
-        )}
+        ) : null}
       </section>
 
       {data?.entries.length ? (

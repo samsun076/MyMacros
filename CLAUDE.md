@@ -46,6 +46,7 @@ npm run fonts -- --check     # fail if the committed fonts drifted from the spec
 npm run reconcile -- --date 2026-08-10 --weeks 1   # rule 4b's input block (#83)
 npm run verify:auth    # drive the real passkey ceremony (needs `npm run dev`)
 npm run verify:camera -- --cookie <name>=<token>   # /log asks for the camera once, not seven times (#94)
+npm run verify:failure -- --cookie <name>=<token>  # a failed read says what happened, and Try again works (#24)
 npm run verify:routing -- https://fuel.debrief.run   # /api survives navigation; SPA still falls back
 npm run verify:viewport -- --cookie <name>=<token>   # no screen overflows horizontally (#51)
 npm run verify:firstpaint   # needs `npm run build` first — the document paints the app alone (#53)
@@ -141,6 +142,22 @@ include `src/`, so `npm run check` type-checks tests with no extra project.
   bystanders, here it was **the oracle itself**. When a mutation comes back
   green, the first question is not "is the code fine?" but "does my check
   distinguish the two implementations at all?"
+  **It happened again on #24 and the decorative oracle was arithmetic, not
+  layout.** "A retry, not a reload" was checked by comparing
+  `performance.getEntriesByType("navigation").length` across the tap — which is
+  **1 either way**, because a reload starts a new document whose navigation list
+  also has exactly one entry. `onRetry` mutated to `window.location.reload()`
+  came back green on all thirty checks. A sentinel set on `window` before the
+  tap is the check that distinguishes them: a document swap destroys it, a
+  re-render does not. Prefer an oracle that a page reload *destroys* over one it
+  merely fails to increment.
+  **And the never-ran rule applies to drivers, not just loops.** #24's first
+  mutation deleted the failure card from `Today`, and the drive — which waited
+  on that card at its first assertion — **threw**, so 27 later checks were
+  neither green nor red while the run still printed like a suite that had
+  executed. A driver is one long loop. Soft-wait (report the timeout as a failed
+  check and carry on) so a broken build says *which* claims stopped being true;
+  `soft()` in `tools/verify-load-failure.mjs` is the shape.
 - **A literal carried through a rewrite is a decision, not an inheritance.**
   #95 lifted five numeric fields onto one component and kept the portion
   field's `1…5000` verbatim so that the fix stayed a fix — defensible, and the
@@ -196,8 +213,17 @@ and `/trends#sparse` (#22), both DEV-gated — they build a real `TrendsResponse
 `buildTrends` over fabricated inputs, so a stage can't drift into a shape the route would
 never produce.
 
-Today adds `/#swiped` (#52 — the newest row already revealed) and `/#editing` (#60 — the
-edit sheet open on the day's **largest** entry), both DEV-gated. `#editing` picks the
+Today adds `/#swiped` (#52 — the newest row already revealed), `/#editing` (#60 — the
+edit sheet open on the day's **largest** entry) and #24's two failed reads — `/#offline`
+and `/#failed`, with `/trends#failed` the same card under a different screen — all
+DEV-gated. The failure stages fabricate an `ApiError` *and* an `online` flag
+(`stagedFailure` in `src/client/lib/load-failure.ts`) and hand both to the same
+`describeLoadFailure` every real failure goes through, so a stage cannot drift into copy
+the app would never print. **The `online` flag is not optional decoration**: headless
+Chrome is always online, so a `#offline` stage reading the real `navigator.onLine` would
+quietly shoot the *unreachable* screen — right layout, wrong words, and nothing in the
+PNG to say so. They fabricate the error rather than blocking the request, which is why
+`npm run verify:failure` exists beside them. `#editing` picks the
 largest rather than the newest deliberately: newest is usually a one-item meal, which is
 the short sheet and proves nothing, and the state worth measuring is the tall one whose
 totals row and save button have to survive at 375. **A stage that shoots the easy case is
@@ -913,6 +939,23 @@ result about the *inputs* and says nothing about this register.
   request open with `Fetch.enable` and simply not continuing it, which is how
   M3's analyzing state was shot. (`--camera`/`--settle` close the *other* half
   of this gap; see Commands.)
+  **#24 is the same blind spot with the request never landing at all**, and it
+  hid a defect for months: Today and Trends dropped `useApi`'s `error`, every
+  section was gated on `{day && …}`, and a failed fetch drew a header and
+  permanent blankness — *identical to a slow one*, which is why no screenshot
+  ever showed it. `npm run verify:failure` drives all four states
+  (`setBlockedURLs` for a dropped request, `Fetch.fulfillRequest` for a real
+  503, a held request for the slow case) and `lib/load-failure.ts` holds the
+  decision, because nothing here executes `Today.tsx`.
+  **The rule that generalises out of it: an empty state is a CLAIM ABOUT THE
+  DATA, and may only be made once the data has arrived.** `/weight` said "No
+  weigh-ins yet. The first one starts the trend." on a failed `GET /api/weights`
+  — a placeholder that was simply false, and indistinguishable from the truth.
+  Gate every empty state on the successful read, never on the absence of rows.
+  **`navigator.onLine` is a negative signal only**: false is reliable, true
+  means "an interface is up", which a hotel wifi portal also satisfies. Use it
+  to *specialise* the message on a request that already failed, never to decide
+  whether one did.
 - **D1 binds 100 parameters per statement, and a multi-row INSERT spends them
   fast** (#81). A `food_logs` row is 22 columns, so `POST /api/food-logs` 500'd
   at **five foods** — `too many SQL variables at offset 606: SQLITE_ERROR` —

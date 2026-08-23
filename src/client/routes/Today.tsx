@@ -6,6 +6,7 @@ import { foldMeals } from "../../shared/meals";
 import { ApiError, api, useApi } from "../lib/api";
 import { localDay } from "../lib/day";
 import { fmtInt } from "../lib/format";
+import { useLoadFailure } from "../lib/load-failure";
 import { timelineView } from "../lib/timeline";
 import {
   nextUndo,
@@ -16,6 +17,7 @@ import {
 } from "../lib/undo-queue";
 import { EditMealSheet } from "../components/EditMealSheet";
 import { InstallPrompt } from "../components/InstallPrompt";
+import { LoadFailureNote } from "../components/LoadFailureNote";
 import { SwipeToDelete } from "../components/SwipeToDelete";
 import { useActiveMotifs } from "../motifs";
 import type { BudgetData } from "../motifs/types";
@@ -98,8 +100,32 @@ type Entry = {
 
 export function Today() {
   const today = localDay();
-  const { data: day, reload: reloadDay } = useApi<DayResponse>(`/api/day/${today}`);
-  const { data: me } = useApi<Me>("/api/me");
+  /* `error` is read now, and that is the whole of #24 (#48 always set it).
+     This screen took `data` and `reload` and dropped it, and every section
+     below is gated on `{day && …}` — so a failed fetch rendered this header
+     and permanent blankness, with no message and no way back. A failed load
+     and a slow load were the same picture. */
+  const dayRead = useApi<DayResponse>(`/api/day/${today}`);
+  const meRead = useApi<Me>("/api/me");
+  const reloadDay = dayRead.reload;
+
+  /* One failure per *subject*, not one per screen. `/api/me` failing must not
+     take a correctly-loaded day off the screen with it — the budget and the
+     timeline need `day` and nothing else — so each read blanks only its own
+     sections, and the one card below names the first failure there is.
+
+     **A failure blanks its data rather than sitting above it.** `useApi` keeps
+     the last successful `data` when a *reload* fails, and Today reloads after
+     every delete, undo and edit — so the alternative is a card saying "that
+     didn't load" over totals that are now known to be wrong by exactly the
+     write that just landed. That is #54's cached-`/api/day` defect with a
+     stale timestamp, reached by a different road. */
+  const dayFailure = useLoadFailure(dayRead.error);
+  const meFailure = useLoadFailure(meRead.error);
+  const failure = dayFailure ?? meFailure;
+  const day = dayFailure ? null : dayRead.data;
+  const me = meFailure ? null : meRead.data;
+  const pending = !failure && !day;
   const location = useLocation();
   const logged =
     (location.state as { logged?: LoggedToast } | null)?.logged ??
@@ -286,6 +312,45 @@ export function Today() {
           {dateLine.weekday}, <span>{dateLine.date}</span>
         </h1>
       </header>
+
+      {/* #24. The tab bar is untouched by this — it lives in `AppShell`,
+          outside the route — so a failed day is a screen with a message and a
+          button on it, not a dead end: Trends and Settings are still one tap
+          away and may well work, since one route failing is not the server
+          being gone.
+
+          Retry re-reads BOTH, whichever failed. They are one screen's worth of
+          state and they fail together in the ordinary case; a button that
+          fixed half of a screen and left the other half explaining itself is a
+          second tap nobody can predict the need for. */}
+      {failure && (
+        <LoadFailureNote
+          /* Which read failed, not which screen it failed on. `/api/me` alone
+             going down leaves the budget and the timeline correct on screen,
+             and a card over them reading "Today's numbers didn't load" would
+             be contradicted by the numbers directly beneath it — found by
+             driving it, not by reading it. */
+          what={dayFailure ? "Today's numbers" : "Your profile"}
+          failure={failure}
+          onRetry={() => {
+            dayRead.reload();
+            meRead.reload();
+          }}
+        />
+      )}
+
+      {/* The other half of "a failed load and a slow load are the same
+          picture": while the day is genuinely in flight this screen is a
+          heading and nothing, which a reader can see and a screen reader
+          cannot. Deliberately not a visible skeleton — one that appears on
+          every load is a flash on a fast connection, and the honest fix for
+          that is a delayed fade, which is a transition, which this issue puts
+          out of scope for a reason nothing here can shoot. */}
+      {pending && (
+        <p className="vh" role="status" aria-busy="true">
+          Loading today's numbers…
+        </p>
+      )}
 
       {/* Until the engine has its inputs, `target_kcal` is the deployment's
           default rather than a number computed for this person (#17). Say so
@@ -509,8 +574,17 @@ export function Today() {
           first screen is an advert; below the timeline it is the last thing
           you pass on the way down and easy to dismiss forever. It renders
           nothing at all once installed, which is the state this app is
-          normally in. */}
-      <InstallPrompt />
+          normally in.
+
+          **And not at all while a read has failed.** Its copy promises the app
+          "works offline", and the card directly above it now says nothing on
+          this screen is cached. Both statements are true — the service worker
+          precaches the shell and deliberately never caches an API response
+          (#54) — and read together on one screen they call each other liars.
+          The pitch is also simply badly timed: nobody installs an app in the
+          moment it is failing to load. Withheld rather than reworded, because
+          the sentence is correct and it is the *adjacency* that is wrong. */}
+      {!failure && <InstallPrompt />}
     </>
   );
 }

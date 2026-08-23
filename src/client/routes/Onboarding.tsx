@@ -11,9 +11,11 @@ import {
 import { PROFILE_DEFAULTS } from "../../shared/profile";
 import { KCAL_PER_KG } from "../../shared/trends";
 import { cmToFtIn, ftInToCm, kgToLb, lbToKg } from "../../shared/units";
+import { LoadFailureNote } from "../components/LoadFailureNote";
 import { ApiError, api, useApi } from "../lib/api";
 import { localDay } from "../lib/day";
 import { fmtInt } from "../lib/format";
+import { useLoadFailure } from "../lib/load-failure";
 
 /** Onboarding (#17): the inputs Mifflin-St Jeor needs, the deficit, the
  *  protein anchor and the carb:fat ratio — with the resulting budget shown
@@ -53,7 +55,22 @@ const ATHLETES: { value: AthleteProfile; label: string; hint: string }[] = [
 ];
 
 export function Onboarding() {
-  const { data: me } = useApi<Me>("/api/me");
+  const meRead = useApi<Me>("/api/me");
+  /* #24, and this screen is the one where a dropped `error` could *write*
+     something wrong rather than merely show nothing. Every field below falls
+     back to `PROFILE_DEFAULTS` while the profile is absent, and a failed fetch
+     is indistinguishable from a first run: `returning` reads false, the button
+     says "Start logging", `firstRun` is true — so saving would re-stamp
+     `start_weight_kg` (#84's bug, restored) and reset the deficit, the
+     training profile and the eat-back share to values nobody chose.
+     Presenting defaults as somebody's saved profile is the same lie as
+     Weight's "No weigh-ins yet" on a failed list, with a PATCH behind it.
+
+     So the card says what happened and the save is held until the profile is
+     in hand. Withholding rather than guessing is the posture `computeBudget`
+     already takes with a missing TDEE. */
+  const failure = useLoadFailure(meRead.error);
+  const me = failure ? null : meRead.data;
   const navigate = useNavigate();
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -220,6 +237,10 @@ export function Onboarding() {
           </button>
         )}
       </header>
+      {failure && (
+        <LoadFailureNote what="Your budget inputs" failure={failure} onRetry={meRead.reload} />
+      )}
+
       {!returning && (
         <>
           <h1>A few numbers</h1>
@@ -576,7 +597,12 @@ export function Onboarding() {
         )}
       </section>
 
-      <button className="btn btn-accent" disabled={!ready || saving} onClick={() => void save()}>
+      {/* Held while the profile is missing — see the top of this function. */}
+      <button
+        className="btn btn-accent"
+        disabled={!ready || saving || failure !== null}
+        onClick={() => void save()}
+      >
         {saving ? "Saving…" : returning ? "Save changes" : "Start logging"}
       </button>
       {error && (

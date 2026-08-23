@@ -21,6 +21,7 @@
     "shots": "node tools/shot-matrix.mjs",
     "verify:auth": "node tools/verify-auth.mjs",
     "verify:camera": "node tools/verify-camera.mjs",
+    "verify:failure": "node tools/verify-load-failure.mjs",
     "verify:firstpaint": "node tools/verify-firstpaint.mjs",
     "verify:routing": "node tools/verify-routing.mjs",
     "verify:viewport": "node tools/verify-viewport.mjs",

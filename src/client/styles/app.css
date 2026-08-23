@@ -3113,6 +3113,26 @@ section {
   border-radius: var(--radius-card);
 }
 
+/* a read that failed (#24) — the card that replaces the screen's content when
+   there is none, on Today, Trends, the weigh-in, Settings and the picks list.
+
+   Shaped like .setup-call above (same card, same eyebrow-then-sentence, same
+   full-width control) and bordered in --line rather than --accent, which is
+   the whole visual difference and is deliberate: the accent is the focus
+   macro's (build rule 8) and switches live (rule 5), and --danger is kept
+   narrow and sign-carrying (rule 9) for a figure that has gone the wrong way.
+   A dropped connection carries no sign about anybody's day. The words carry
+   this one. */
+.load-fail {
+  display: grid;
+  gap: 10px;
+  padding: 16px;
+  margin-bottom: 20px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+}
+
 /* ── sync tokens (#19) ────────────────────────────────────── */
 
 /* The one moment the plaintext token exists. Accent-bordered because it is

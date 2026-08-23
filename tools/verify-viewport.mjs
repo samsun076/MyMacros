@@ -119,6 +119,14 @@ if (!routes) {
         // the only sheet whose height comes from stored data rather than from
         // a fixture, so what it measures is whatever is actually logged.
         "/#editing",
+        // #24's two failure cards, which are the only states on Today that
+        // *replace* the day rather than sit beside it. Both, because the two
+        // are deliberately different copy and the offline one carries the
+        // longest sentence in the feature — while the server one is the only
+        // place a `HTTP 503 · SERVER_ERROR` mono token has to fit, and an
+        // unbreakable token at 375 is exactly #51's shape.
+        "/#offline",
+        "/#failed",
         "/trends",
         // #22's staged empty states. They aren't cosmetic variants — each
         // swaps a chart for a paragraph, which is a different layout, and the
@@ -126,6 +134,9 @@ if (!routes) {
         // single-digit coverage label in it.
         "/trends#empty",
         "/trends#sparse",
+        // The same card under a different screen: the range group sits above
+        // it, and the card is what the charts collapse to.
+        "/trends#failed",
         "/settings",
         // M4's task screens (#17, #18) — both are long forms, which is the
         // shape most likely to push a field past the edge at 375

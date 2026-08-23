@@ -5,10 +5,12 @@ import { buildTrends, MIN_LOGGED_DAYS, MIN_TREND_SPAN_DAYS } from "../../shared/
 import { kgToLb } from "../../shared/units";
 import { shiftDay } from "../../shared/weight";
 import { IntakeWeeks } from "../components/IntakeWeeks";
+import { LoadFailureNote } from "../components/LoadFailureNote";
 import { WeightChart } from "../components/WeightChart";
 import { useApi } from "../lib/api";
 import { localDay } from "../lib/day";
 import { fmtInt } from "../lib/format";
+import { useLoadFailure } from "../lib/load-failure";
 
 /** The trends screen (#22) — "is this working?".
  *
@@ -31,10 +33,22 @@ const DEFAULT_WEEKS = 12;
 export function Trends() {
   const today = localDay();
   const [weeks, setWeeks] = useState<number>(DEFAULT_WEEKS);
-  const { data: me } = useApi<Me>("/api/me");
-  const { data: live } = useApi<TrendsResponse>(`/api/trends/${today}?weeks=${weeks}`);
+  const meRead = useApi<Me>("/api/me");
+  const trendsRead = useApi<TrendsResponse>(`/api/trends/${today}?weeks=${weeks}`);
+
+  /* Same treatment as Today's, and it had the same defect (#24): both reads
+     dropped `error`, every section is gated on `{data && …}`, and a failed
+     fetch left the heading, the range buttons and nothing else — which is what
+     a slow one looks like too. Per subject, so a `/api/me` failure costs the
+     units and the goal label and not the charts. */
+  const trendsFailure = useLoadFailure(trendsRead.error);
+  const meFailure = useLoadFailure(meRead.error);
+  const failure = trendsFailure ?? meFailure;
+  const me = meFailure ? null : meRead.data;
+  const live = trendsFailure ? null : trendsRead.data;
 
   const data = devStage(today, me) ?? live;
+  const pending = !failure && !data;
   const units: Units = me?.profile.units ?? "imperial";
   const goal: Goal = me?.profile.goal ?? "cut";
 
@@ -70,6 +84,32 @@ export function Trends() {
           </button>
         ))}
       </div>
+
+      {/* #24, below the range group rather than above it: the range is this
+          screen's own control and moving it about under a failure is a second
+          surprise. It is also a second way back — each range is its own path,
+          so tapping 4W re-fetches — which is exactly why "Try again" still has
+          to exist: re-reading the range you are already on is not something a
+          range button can express. */}
+      {failure && (
+        <LoadFailureNote
+          /* The subject that failed, not the screen (see Today). With only
+             `/api/me` down the charts below are drawn and correct; what is
+             missing is the units and the goal label. */
+          what={trendsFailure ? "Your trends" : "Your profile"}
+          failure={failure}
+          onRetry={() => {
+            trendsRead.reload();
+            meRead.reload();
+          }}
+        />
+      )}
+
+      {pending && (
+        <p className="vh" role="status" aria-busy="true">
+          Loading your trends…
+        </p>
+      )}
 
       {/* Before the engine has its Mifflin-St Jeor inputs there is no target
           and therefore no deficit, so most of this screen would be dashes.

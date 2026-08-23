@@ -3,11 +3,13 @@ import { Link } from "react-router";
 import type { Accent, Macro, Me, Profile, Theme, Units } from "../../shared/api";
 import { kgToLb, lbToKg } from "../../shared/units";
 import { weightBounds } from "../../shared/weight";
+import { LoadFailureNote } from "../components/LoadFailureNote";
 import { NumericField } from "../components/NumericField";
 import { PasskeyManager } from "../components/PasskeyManager";
 import { Sources } from "../components/Sources";
 import { ApiError, api, useApi } from "../lib/api";
 import { authClient } from "../lib/auth";
+import { useLoadFailure } from "../lib/load-failure";
 import { useUpdate } from "../lib/sw";
 import { ACCENTS, THEME_PACKS, applyTheme, hasAccentChoice } from "../lib/theme";
 
@@ -36,8 +38,14 @@ import { ACCENTS, THEME_PACKS, applyTheme, hasAccentChoice } from "../lib/theme"
  *  reverted by the next meal — the same silent-revert shape as #71's scale.
  */
 export function Settings() {
-  const { data: me, error, reload } = useApi<Me>("/api/me");
-  const edit = useProfileEdit(me, reload);
+  const meRead = useApi<Me>("/api/me");
+  /* #24: this screen already read `error` — what it did not do was tell an
+     offline phone apart from a broken server, or offer anything but "reopen
+     this screen", which is a page reload spelled as an instruction. Same card
+     as Today's now, and the reload it already had is the retry. */
+  const failure = useLoadFailure(meRead.error);
+  const me = failure ? null : meRead.data;
+  const edit = useProfileEdit(me, meRead.reload);
   const p = edit.profile;
 
   return (
@@ -50,10 +58,8 @@ export function Settings() {
         <h1>{me?.user.name || me?.user.email || "Account"}</h1>
       </header>
 
-      {error && (
-        <p className="placeholder-note" role="alert">
-          Couldn't load your profile — check your connection and reopen this screen.
-        </p>
+      {failure && (
+        <LoadFailureNote what="Your profile" failure={failure} onRetry={meRead.reload} />
       )}
 
       <PasskeyManager />

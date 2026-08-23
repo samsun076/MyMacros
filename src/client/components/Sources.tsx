@@ -2,6 +2,8 @@ import { useState } from "react";
 import type { SyncSourceHealth, SyncTokenCreated, SyncTokensResponse } from "../../shared/api";
 import { ApiError, api, useApi } from "../lib/api";
 import { fmtDayAgo } from "../lib/format";
+import { useLoadFailure } from "../lib/load-failure";
+import { LoadFailureNote } from "./LoadFailureNote";
 
 /** Settings → Sources (#19, #69).
  *
@@ -66,7 +68,14 @@ function FeedRow({ feed }: { feed: SyncSourceHealth }) {
 }
 
 export function Sources() {
-  const { data, error, reload } = useApi<SyncTokensResponse>("/api/sync-tokens");
+  const read = useApi<SyncTokensResponse>("/api/sync-tokens");
+  /* #24. Same card as every other failed read, and the same reason it is not
+     five sentences in five files: what changed here is that the note now says
+     whether the phone is offline or the server broke, and carries the retry
+     `useApi` was already handing out. */
+  const failure = useLoadFailure(read.error);
+  const data = failure ? null : read.data;
+  const reload = read.reload;
   const [issued, setIssued] = useState<SyncTokenCreated | null>(null);
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState<string | null>(null);
@@ -113,11 +122,17 @@ export function Sources() {
       <div className="sec-head">
         <span className="eyebrow">Sources</span>
         <span className={stale ? "mono feed-stale" : "mono"}>
-          {sources.length === 0
-            ? "NONE YET"
-            : stale
-              ? `${stale} STALE`
-              : `${sources.length} OK`}
+          {/* Blank until the read lands, because "NONE YET" is a claim about
+              the data and it would otherwise be made over the failure card
+              below saying the data never arrived (#24). Every other empty
+              state in the app is gated the same way now. */}
+          {!data
+            ? ""
+            : sources.length === 0
+              ? "NONE YET"
+              : stale
+                ? `${stale} STALE`
+                : `${sources.length} OK`}
         </span>
       </div>
 
@@ -158,10 +173,8 @@ export function Sources() {
         </div>
       )}
 
-      {error && (
-        <p className="placeholder-note" role="alert">
-          Couldn't load your sources.
-        </p>
+      {failure && (
+        <LoadFailureNote what="Your sources" failure={failure} onRetry={reload} />
       )}
 
       {/* A credential is not a feed, and without this they render as sibling
