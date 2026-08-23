@@ -152,6 +152,34 @@ Both are therefore owed a figure at the *next* reconciliation, once real rows
 exist. Recording that now is the honest version of "not applicable yet" — the
 alternative is a future entry that silently starts covering them.
 
+### Answered 2026-08-23 — it was not an input defect, and that is a real result
+
+Dave, asked directly: *"that was me messing with macros and never reverted
+back."* The 155 g was deliberate experimentation on a live row, left in place.
+
+**So the reconciliation found no defect, and the check still did its job.** It
+took a figure the app was showing a real person, pulled the inputs out of
+production, recomputed them by hand, and surfaced the one row that could not be
+explained from the data alone — then a person explained it in nine words. That
+is the rule working exactly as written: rule 4b cannot tell a wrong input from a
+deliberate one, and it is not supposed to. It is supposed to *find the row
+nobody can account for* and hand it to somebody who can.
+
+**Two things follow.**
+
+The row is still wrong, and it is still in the history. 2026-08-21 reads 643
+kcal over a 1,906 target and ~364 of that is a bar nobody ate. Trends averages
+over `counted_days`, so it is quietly in the mean until it is corrected — which
+**#60 now makes possible in the app**, on the very day it shipped. Recorded
+rather than corrected here: production is read-only from this file, and a
+reconciliation that edits its own inputs is not one.
+
+And the practice is worth naming: **test data written into production by hand
+is indistinguishable from a wrong reading**, which is precisely why this took a
+person to settle. Anything typed into the live app to see what happens should be
+undone the same minute, or it becomes an input the next reconciliation has to
+chase.
+
 **Verdict:** arithmetic clean, four totals reconciled exactly, the one real
 rescale in production recomputes to round pack numbers. No input defect found in
 the code's assumptions. One input question for Dave (the 155 g), one
