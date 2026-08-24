@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import type { AuthMethods, Health } from "../shared/api";
+import { EXPECTED_MIGRATION } from "../shared/schema";
 import { createAuth } from "./auth";
 import { requireAuth } from "./middleware/auth";
 import analyze from "./routes/analyze";
@@ -20,8 +21,26 @@ const app = new Hono<AppEnv>();
 // ── public ───────────────────────────────────────────────────
 const open = new Hono<AppEnv>();
 
-/** Liveness + binding check. `migration` is null until `npm run db:migrate`,
- *  which is also how a deploy proves it's talking to a migrated database. */
+/** Liveness, binding check, and whether the schema is as new as the code (#129).
+ *
+ *  **`ok` used to be the literal `true`.** It said the Worker was running,
+ *  which is never in doubt by the time anyone can read the answer. Deploying is
+ *  one command and migrating is another, so the interesting question is whether
+ *  the second was run — and a database three migrations behind is *perfectly
+ *  healthy*, answers every query, and reports `db: true`. It then 500s on the
+ *  first request touching a new column, with nothing anywhere saying why. That
+ *  is this project's house failure shape: a plausible, coherent, wrong success,
+ *  the same family as #106 and #127.
+ *
+ *  `EXPECTED_MIGRATION` is a constant in `src/shared/schema.ts` held true by a
+ *  test that reads `migrations/` off disk; that file records why it is an
+ *  oracle rather than a build-time read, which was tried first and does not
+ *  survive the Cloudflare test pool.
+ *
+ *  It **reports** rather than refuses. A Worker that returned 503 until someone
+ *  migrated would turn a partial outage into a total one, and the screens that
+ *  do not touch the new column work fine. This is what a deploy script, an
+ *  install directive, or a person with curl can look at. */
 open.get("/health", async (c) => {
   let db = false;
   let migration: string | null = null;
@@ -34,7 +53,18 @@ open.get("/health", async (c) => {
   } catch {
     db = false;
   }
-  return c.json<Health>({ ok: true, db, migration, time: new Date().toISOString() });
+  // Only claimable when the database answered. An unreachable D1 tells us
+  // nothing about how old it is, and guessing "behind" there would send someone
+  // to run migrations against a database that is not the problem.
+  const migration_behind = db && migration !== EXPECTED_MIGRATION;
+  return c.json<Health>({
+    ok: db && !migration_behind,
+    db,
+    migration,
+    expected_migration: EXPECTED_MIGRATION,
+    migration_behind,
+    time: new Date().toISOString(),
+  });
 });
 
 /** What the sign-in screen is allowed to offer here, and which way round.

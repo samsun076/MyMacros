@@ -69,6 +69,64 @@ describe("the authenticated mount", () => {
   });
 });
 
+describe("the migration guard (#129)", () => {
+  it("reports what the code needs, derived from migrations/ rather than declared", async () => {
+    const health = await (await call("/api/health")).json<{
+      expected_migration: string;
+      migration: string | null;
+      migration_behind: boolean;
+      ok: boolean;
+      db: boolean;
+    }>();
+
+    // The test pool applies every file in migrations/, so a freshly set-up
+    // database is by definition current. If this ever fails, the baked value
+    // and the directory have come apart — which is the whole thing the check
+    // is supposed to be incapable of.
+    expect(health.expected_migration).toMatch(/^\d{4}_.+\.sql$/);
+    expect(health.migration).toBe(health.expected_migration);
+    expect(health.migration_behind).toBe(false);
+    expect(health.ok).toBe(true);
+  });
+
+  it("says so, and stops claiming ok, when the database is older than the code", async () => {
+    // The failure this exists for: the Worker boots, the SPA loads, D1 answers
+    // every query — and the first request touching a new column 500s. Faked by
+    // removing the newest row from d1_migrations, which is exactly the state a
+    // deploy-without-migrate leaves behind.
+    const newest = await env.DB.prepare(
+      "select id, name from d1_migrations order by id desc limit 1",
+    ).first<{ id: number; name: string }>();
+    expect(newest).toBeTruthy();
+
+    await env.DB.prepare("delete from d1_migrations where id = ?").bind(newest!.id).run();
+    try {
+      const behind = await (await call("/api/health")).json<{
+        ok: boolean;
+        db: boolean;
+        migration: string | null;
+        expected_migration: string;
+        migration_behind: boolean;
+      }>();
+
+      expect(behind.migration_behind).toBe(true);
+      expect(behind.ok).toBe(false);
+      // Still reachable, still answering — which is precisely why `db` alone
+      // could never have caught this.
+      expect(behind.db).toBe(true);
+      expect(behind.migration).not.toBe(behind.expected_migration);
+      expect(behind.expected_migration).toBe(newest!.name);
+    } finally {
+      await env.DB.prepare("insert into d1_migrations (id, name, applied_at) values (?, ?, ?)")
+        .bind(newest!.id, newest!.name, new Date().toISOString())
+        .run();
+    }
+
+    const restored = await (await call("/api/health")).json<{ ok: boolean }>();
+    expect(restored.ok).toBe(true);
+  });
+});
+
 describe("the public mount", () => {
   it("answers /api/auth-methods without a session", async () => {
     const res = await call("/api/auth-methods");

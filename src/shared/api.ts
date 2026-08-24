@@ -1,11 +1,22 @@
 /** Wire types shared by the Worker and the client. */
 
 export type Health = {
+  /** Whether this deployment is fully consistent — the database is reachable
+   *  AND has every migration this build of the code needs. It is deliberately
+   *  NOT just "the Worker is running": a Worker bound to a database three
+   *  migrations behind boots perfectly and 500s on the first request touching a
+   *  new column, which is the failure #129 exists to make visible. */
   ok: boolean;
   /** D1 reachable and answering queries. */
   db: boolean;
   /** Newest applied migration, or null if the database has never been migrated. */
   migration: string | null;
+  /** Newest migration in `migrations/` at the time this Worker was built —
+   *  what the code needs. Baked in from the directory, so it cannot drift. */
+  expected_migration: string;
+  /** The database is reachable but older than the code. A deploy that skipped
+   *  its migration looks identical to a healthy one without this. */
+  migration_behind: boolean;
   time: string;
 };
 

@@ -91,8 +91,18 @@ npm run db:migrate               # applies migrations/ to the local D1
 npm run dev                      # SPA + Worker + local D1, one process
 ```
 
-`GET /api/health` is the tell that it worked. `{"db":false,"migration":null}` means the
-local database hasn't been migrated — run `npm run db:migrate` again.
+`GET /api/health` is the tell that it worked, and it answers two questions rather than one:
+
+```json
+{"ok":true,"db":true,"migration":"0009_portion.sql",
+ "expected_migration":"0009_portion.sql","migration_behind":false}
+```
+
+`db:false` means the local database hasn't been migrated — run `npm run db:migrate` again.
+**`migration_behind:true` means the code is newer than the database**, which is the state a
+deploy that skipped its migration leaves behind: the Worker boots, the app loads, every
+query answers, and then the first request touching a new column 500s. `ok` is false
+whenever either is wrong, so **one curl is a complete post-deploy check**.
 
 `npm run dev` **refuses to start if port 5173 is taken**, rather than quietly moving to
 5174. That is deliberate: `APP_URL` in `.dev.vars` pins the origin, better-auth checks it,
@@ -155,8 +165,21 @@ Passkeys. If you lose every device you enrolled, the recovery is to delete the a
 passkey rows from your own D1 and claim it again.
 
 Edit `wrangler.jsonc` for your own deployment: `routes` (or drop it and re-enable
-`workers_dev`), and the `vars` block's `APP_URL` and `PASSKEY_RP_ID`. Then `npm run
-deploy`.
+`workers_dev`), and the `vars` block's `APP_URL` and `PASSKEY_RP_ID`. Then:
+
+```bash
+npm run db:migrate:remote     # ALWAYS before deploy, never after
+npm run deploy
+curl https://<your-host>/api/health    # ok:true means both halves landed
+```
+
+**The order is load-bearing and nothing enforces it.** Deploying code that expects a column
+the database doesn't have yet is the quiet failure `migration_behind` exists to name; doing
+it the other way round is harmless, because an unused column costs nothing. If you wire up
+CI, make it one ordered job — Cloudflare Workers Builds **cannot run migrations**, so it
+gives you automatic deploys and leaves the migration to you. A GitHub Actions workflow can
+do both in order, at the cost of a Cloudflare API token in your repo secrets. Neither is
+wrong; the trade is real and you should pick deliberately.
 
 Two traps worth knowing before you hit them:
 
