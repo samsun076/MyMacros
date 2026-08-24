@@ -173,7 +173,16 @@ npm run deploy
 curl https://<your-host>/api/health    # ok:true means both halves landed
 ```
 
-**The order is load-bearing and nothing enforces it.** Deploying code that expects a column
+`npm run deploy` runs a **preflight** first: if a Worker of this name already exists on
+the account and is bound to a *different* database, it refuses. That is the one deploy
+mistake with no natural friction — `d1 create` and `r2 bucket create` both fail loudly on
+a name collision, so a second instance gets renamed resources and keeps the **Worker**
+name, and `wrangler deploy` then replaces instance one with exit 0 and no warning. The
+first instance's data isn't deleted; it's orphaned behind a Worker that no longer points
+at it, which is worse, because the app stays up and belongs to somebody else. Override
+with `npm run deploy -- --force` when you mean it.
+
+**The migrate/deploy order is load-bearing and nothing enforces it.** Deploying code that expects a column
 the database doesn't have yet is the quiet failure `migration_behind` exists to name; doing
 it the other way round is harmless, because an unused column costs nothing. If you wire up
 CI, make it one ordered job — Cloudflare Workers Builds **cannot run migrations**, so it

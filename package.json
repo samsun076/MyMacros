@@ -27,7 +27,8 @@
     "verify:routing": "node tools/verify-routing.mjs",
     "verify:signup": "node tools/verify-signup.mjs",
     "verify:viewport": "node tools/verify-viewport.mjs",
-    "deploy": "npm run build && wrangler deploy"
+    "preflight": "node tools/preflight-deploy.mjs",
+    "deploy": "npm run preflight && npm run build && wrangler deploy"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.115.0",
