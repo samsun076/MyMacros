@@ -3229,3 +3229,185 @@ And the standing instruction from #131: if Dave says something sounds too comple
 RE-DERIVE THE DECISION rather than explaining it better. That exact signal was
 given on 2026-08-02 and answered instead of acted on, and it cost 21 days.
 ```
+
+## Session Z — the last milestone closed, and the yardstick was executed rather than asserted — ✅ done 2026-08-24
+
+Opened at `45e9c96`, closed at `764f5fd`. **10 commits. 1,198 tests → 1,238.
+M6 closed, so all twelve milestones are closed.** One migration (0010), applied
+to production before the push and fingerprinted both sides.
+
+Dave's framing, given mid-session and worth carrying: **the goal is OSS first,
+then his wife's phone as the dry run.** Not the other way round — if the docs
+are right, standing her instance up should be doable *from the docs*, which is
+the only honest test of them.
+
+## What shipped
+
+| | |
+|---|---|
+| **M6 prune** | 8 issues moved out, #67 closed. 17 open → 9, every one serving the milestone's sentence. Each move carries a comment saying why, so the reasoning survives the board. |
+| **#126** `ef242ec` | Sign up with a passkey alone — no session, no Google, no GCP. The precondition for everything else: a fresh instance could not be signed into **at all** before it. |
+| **#37** `af413d7` | Timezone and units read from Cloudflare's edge instead of the schema, plus the two first-run field bugs the issue asked for a scan to find. |
+| **#129** `74a2b30` | `/api/health` compares what the database *has* against what the code *needs*. `ok` stopped being the literal `true`. |
+| **#127** `60b6b3c` | `npm run deploy` refuses to overwrite another instance. |
+| **#26** `8cd6a13` | `install.md` — a procedure with a check and an expected answer at every step. |
+| **#130** `f159143` | The update story. **No releases, and that is the decision** — the issue's own warning describes exactly what would go wrong. |
+| **#33** | Closed. Two parts shipped; the third (Cloudflare Access) would re-add the console visit #126 removed. |
+| **Rule 4b** `672b022` `764f5fd` | Clean. 1,907 by hand against 1,907 stored, exact, and the one unconfirmed input confirmed by Dave. |
+
+## The yardstick, executed
+
+The milestone's sentence is *"a stranger deploys this app and runs it
+successfully without asking Dave anything."* That was asserted for months and
+never run. So it was run: `git clone` into an empty directory, `npm install`,
+`cp .dev.vars.example .dev.vars`, `npm run db:migrate`, `npm run dev`. Empty
+database, no Cloudflare account, no Google credentials. It reported
+`{"google":false,"claimed":false}`, led with **Create your account**, and
+completed the whole passkey sign-up — all 18 of #126's checks green against it.
+
+**It found two defects in ten minutes, and one of them was in the check.**
+
+- **`verify-signup.mjs` passed here for the wrong reason.** It clicked the
+  sign-up button *by its label*, and the label changes with the thing being
+  tested: "Create your account" unclaimed, "First time here? Set up this
+  device" claimed. This machine has a dev user, so it was always the second.
+  Against a fresh clone the button was not found and `enrol()` **threw**, taking
+  eleven later checks with it — #24's never-ran incident, in a file written that
+  morning, one commit after fixing the same thing elsewhere. **A check can pass
+  because of the state the developer's machine happens to be in, and the only
+  way to find that is to run it somewhere else.**
+- **`npm run dev` drifted onto a port that breaks auth.** 5173 busy → Vite
+  serves 5174 → `APP_URL` no longer matches → every passkey ceremony fails with
+  `Invalid origin`, a message naming no port. `--strictPort` now.
+
+## Three checks of mine were wrong, and each was caught by asking the same question
+
+Not "is the code right" but **"could this check ever have failed?"**
+
+- **The mutation harness reported `unit suite: GREEN`** under a mutation its own
+  unit test catches, because `vitest | tail` returns *tail's* exit status.
+- **`verify-auth.mjs` asserted `methods.google === false`** — pinned to the
+  weather, quietly red since Session B2 landed credentials.
+- **#129's guard called the safe direction a failure.** Three minutes after
+  shipping it, migrating production put the database *ahead* of the code — the
+  window the documented procedure creates on purpose — and the check reported
+  `{"ok":false,"migration_behind":true}`. Found by running the procedure and
+  reading the answer, which is exactly why the procedure has expected values
+  written beside it.
+
+Thirteen mutations across the session, all reverted sha-verified byte-identical.
+**M3 and M8 both survived their first attempt** — a wrong-unit ceiling is
+invisible at ordinary weights, and a Google-held account is invisible to a drive
+whose account was claimed by a passkey. Both needed a value only the correct
+implementation can produce.
+
+## Two problem statements dissolved under measurement
+
+- **#130's config half.** It asked to get deployment identity out of
+  `wrangler.jsonc` so Sync fork stops conflicting. Measured first:
+  **6 changes in 234 commits, all in the project's first five days, none in the
+  last eighteen.** Git conflicts only when both sides edit the same lines. A
+  config-generation layer would have been machinery for a problem that has not
+  occurred. One sentence in `install.md` instead.
+- **The audit's "1,800 kcal shown as a real budget meter."** Rendered rather
+  than read: there is a bordered accent card at the top of the screen saying
+  BUDGET NOT SET UP and the word *placeholder*. Overstated the same way #123
+  was. What the render *does* show is smaller and realer — the macro rows print
+  `0 / — g` and decline to invent a target while the calorie row states
+  `1,800 kcal left` flatly. Filed as #132.
+
+Both are CLAUDE.md's "a bound that has never been reached has never been tested"
+one level up: applied to a **problem statement** rather than a limit. The
+reasoning was sound and the frequency was never checked.
+
+## Where it stands
+
+Live at the SHA `git log --oneline -1` reports. **1,238 tests. Twelve of twelve
+milestones closed. Production D1 on `0010_run_source_neutral.sql`.**
+
+| | | |
+|---|---|---|
+| **M6** | **0** | ✅ closed — every milestone is |
+| none | 18 | see the board; none blocking |
+
+## Next — the dry run, and it is a test of the docs
+
+**Stand up a second instance for Dave's wife, by following `install.md`.** That
+is the point: if the procedure is right, it works; where it stalls is a defect
+in the document, not in the person.
+
+What it needs from Dave, and only from Dave: **a second Cloudflare account**
+(free tier, its own email — a `+` alias works). Nothing else. Recommended origin
+is the free `*.workers.dev` subdomain rather than a bought domain — passkeys
+work there because an empty `PASSKEY_RP_ID` falls back to the hostname, and it
+is exactly the path a stranger gets, so the dry run tests the real story.
+
+**#128 gates the daughter's instance and is not optional** — a 14-year-old can
+onboard and be handed an adult deficit. It is unrelated to the wife's.
+
+Then, in rough order of value: **#121** (every macro field in every sheet sits
+under the keyboard — the blind spot #120 opened and did not close), **#49**
+(production analyze latency, 33s vs 4.6s, now three weeks stale and the app's
+core loop), **#132**, **#125**.
+
+## Starter prompt (paste verbatim)
+
+```
+Working on MyMacros (~/Projects/MyMacros). Read CLAUDE.md, then the Session Y and
+Session Z sections of NEXT-STEPS.md — they run to the end of the file.
+
+Run `git log --oneline -1` for the real HEAD. This prompt names no SHA on purpose;
+Session X's tail explains why.
+
+ALL TWELVE MILESTONES ARE CLOSED. 1,238 tests. Production D1 on
+0010_run_source_neutral.sql. If you write a migration, show Dave first, and
+remember the order: migrate remote, then push — and note that the window between
+those two puts the database AHEAD of the code, which /api/health now reports as
+migration_ahead with ok:true, deliberately.
+
+DAVE'S GOAL, IN HIS WORDS: get this OSS'ed, then onto his wife's phone so he can
+test updates against a real second instance. OSS first was his call — if the docs
+are right, standing her instance up works FROM THE DOCS, which is the only honest
+test of them. Rank work by "does this get it onto the second phone", not by issue
+number.
+
+THE NEXT THING IS THE DRY RUN, and it is a test of install.md rather than of the
+app. Stand up a second instance by following that file; where it stalls is a
+defect in the document. It needs one thing from Dave and only from Dave: a second
+Cloudflare account, free tier, its own email. Recommend the free *.workers.dev
+subdomain over a bought domain — passkeys work there because an empty
+PASSKEY_RP_ID falls back to the hostname, and it is the path a stranger gets.
+#128 gates the DAUGHTER's instance, not the wife's, and is not optional.
+
+DECIDED, DO NOT RE-LITIGATE: one category (family IS the OSS path) · one
+Cloudflare account per instance · SaaS stays out · self-hosters accept the risk ·
+no tagged releases (the fork's own commits-behind count is the notification) ·
+CONTRIBUTING stays closed to issues and PRs.
+
+Dave does not review diffs or run builds. That is yours end to end — build, test,
+commit, push, verify the deploy. His job is a thumb on an iPhone 13 mini and
+decisions no tool can make. Never hand him a diff; hand him a short numbered list
+of things to go tap, and GET IT DEPLOYED FIRST. DEV hash stages are compiled out
+of production — never send him a /log#something URL.
+
+When you build: push decisions into lib/-shaped functions so an oracle exists,
+drive the screen with CDP for the rest, and say plainly that no drive runs in CI.
+Then ask of every check you write: COULD THIS EVER HAVE FAILED? Three of last
+session's could not — a mutation harness whose `vitest | tail` swallowed the exit
+code, a verify script pinned to `google === false` since before Google existed,
+and #129's own guard calling the safe migration direction a failure. Two more
+mutations survived their first attempt because the value under test sat inside
+both the right and the wrong implementation.
+
+And before building the fix a stale issue describes, MEASURE THE PROBLEM. Two of
+last session's dissolved: #130's Sync-fork conflict (6 changes to wrangler.jsonc
+in 234 commits, none in 18 days) and the audit's "1,800 kcal shown as real" (there
+is a card above it saying `placeholder`). Rule 4a's discipline applies to problem
+statements, not just to screenshots.
+
+Environment, if starting cold: kill any orphan dev server on 5173 (npm run dev now
+refuses to start if it is taken, deliberately), npm run db:migrate,
+node tools/seed-demo.mjs --weeks 12, and mint a session cookie from the DEV-only
+email/password route (the Origin header is required and must match APP_URL, or
+better-auth answers 403).
+```
