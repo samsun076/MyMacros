@@ -69,12 +69,13 @@ reference width and every screen is verified there first.
 
 ## Setup
 
-> **Would rather not work through this by hand?** Point a coding agent at the repo and let
-> it do the standing up — the clone, the migrations, the bindings, the secrets. It gets most
-> of the way there unattended, and the place it stalls is the place it's worth the most,
-> because reading the error and finding the trap is the actual work. [CLAUDE.md](CLAUDE.md)
-> is largely a list of things that turned out not to be true here, and every one of them cost
-> an afternoon to find. You'd be starting where I finished.
+> **[install.md](install.md) is the full procedure**, written to be executed rather than
+> read — every step has a check with an expected answer, so a half-finished install is
+> distinguishable from a finished one. Point a coding agent at the repo and say *"follow
+> install.md"*, or work through it yourself. What follows here is the short version.
+>
+> Don't point an agent at [CLAUDE.md](CLAUDE.md) for this — that is the maintainer's file,
+> and nothing in it is needed to run your own instance.
 
 Local development needs **Node 22.12+** (Wrangler wants ≥22, Vite 8 wants ≥22.12) and
 nothing else. D1 and R2 are emulated by miniflare, so **you do not need a Cloudflare
