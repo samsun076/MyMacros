@@ -3,6 +3,7 @@ import { betterAuth } from "better-auth";
 import { APIError } from "better-auth/api";
 import { D1Dialect } from "kysely-d1";
 import { createDb } from "./db";
+import { localeDefaults } from "./locale";
 import { decideSignup, emailAllowed, normalizeEmail, SIGNUP_REFUSAL_MESSAGE } from "./signup";
 
 /** Auth for a Worker request (#6).
@@ -32,7 +33,11 @@ import { decideSignup, emailAllowed, normalizeEmail, SIGNUP_REFUSAL_MESSAGE } fr
  *  email/password endpoints entirely from the production Worker. */
 const DEV_EMAIL_SIGN_IN = import.meta.env.DEV;
 
-export function createAuth(env: Env) {
+/** `cf` is the request's Cloudflare metadata, threaded in for one reason: the
+ *  profile row is created inside the auth ceremony, where there is no client to
+ *  ask where its owner is (#37). Optional, because `requireAuth` builds an auth
+ *  instance too and reads sessions rather than creating anybody. */
+export function createAuth(env: Env, cf?: unknown) {
   const appUrl: string = env.APP_URL;
   const { hostname, origin } = new URL(appUrl);
   const googleConfigured = Boolean(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET);
@@ -189,9 +194,16 @@ export function createAuth(env: Env) {
           // Every user has a profile from the moment they exist, so no route
           // ever has to cope with a half-created account.
           after: async (user) => {
+            // `timezone` and `units` shipped as column defaults holding this
+            // deployment's own two preferences, and Settings shows timezone
+            // without letting anyone change it — so a self-hoster in Berlin
+            // had New York days and no way to say otherwise (#37). Whatever
+            // the edge knows goes in here; `localeDefaults` returns only what
+            // it is sure of, so the column defaults stand for the rest and
+            // local dev (no `cf`) is unchanged.
             await createDb(env)
               .insertInto("profiles")
-              .values({ user_id: user.id })
+              .values({ user_id: user.id, ...localeDefaults(cf) })
               .onConflict((oc) => oc.column("user_id").doNothing())
               .execute();
           },

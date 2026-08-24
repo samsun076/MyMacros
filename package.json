@@ -22,6 +22,7 @@
     "verify:auth": "node tools/verify-auth.mjs",
     "verify:camera": "node tools/verify-camera.mjs",
     "verify:failure": "node tools/verify-load-failure.mjs",
+    "verify:onboarding": "node tools/verify-onboarding.mjs",
     "verify:firstpaint": "node tools/verify-firstpaint.mjs",
     "verify:routing": "node tools/verify-routing.mjs",
     "verify:signup": "node tools/verify-signup.mjs",

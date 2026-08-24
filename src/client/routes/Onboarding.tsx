@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router";
-import type { ActivityLevel, AthleteProfile, Goal, Me, Sex } from "../../shared/api";
+import type { ActivityLevel, AthleteProfile, Goal, Me, Sex, Units } from "../../shared/api";
 import {
   ATHLETE_PROFILES,
   PROTEIN_G_PER_KG,
@@ -10,11 +10,13 @@ import {
 } from "../../shared/budget";
 import { PROFILE_DEFAULTS } from "../../shared/profile";
 import { KCAL_PER_KG } from "../../shared/trends";
-import { cmToFtIn, ftInToCm, kgToLb, lbToKg } from "../../shared/units";
+import { cmToFtIn, displayWeight, ftInToCm, kgToLb, lbToKg } from "../../shared/units";
 import { LoadFailureNote } from "../components/LoadFailureNote";
+import { NumericField } from "../components/NumericField";
 import { ApiError, api, useApi } from "../lib/api";
 import { localDay } from "../lib/day";
 import { fmtInt } from "../lib/format";
+import { PROFILE_LIMITS } from "../lib/numeric";
 import { useLoadFailure } from "../lib/load-failure";
 
 /** Onboarding (#17): the inputs Mifflin-St Jeor needs, the deficit, the
@@ -79,7 +81,8 @@ export function Onboarding() {
   // since a field the user has touched must not be overwritten by a refetch
   const [form, setForm] = useState<Partial<Form>>({});
   const p = me?.profile;
-  const imperial = (p?.units ?? PROFILE_DEFAULTS.units) === "imperial";
+  const units: Units = p?.units ?? PROFILE_DEFAULTS.units;
+  const imperial = units === "imperial";
   /** Already been through this once — the screen is an editor now, not an
    *  introduction. Read off the profile rather than the form, so it doesn't
    *  flip while someone is typing. */
@@ -280,40 +283,51 @@ export function Onboarding() {
           />
         </Field>
 
+        {/* **The shape of this field depends on `units` and nothing else.**
+            It used to branch on `imperial && ft`, where `ft` is derived from
+            the value being typed — so an imperial user with no height yet got
+            a single inches box, and the first digit they entered made `ft`
+            truthy and **destroyed the input under their finger**. Measured at
+            375x812: typing `7` into the empty box replaced it with a FT+IN
+            pair reading 0 ft 3 in, moved focus to Feet, and sent the next
+            keystroke there — `70` became `00`. A new imperial user could not
+            enter their height at all, and Dave could never see it because his
+            profile already had one, so he always got the pair (#37).
+
+            `NumericField` is the rest of the fix: these were the last two
+            `type="number"` text inputs in the app, which #95 established have
+            no selection model on iOS — no tap-to-place-caret, no Select All —
+            and which coerce on every keystroke, so `180.` loses its point. */}
         <Field label="Height">
-          {imperial && ft ? (
+          {imperial ? (
             <div className="field-pair">
-              <input
-                type="number"
-                inputMode="numeric"
-                aria-label="Feet"
-                value={ft.ft}
-                min={3}
-                max={8}
-                onChange={(e) => set({ height_cm: ftInToCm(Number(e.target.value), ft.in) })}
+              <NumericField
+                ariaLabel="Feet"
+                value={ft?.ft ?? null}
+                onCommit={(n) => set({ height_cm: ftInToCm(n, ft?.in ?? 0) })}
+                live
+                {...PROFILE_LIMITS.height_ft}
               />
               <span className="mono">FT</span>
-              <input
-                type="number"
-                inputMode="numeric"
-                aria-label="Inches"
-                value={ft.in}
-                min={0}
-                max={11}
-                onChange={(e) => set({ height_cm: ftInToCm(ft.ft, Number(e.target.value)) })}
+              <NumericField
+                ariaLabel="Inches"
+                value={ft?.in ?? null}
+                onCommit={(n) => set({ height_cm: ftInToCm(ft?.ft ?? 0, n) })}
+                live
+                {...PROFILE_LIMITS.height_in}
               />
               <span className="mono">IN</span>
             </div>
           ) : (
             <div className="field-pair">
-              <input
-                type="number"
-                inputMode="decimal"
-                aria-label={imperial ? "Height in inches" : "Height in centimetres"}
-                value={v.height_cm ?? ""}
-                onChange={(e) => set({ height_cm: num(e.target.value) })}
+              <NumericField
+                ariaLabel="Height in centimetres"
+                value={v.height_cm}
+                onCommit={(n) => set({ height_cm: n })}
+                live
+                {...PROFILE_LIMITS.height_cm}
               />
-              <span className="mono">{imperial ? "IN" : "CM"}</span>
+              <span className="mono">CM</span>
             </div>
           )}
         </Field>
@@ -332,22 +346,18 @@ export function Onboarding() {
           }
         >
           <div className="field-pair">
-            <input
-              type="number"
-              inputMode="decimal"
-              step="0.1"
-              aria-label={imperial ? "Weight in pounds" : "Weight in kilograms"}
+            <NumericField
+              ariaLabel={imperial ? "Weight in pounds" : "Weight in kilograms"}
               value={
                 v.weight_kg === null
-                  ? ""
+                  ? null
                   : imperial
                     ? Math.round(kgToLb(v.weight_kg) * 10) / 10
                     : v.weight_kg
               }
-              onChange={(e) => {
-                const n = num(e.target.value);
-                set({ weight_kg: n === null ? null : imperial ? lbToKg(n) : n });
-              }}
+              onCommit={(n) => set({ weight_kg: imperial ? lbToKg(n) : n })}
+              live
+              {...(imperial ? PROFILE_LIMITS.weight_lb : PROFILE_LIMITS.weight_kg)}
             />
             <span className="mono">{imperial ? "LB" : "KG"}</span>
           </div>
@@ -401,7 +411,7 @@ export function Onboarding() {
         {v.goal !== "maintain" && (
           <Field
             label={v.goal === "cut" ? "Daily deficit" : "Daily surplus"}
-            hint={`${fmtInt(v.deficit_kcal)} kcal a day is about ${rate(v.deficit_kcal)} a week.`}
+            hint={`${fmtInt(v.deficit_kcal)} kcal a day is about ${rate(v.deficit_kcal, units)} a week.`}
           >
             <div className="field-pair">
               <input
@@ -649,16 +659,19 @@ function Field({
 /** 7,700 kcal ≈ 1 kg of fat, the conventional figure. Phrased as "about"
  *  because it is a rule of thumb and the app shouldn't pretend otherwise.
  *
- *  `KCAL_PER_KG` and `kgToLb` rather than the two literals that were here
- *  (#86): Trends turns a deficit into a predicted rate with the same two
- *  constants, so a second copy means this screen's "about 1.0 lb a week" and
- *  the Trends screen's modelled rate can disagree about the same arithmetic. */
-function rate(deficit: number) {
+ *  `KCAL_PER_KG` and `displayWeight` rather than the literals that were here
+ *  (#86): Trends turns a deficit into a predicted rate with the same constant,
+ *  so a second copy means this screen's "about 1.0 lb a week" and the Trends
+ *  screen's modelled rate can disagree about the same arithmetic.
+ *
+ *  **It printed `lb` unconditionally**, so a metric user dragging the deficit
+ *  slider was told their loss in pounds while every other weight on every
+ *  screen read kilograms (#37). `displayWeight` is the one place that decides
+ *  which unit a weight is shown in, and this was the only weight in the app
+ *  that had opted out of it. */
+function rate(deficit: number, units: Units) {
   const kgPerWeek = (deficit * 7) / KCAL_PER_KG;
-  return `${kgToLb(kgPerWeek).toFixed(1)} lb`;
+  const { value, unit } = displayWeight(kgPerWeek, units);
+  return `${value.toFixed(1)} ${unit}`;
 }
 
-function num(s: string): number | null {
-  const n = Number(s);
-  return s.trim() !== "" && Number.isFinite(n) ? n : null;
-}

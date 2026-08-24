@@ -64,7 +64,13 @@ open.get("/auth-methods", async (c) => {
 
 // better-auth owns everything under /api/auth: OAuth callbacks, session
 // endpoints, and the passkey register/authenticate ceremony.
-open.on(["GET", "POST"], "/auth/*", (c) => createAuth(c.env).handler(c.req.raw));
+//
+// `c.req.raw.cf` rides along so a brand-new profile can be stamped with the
+// timezone and unit system the edge reports rather than this deployment's
+// author's (#37). Only the sign-up paths use it; everything else ignores it.
+open.on(["GET", "POST"], "/auth/*", (c) =>
+  createAuth(c.env, c.req.raw.cf).handler(c.req.raw),
+);
 
 // Machine caller (#19). "Open" only in the sense that requireAuth's session
 // check can't apply to a launchd job — the route authenticates a bearer token

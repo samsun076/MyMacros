@@ -1,3 +1,5 @@
+import { cmToIn, kgToLb } from "../../shared/units";
+
 /** What a typed string commits to (#95), and what a field does about it (#100).
  *
  *  **One place, and nothing may decide this a second time.** Every numeric
@@ -85,6 +87,56 @@ export type NumericCommit =
  *  #15 settled for it. A second `2000` two rows down would be #86's defect
  *  inside a single object literal. */
 const GRAMS = { min: 1, max: 2000 } as const;
+
+/** What Onboarding's two typed fields accept (#37).
+ *
+ *  The same argument as `FOOD_LIMITS` one screen over: typo-catchers, not
+ *  opinions about bodies, and here rather than in JSX so a test can reach the
+ *  numbers.
+ *
+ *  **These are derived, not inherited.** The fields they replace carried
+ *  `min={3} max={8}` on feet, nothing at all on inches-or-centimetres, and
+ *  nothing at all on weight — and none of the three had ever bound anything,
+ *  because `type="number"`'s min/max are advisory on a controlled input and
+ *  the handler never consulted them. Saying so because CLAUDE.md's rule is
+ *  that a literal carried through a rewrite reads as considered when it was
+ *  merely preserved; the old `3` in particular excluded adults who exist.
+ *
+ *  - **height 50–260 cm** brackets every recorded adult — the shortest was
+ *    about 55 cm and the tallest about 272 — so it fires on a slipped thumb
+ *    and never on a person.
+ *  - **weight 20–400 kg** is not chosen here. It is the range
+ *    `tools/sync-garmin.py` already refuses outside of, and that guard exists
+ *    because a silent unit change upstream is the failure worth catching. One
+ *    range, two enforcers; the Python copy cannot import this one.
+ */
+const HEIGHT_CM = { min: 50, max: 260 } as const;
+const WEIGHT_KG = { min: 20, max: 400 } as const;
+
+export const PROFILE_LIMITS = {
+  height_cm: { ...HEIGHT_CM, decimals: 0 },
+
+  /** The imperial pair. **Derived from `HEIGHT_CM`, never restated**: two
+   *  statements of one bound is #86's defect, and here they would disagree
+   *  silently — 8 ft 11 in is 272 cm, which the centimetre field refuses. */
+  height_ft: { min: Math.floor(cmToIn(HEIGHT_CM.min) / 12), max: Math.floor(cmToIn(HEIGHT_CM.max) / 12), decimals: 0 },
+
+  /** Inches is a remainder, not a bound on height — 0–11 whatever the range
+   *  above says. The feet box is what stops an absurd total. */
+  height_in: { min: 0, max: 11, decimals: 0 },
+
+  weight_kg: { ...WEIGHT_KG, decimals: 1 },
+
+  /** The clamp has to be in the units the field is showing, or an imperial
+   *  user typing 900 gets clamped against a kilogram ceiling. Rounded
+   *  **inward** on both ends so a value this field accepts can never be one
+   *  the kilogram range would refuse. */
+  weight_lb: {
+    min: Math.ceil(kgToLb(WEIGHT_KG.min)),
+    max: Math.floor(kgToLb(WEIGHT_KG.max)),
+    decimals: 1,
+  },
+} as const satisfies Record<string, NumericRule>;
 
 export const FOOD_LIMITS = {
   grams: GRAMS,
