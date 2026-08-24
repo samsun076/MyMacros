@@ -508,6 +508,78 @@ kcal/day.
 
 ---
 
+## M6 (#126, #129, #127, #26, #130, #37) — the base target, and the one input only Dave can confirm, 2026-08-24
+
+**Trigger.** M6 is mostly auth, docs and guards, none of which computes anything.
+One change qualifies: #37 replaced Onboarding's height and weight fields, and
+those two numbers are direct inputs to Mifflin-St Jeor. A milestone that changes
+how a computed number is *entered* owes the same check as one that changes how it
+is calculated — the register's whole argument is that an input defect looks
+exactly like correct code.
+
+**Inputs, pulled from production D1 2026-08-24, read-only.**
+
+```
+profiles   sex=male  birth_date=1980-04-03  height_cm=165.1
+           activity_level=light  goal=cut  deficit_kcal=250  units=imperial
+weights    7-day window ending 2026-08-23, all source=garmin
+           76.6  75.5  76.5  75.8  76.4  76.2  76.6
+```
+
+**Recomputed by hand, without importing `computeBudget`.**
+
+```
+trend weight   mean 76.2286 → 76.2   (round to 1dp before anything consumes it)
+age            46            (born 1980-04-03, on 2026-08-24)
+BMR            10(76.2) + 6.25(165.1) − 5(46) + 5   = 1568.9
+TDEE           1568.9 × 1.375  (light)               = 2157.2
+target         2157.2 − 250                          = 1907.2 → 1907
+```
+
+**App shows 1,907. Hand figure 1,907. Exact — no rounding gap this time**, which
+is worth saying because M9's came out one short and the gap was real information
+about `trendWeightKg` rounding before its consumers see it.
+
+### The arithmetic is clean and one input is not confirmed
+
+`height_cm = 165.1` is **exactly 65 inches**, so it was entered through the ft/in
+pair as 5 ft 5 in rather than typed as centimetres. That is a plausible value and
+it is not obviously wrong. It is also the single input this milestone's field
+rewrite was about, produced by a field that had a real coercion bug — clearing
+either half wrote `0` into it — and nobody has ever checked the stored number
+against the person.
+
+The sensitivity is not small:
+
+```
+5'5"  (stored)   BMR 1568.9   TDEE 2157.2   target 1907
+5'10"            BMR 1648.2   TDEE 2266.3   target 2016    (+109 kcal/day)
+6'0"             BMR 1680.1   TDEE 2310.2   target 2060    (+153 kcal/day)
+```
+
+**Asked, not assumed.** This is #74's shape and the 155 g bar's shape: a figure
+the app is confident about, that only the person can falsify. Recorded here open
+rather than resolved, because "probably fine" is the answer that made the 155 g
+bar take three weeks to look at.
+
+*(Answer, 2026-08-24: — pending)*
+
+### What did not need reconciling
+
+- **#126, #129, #127** — auth, a health comparison, a deploy preflight. No arithmetic.
+- **#26, #130** — documentation.
+- **Migration 0010** — renames a value nothing reads.
+- **`localeDefaults`** — sets `timezone` and `units` on **new** profiles only. `units`
+  is a display conversion; `timezone` decides which day a row belongs to, which is a
+  real computation input, but no existing row moved and the only profile in production
+  was created long before this and still reads `America/New_York`.
+- **`PROFILE_LIMITS`** — new clamps on height and weight. They bound typos far outside
+  any real body (50–260 cm, 20–400 kg) and the stored values sit well inside, so
+  nothing was rewritten by their arrival. Verified rather than assumed: 165.1 and 76.2.
+
+**Time:** ~30 minutes, most of it step 4. Verdict: **arithmetic exact, one input
+outstanding.**
+
 ## M11 (#23, #29, #30, #80) — no computed figure, not applicable, 2026-08-14
 
 **Nothing to reconcile, and that is a result rather than a gap.** M11 changed
