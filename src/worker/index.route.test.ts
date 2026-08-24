@@ -125,6 +125,61 @@ describe("the migration guard (#129)", () => {
     const restored = await (await call("/api/health")).json<{ ok: boolean }>();
     expect(restored.ok).toBe(true);
   });
+
+  it("stays ok when the database is AHEAD of the code, and says so", async () => {
+    // The window the documented procedure creates on purpose: migrate remote,
+    // then deploy. The database has a column the code does not use yet, which
+    // costs nothing. The first cut of this check compared for inequality and
+    // failed here — found by running the procedure against production three
+    // minutes after shipping it, not by a test.
+    await env.DB.prepare(
+      "insert into d1_migrations (id, name, applied_at) values (9999, '9999_from_the_future.sql', ?)",
+    )
+      .bind(new Date().toISOString())
+      .run();
+    try {
+      const ahead = await (await call("/api/health")).json<{
+        ok: boolean;
+        migration_behind: boolean;
+        migration_ahead: boolean;
+      }>();
+      expect(ahead.migration_ahead).toBe(true);
+      expect(ahead.migration_behind).toBe(false);
+      expect(ahead.ok).toBe(true);
+    } finally {
+      await env.DB.prepare("delete from d1_migrations where id = 9999").run();
+    }
+  });
+
+  it("counts a database that has never been migrated as behind", async () => {
+    // `migration: null` is not "no opinion" — it is the oldest possible
+    // database, and an inequality test would have called it behind by
+    // accident rather than on purpose.
+    const rows = await env.DB.prepare("select id, name, applied_at from d1_migrations").all<{
+      id: number;
+      name: string;
+      applied_at: string;
+    }>();
+    await env.DB.prepare("delete from d1_migrations").run();
+    try {
+      const none = await (await call("/api/health")).json<{
+        ok: boolean;
+        migration: string | null;
+        migration_behind: boolean;
+        migration_ahead: boolean;
+      }>();
+      expect(none.migration).toBeNull();
+      expect(none.migration_behind).toBe(true);
+      expect(none.migration_ahead).toBe(false);
+      expect(none.ok).toBe(false);
+    } finally {
+      for (const r of rows.results) {
+        await env.DB.prepare("insert into d1_migrations (id, name, applied_at) values (?, ?, ?)")
+          .bind(r.id, r.name, r.applied_at)
+          .run();
+      }
+    }
+  });
 });
 
 describe("the public mount", () => {

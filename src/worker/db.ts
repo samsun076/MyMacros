@@ -16,7 +16,11 @@ type Day = string;
 export type MealSlot = "breakfast" | "lunch" | "dinner" | "snack";
 export type FoodSource = "photo" | "barcode" | "text" | "favorite";
 export type WeightSource = "garmin" | "manual";
-export type RunSource = "debrief" | "manual";
+/** How a run row got here. `sync` means POST /api/sync from whatever feed this
+ *  deployment has wired up; `manual` means a person typed it. Renamed from
+ *  `debrief` in 0010 — that was the maintainer's own upstream pipeline welded
+ *  into a CHECK constraint every self-hosted instance inherited (#37). */
+export type RunSource = "sync" | "manual";
 export type Macro = "protein" | "carbs" | "fat";
 export type Theme = "night-athletic" | "field-notes" | "instrument";
 export type Accent = "coral" | "gold" | "mint";

@@ -14,9 +14,16 @@ export type Health = {
   /** Newest migration in `migrations/` at the time this Worker was built —
    *  what the code needs. Baked in from the directory, so it cannot drift. */
   expected_migration: string;
-  /** The database is reachable but older than the code. A deploy that skipped
-   *  its migration looks identical to a healthy one without this. */
+  /** The database is reachable but **older** than the code. A deploy that
+   *  skipped its migration looks identical to a healthy one without this.
+   *  This is the dangerous direction and the only one that clears `ok`. */
   migration_behind: boolean;
+  /** The database is **newer** than the code — the ordinary window between
+   *  `db:migrate:remote` and the deploy that follows it. Harmless, because an
+   *  unused column costs nothing, so it is reported without failing `ok`.
+   *  Named because a state with no name reads as no state: during the window
+   *  a reader should see "deploy pending", not silence. */
+  migration_ahead: boolean;
   time: string;
 };
 

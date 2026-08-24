@@ -53,16 +53,29 @@ open.get("/health", async (c) => {
   } catch {
     db = false;
   }
-  // Only claimable when the database answered. An unreachable D1 tells us
-  // nothing about how old it is, and guessing "behind" there would send someone
-  // to run migrations against a database that is not the problem.
-  const migration_behind = db && migration !== EXPECTED_MIGRATION;
+  // Directional, and it has to be. The first cut asked `migration !==
+  // EXPECTED` and reported `migration_behind: true` with `ok: false` during
+  // the ordinary window between `db:migrate:remote` and the deploy that
+  // follows — where the database is AHEAD, which the documented procedure
+  // creates deliberately and which is the harmless direction. Caught by
+  // running the procedure and reading the answer, three minutes after
+  // shipping the check.
+  //
+  // Migration filenames are zero-padded and wrangler applies them in the same
+  // lexical order, so `<` is the comparison. Never migrated at all is behind.
+  //
+  // Only claimable when the database answered: an unreachable D1 says nothing
+  // about how old it is, and guessing would send someone to run migrations
+  // against a database that is not the problem.
+  const migration_behind = db && (migration === null || migration < EXPECTED_MIGRATION);
+  const migration_ahead = db && migration !== null && migration > EXPECTED_MIGRATION;
   return c.json<Health>({
     ok: db && !migration_behind,
     db,
     migration,
     expected_migration: EXPECTED_MIGRATION,
     migration_behind,
+    migration_ahead,
     time: new Date().toISOString(),
   });
 });

@@ -102,6 +102,33 @@ describe("authentication", () => {
   });
 });
 
+describe("a synced run is labelled by mechanism, not by this deployment's upstream", () => {
+  /** 0010 renamed `runs.source` from 'debrief' — the maintainer's own pipeline,
+   *  welded into a CHECK every self-hosted instance inherited — to 'sync',
+   *  which is what the value actually means (#37).
+   *
+   *  Pinned because nothing else can see it: no route selects `runs.source`, no
+   *  API response carries it, and no screen renders it. The type system caught
+   *  the rename being incomplete in `db.ts`, but a type cannot say what reaches
+   *  the column, and the CHECK only fails on a value the code never sends. */
+  it("stores 'sync', and the CHECK would refuse the old name", async () => {
+    const token = await seedUser(ALICE);
+    expect((await post(token, { runs: [RUN] })).status).toBe(200);
+
+    const row = await db.selectFrom("runs").selectAll().executeTakeFirstOrThrow();
+    expect(row.source).toBe("sync");
+
+    await expect(
+      env.DB.prepare(
+        `insert into runs (id, user_id, ran_on, distance_m, kcal, source)
+         values ('x', ?, '2026-08-08', 1000, 100, 'debrief')`,
+      )
+        .bind(ALICE)
+        .run(),
+    ).rejects.toThrow();
+  });
+});
+
 describe("writes are scoped to the token's owner", () => {
   /** The rule this route exists to not break. Alice's token, Bob's id in the
    *  body: the body must be ignored entirely. */

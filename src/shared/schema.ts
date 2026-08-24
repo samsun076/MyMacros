@@ -33,4 +33,4 @@
  *  **When you add a migration, change this line.** The test will tell you if
  *  you forget, before the build finishes.
  */
-export const EXPECTED_MIGRATION = "0009_portion.sql";
+export const EXPECTED_MIGRATION = "0010_run_source_neutral.sql";

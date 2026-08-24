@@ -94,7 +94,7 @@ sync.post("/", async (c) => {
         duration_s: run.duration_s,
         kcal: run.kcal,
         tss: run.tss,
-        source: "debrief",
+        source: "sync",
         external_id: run.external_id,
       })
       // The schema's unique index is (user_id, external_id) and SQLite keeps

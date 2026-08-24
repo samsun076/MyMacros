@@ -166,7 +166,11 @@ curl -s https://<your-host>/api/health
 ```
 
 `{"ok":true,...,"migration_behind":false}`. **One curl is the whole post-deploy check**:
-`ok` is false if the database is unreachable *or* older than the code.
+`ok` is false if the database is unreachable *or* **older** than the code.
+
+Between step 2.4's two commands you will briefly see `"migration_ahead":true` with
+`"ok":true` — the database has a column the code does not use yet. That is the safe
+direction and the reason the order is migrate-then-deploy.
 
 Then open the URL on your phone, tap **Create your account**, and use the address you
 put in `ALLOWED_EMAILS`. Add it to your home screen — it is a PWA and runs full-screen
