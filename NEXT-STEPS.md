@@ -3025,3 +3025,207 @@ mechanism down; the fix was still to name a SHA and hope.
 
 This one names none. `git log --oneline -1` is the only source, the prompt says
 so in its second paragraph, and there is nothing left to go stale.
+
+## Session Y — nothing was built, and the shape of M6 changed anyway — ✅ done 2026-08-24
+
+A shaping session. **No production code was written and nothing was committed to
+`src/`.** What came out of it is one spike, six issues, an audit, and four
+decisions that make most of M6 mean something different from what its issue
+bodies say.
+
+### The finding that reframed everything
+
+Dave asked to open the app to his wife, his daughter and a few friends. Working
+out what that needed surfaced that **the app has been able to ship without Google
+— and therefore without a Google Cloud project — since 2026-08-03.**
+
+- `25da282` (2026-08-02) required a live session for passkey registration, because
+  the alternative was open sign-up.
+- `b28d494` (2026-08-03) landed `ALLOWED_EMAILS`, which refuses any user not on the
+  list **on every path in**, closing exactly that threat.
+
+One day apart, same file. The constraint stayed 21 more days and its comment went
+on asserting the dead reason.
+
+**Spiked and proved the same afternoon.** better-auth 1.6.25 supports it
+first-class (`registration.requireSession: false` + `resolveUser`; the client
+documents `context` as *"for passkey-first registration flows"*). A patched
+`auth.ts` minted a brand-new user from a passkey alone, no session and no Google,
+against an **empty** `users` table; the profile row was created by the after-hook;
+`ALLOWED_EMAILS` still refused a stranger. **Control: patch reverted
+(sha-verified byte-identical), same spike re-run, 7 checks went red.** Filed as
+**#126**, spike reverted, tree clean.
+
+**Two decorative checks were caught and are named**, because a green assertion is
+the dangerous kind: the first run *found* a user dated 2026-08-04 rather than
+creating one (fixed by deleting the row and re-running), and in the control run
+"a non-allowlisted email is refused" passed on `Unauthorized` — the wrong
+mechanism — while "the profile belongs to that user" passed comparing `undefined`
+to `undefined`.
+
+### Four decisions, and they are not provisional
+
+1. **One category, not two.** Family is not a separate build from OSS; Dave's wife
+   and daughter are the first three users of the self-host path. Building a
+   "family mode" would mean building a path that gets rebuilt for OSS later —
+   #86's defect at the process level. **Dave's call, and it was the right one; the
+   session had proposed a 2×2 and he collapsed it.**
+2. **One Cloudflare account per instance, one domain per instance.** Not one
+   account with three Workers. Resource names are unique per account, so three
+   instances would need renamed Worker/D1/R2 plus env blocks plus a gitignored
+   local config — and that config would be a setup Dave runs and nobody else has.
+   Separate accounts means **the repo defaults just work**, free tiers stop
+   pooling, and what he runs is what a stranger runs. It also deletes the M-6/M-7/M-8
+   tooling block from the audit.
+3. **Multi-tenant SaaS stays out**, per PLAN.md. #25 (BYOK) survives only if
+   friends supply their own keys — reshaped from "multi-user BYOK" to "an operator
+   should never have to handle someone else's bearer credential", and moved off M6.
+4. **Self-hosters take the risk.** Dave's framing: a project for experience, few
+   users expected. The docs must be honest and complete without growing ceremony
+   for a scale that is not coming.
+
+### The M6 audit — 8 of 14 issues did not serve the milestone
+
+Audited against one sentence: *a stranger deploys this app and runs it
+successfully without asking the author anything.*
+
+**The blocker nobody had filed:** a fresh production instance with no Google
+credentials **cannot be signed into at all** — no session → no passkey enrolment →
+no session. `README.md:133` claims "passkeys work without Google", which is true
+for signing *in* and false for signing *up*. This makes #126 the milestone's
+precondition rather than a convenience.
+
+**Stale claims found:** #33's minimum slice shipped and is live in production;
+#26 describes writing docs `README.md:68-147` already contains; #75's "suggested
+first step" shipped as migration 0006 under #76 and its title is false (`edited`
+*is* read, at `food-logs.ts:981`); #72's "all uncovered" is wrong for 4 of its 7
+routes. The README asserts four things the last three milestones falsified, and
+**contradicts itself on the first screen** — `:24` says Trends is a placeholder,
+`:57` says it is real.
+
+**#37 names two Dave-isms; there are eleven.** Two worse than the pair it names:
+an un-onboarded stranger is shown **1,800 kcal as a real budget meter**
+(`0002_target_kcal.sql:6` via `day.ts:161`), and `runs.source` has a sibling
+project's name **welded into a CHECK constraint** (`0001:184`). Plus two real
+first-run bugs Dave structurally cannot reach: the imperial height field
+**mutates under the finger on the first keystroke** (`Onboarding.tsx:222,284`),
+and `rate()` prints lb to metric users (`:657`) in a function whose comment cites
+#86 as evidence it was deduplicated.
+
+### Six issues filed
+
+| | |
+|---|---|
+| **#126** | Passkey-first sign-up — spiked, proven, the milestone's precondition |
+| **#127** | A second instance in one CF account **silently replaces the first**, exit 0 |
+| **#128** | A 14-year-old can be handed a deficit from an adult equation — no milestone, but gates the daughter's instance |
+| **#129** | Nothing says the database is behind the code; a skipped migration looks healthy |
+| **#130** | No way to learn an update exists, and Sync fork conflicts on the one file a self-hoster must edit |
+| **#131** | The expired-justification practice — **filed unvetted on purpose** |
+
+### What the update story actually is
+
+Worked out end to end, because it was misunderstood twice in the session and the
+correction matters.
+
+- **Dave's instant deploys are Workers Builds watching this repo.** A dashboard
+  setting, not a property of the code, and recorded nowhere but `NEXT-STEPS.md:304`.
+- **A self-hoster gets the same by forking and pointing their own CI at their
+  fork.** GitHub's *Sync fork* button, then automatic. The extra hop is universal
+  to open source.
+- **Recommend GitHub Actions over Workers Builds for self-hosters** — Workers
+  Builds cannot run migrations, Actions can do migrate-then-deploy in one ordered
+  job. Costs a Cloudflare API token in their repo secrets.
+- **A claim made in-session that rollback is impossible was wrong.** D1 **Time
+  Travel** restores to any minute within **7 days on the free plan** (30 paid), and
+  Cloudflare documents it for *"a failed migration or schema change"*. Verified
+  against the reference, not recalled. Three qualifiers: 7 days to *act* not to
+  notice; it **overwrites in place**, so a rewind erases everything logged since;
+  and nothing alerts you.
+- **So the real protection is migration shape, not rollback.** Additive migrations
+  are nearly harmless. Table rebuilds are not, and this repo does them — which is
+  the strongest available argument for doing the audit's M-10 **now**, while those
+  tables are nearly empty.
+
+### The thing that is not a technical finding
+
+Dave's stated goal for the project is **a good working relationship**, and his one
+named failure mode is the Google/better-auth miss above. He had said at the time
+that the setup *"sounds way complex"* — the signal was given, at the right moment,
+and was answered rather than acted on.
+
+**His own read was "the lesson for me is to have better follow-up questions." That
+is the wrong lesson and #131 says so.** He flagged it correctly. The correct
+response to a complexity objection is to **re-derive the decision, not to explain
+it better** — those are different jobs and only one of them catches this.
+
+## Still owed
+
+**The M6 pruning decision, and it is the reason this section exists.** The audit
+recommends moving six issues out of M6 (#28, #101, #75, #111, #72, #106) and
+**closing #67 outright**. None of it has been actioned — every issue is still
+where it was, so the board currently says M6 has 17 open and the audit says the
+real number is nine. That gap is the first thing to resolve, and it is Dave's call
+rather than a mechanical edit.
+
+Also open, and unanswered: **whether to announce the project at all.** Decidable
+later, after it works, and it changes no code either way.
+
+## Next up
+
+**#126**, then the honesty pass (README, the two onboarding bugs, the 1,800 kcal
+budget), then #127/#129. Nothing else in M6 is worth starting first, and #36
+must not be built before #126 — both own `/`, and building the landing page first
+means building it twice.
+
+## Starter prompt (paste verbatim)
+
+```
+Working on MyMacros (~/Projects/MyMacros). Read CLAUDE.md, then the Session X and
+Session Y sections of NEXT-STEPS.md — they run to the end of the file.
+
+Run `git log --oneline -1` for the real HEAD. This prompt names no SHA on purpose;
+Session X's tail explains why.
+
+ELEVEN OF TWELVE MILESTONES ARE CLOSED. M6 is the only one left. 1,198 tests.
+Production D1 on 0009_portion.sql. If you write a migration, show Dave first, and
+remember the order: migrate remote, then push.
+
+FIRST, BEFORE ANY CODE: the M6 pruning decision in "Still owed" is unactioned. The
+board says M6 has 17 open issues; the audit says nine of them belong there. Ask
+Dave to confirm moving #28, #101, #75, #111, #72 and #106 out, and closing #67.
+Do not start work while the milestone still means two different things.
+
+THE MILESTONE'S SENTENCE IS THE YARDSTICK: "a stranger deploys this app and runs
+it successfully without asking Dave anything." Judge every issue against it. M6
+became the parking lot for everything after M11 and half of what is in it is
+Dave's own work wearing an OSS label.
+
+DECIDED 2026-08-24, DO NOT RE-LITIGATE: one category (family IS the OSS path, not
+a separate build) · one Cloudflare account per instance and one domain per
+instance · SaaS stays out · self-hosters accept the risk. Dave's wife and
+14-year-old daughter get instances; #128 gates the daughter's and is not optional.
+
+BUILD #126 FIRST. It is not a convenience — a fresh instance with no Google
+credentials cannot be signed into AT ALL, so the yardstick is unreachable until it
+lands. It is already spiked and proven (see #126 for the exact better-auth API and
+the two traps: `resolveUser` must return an EXISTING user id, and you must create
+via `internalAdapter` or ALLOWED_EMAILS silently does not apply). Do not build #36
+before it — both own `/`.
+
+Dave does not review diffs or run builds. That is yours end to end — build, test,
+commit, push, verify the deploy. His job is a thumb on an iPhone 13 mini and
+decisions no tool can make. Never hand him a diff; hand him a short numbered list
+of things to go tap, and GET IT DEPLOYED FIRST. DEV hash stages are compiled out
+of production — never send him a /log#something URL.
+
+When you build: push decisions into lib/-shaped functions so an oracle exists,
+drive the screen with CDP for the rest, and say plainly that no drive runs in CI.
+Before believing a green mutation, ask whether your check could ever have failed —
+two of this session's spike checks were decorative and are named in #126. Rule 4a:
+a claim about what a screen LOOKS like must cite a measurement, not an impression.
+
+And the standing instruction from #131: if Dave says something sounds too complex,
+RE-DERIVE THE DECISION rather than explaining it better. That exact signal was
+given on 2026-08-02 and answered instead of acted on, and it cost 21 days.
+```
