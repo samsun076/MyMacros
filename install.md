@@ -195,7 +195,33 @@ Cron Trigger so no Mac is involved.
 
 There is no in-app update button, and there structurally cannot be one: a Worker cannot
 deploy a Worker — no filesystem, no shell — and handing the running app a
-deploy-capable API token so it could update itself is not a trade worth making.
+deploy-capable API token so it could update itself is not a trade worth making. The
+button you may be looking for, familiar from Nextcloud or Home Assistant, is not
+missing here; it is unavailable.
+
+### Learning that an update exists
+
+**There are no tagged releases, deliberately.** There is no version scheme here and
+commits land several a day, so a release process that depends on remembering to tag
+would stop halfway through a year — and a Releases page that stops reads as an
+abandoned project rather than an untagged one. Two things that cannot rot instead:
+
+- **Your fork's own page says "N commits behind".** That is the update notification,
+  it is always accurate, and it costs nobody anything to maintain.
+- **The commit log is the changelog.** Messages in this repo are long and say what
+  changed and why, which is more than a generated release note would carry.
+
+**You never need to ask whether an update includes a migration.** Run
+`db:migrate:remote` every time; when there is nothing pending it is a no-op that
+prints an empty table. That is why the procedure below has it unconditionally rather
+than as a step to decide about.
+
+There is also no in-app "update available" check, and there will not be: an instance
+should not phone home to the author's infrastructure to ask whether it is current. It
+would leak the existence and liveness of every deployment, and make one person's
+uptime a dependency of everybody else's app.
+
+### Applying one
 
 **Fork the repo** rather than cloning it, and updating becomes:
 
