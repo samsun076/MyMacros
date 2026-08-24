@@ -179,8 +179,30 @@ await withChrome(async (cdp) => {
   /** Fill the email field and submit the enrolment form, then return whatever
    *  the screen ends up saying — the error text, or null once signed in. */
   async function enrol(email) {
-    await soft(cdp, sessionId, click("set up this device"), "the set-up-this-device button");
-    await soft(cdp, sessionId, `document.querySelector('.signin-enrol input') !== null`, "the email field");
+    // `.signup-open`, never the label. The button reads "Create your account"
+    // on a deployment nobody has claimed and "First time here? Set up this
+    // device" on one somebody has — so a text match passed on this machine
+    // (which has a dev user) and failed against a genuinely fresh clone, which
+    // is the only state #126 is about. Found by cloning the repo and running
+    // this against it.
+    await soft(cdp, sessionId, `(() => {
+      const b = document.querySelector('.signup-open');
+      if (!b) return false;
+      b.click();
+      return true;
+    })()`, "the sign-up button");
+
+    const ready = await soft(
+      cdp,
+      sessionId,
+      `document.querySelector('.signin-enrol input') !== null`,
+      "the email field",
+    );
+    // Null-safe, for verify-onboarding's reason: without it a missing field
+    // THROWS here and every later check is neither green nor red while the run
+    // still prints like a suite that executed (#24).
+    if (!ready) return null;
+
     await evaluate(
       cdp,
       sessionId,
@@ -212,13 +234,17 @@ await withChrome(async (cdp) => {
   // ── 1. the screen offers sign-up at all ───────────────────
   // Before #126 this button did not exist and there was no route to an
   // account without Google. Its absence is the whole bug.
-  const offersSignup = await evaluate(
+  const signupButton = await evaluate(
     cdp,
     sessionId,
-    `[...document.querySelectorAll('button')].some(
-       b => b.textContent.toLowerCase().includes('set up this device'))`,
+    `(() => { const b = document.querySelector('.signup-open');
+              return b ? { text: b.textContent, accent: b.classList.contains('btn-accent') } : null; })()`,
   );
-  check("the sign-in screen offers a way to create an account", offersSignup === true);
+  check(
+    "the sign-in screen offers a way to create an account",
+    signupButton !== null,
+    JSON.stringify(signupButton),
+  );
 
   const methods = await evaluate(cdp, sessionId, `fetch('/api/auth-methods').then(r=>r.json())`);
   step("auth methods", `google=${methods.google} passkey=${methods.passkey}`);
@@ -238,7 +264,7 @@ await withChrome(async (cdp) => {
   check("…and no credential was created for it", (await credentialCount()) === 0);
   check("…and no user row was left behind", countUsers(STRANGER_EMAIL) === 0);
 
-  await evaluate(cdp, sessionId, click("back"));
+  await evaluate(cdp, sessionId, click("back"));  // the Back button exists in both states
 
   // ── 3. an allowlisted address claims the instance ─────────
   const claimed = await enrol(CLAIM_EMAIL);
@@ -332,7 +358,7 @@ await withChrome(async (cdp) => {
       Number(sql(`select count(*) from accounts where userId = '${claimUserId}';`)) === 1,
   );
 
-  await evaluate(cdp, sessionId, click("back"));
+  await evaluate(cdp, sessionId, click("back"));  // the Back button exists in both states
   const overGoogle = await enrol(CLAIM_EMAIL);
   check(
     "an account held by Google alone cannot be claimed with a passkey",

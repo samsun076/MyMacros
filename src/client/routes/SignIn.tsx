@@ -168,8 +168,16 @@ export function SignIn() {
               under a big button that cannot work. #125's lesson, applied to
               the first screen a stranger sees. */}
           <button
+            // A stable hook, because this button's LABEL changes with whether
+            // anybody has claimed the deployment — and a check that matched the
+            // text passed on a machine that had a user and failed on a genuinely
+            // fresh clone, which is the only state the milestone is about.
             className={
-              signupPrimary ? "btn btn-accent" : unclaimed ? "btn btn-quiet" : "btn btn-text"
+              signupPrimary
+                ? "btn btn-accent signup-open"
+                : unclaimed
+                  ? "btn btn-quiet signup-open"
+                  : "btn btn-text signup-open"
             }
             disabled={busy !== null}
             onClick={() => {

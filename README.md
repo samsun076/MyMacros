@@ -18,12 +18,13 @@ and is sped up here; the sheet reports its own timing. Recorded with
 walkthrough: the log flow end to end, the three input modes, and what is and isn't built.
 </p>
 
-> **Status: in active development, built for one user so far.** It's deployed and both
-> halves work end to end — photograph, scan or describe a meal and it lands in the
-> timeline, and the day's target moves with the runs and weigh-ins that sync in on their
-> own. What's thin is everything around that: Trends is still a placeholder, and a
-> self-hoster has to wire up their own Cloudflare account by hand — [Setup](#setup) is
-> honest about what that takes. **Not accepting issues or pull requests** — see
+> **Status: in active development, built for one user so far.** It's deployed and the
+> whole loop works end to end — photograph, scan or describe a meal and it lands in the
+> timeline; the day's target moves with the runs and weigh-ins that sync in on their own;
+> Trends draws a smoothed weight trend and a weekly deficit from real history. What's thin
+> is everything around that: a self-hoster has to wire up their own Cloudflare account by
+> hand, and nothing has been run by more than one person — [Setup](#setup) is honest about
+> what that takes. **Not accepting issues or pull requests** — see
 > [Contributing](#contributing).
 
 ## Architecture
@@ -92,6 +93,12 @@ npm run dev                      # SPA + Worker + local D1, one process
 
 `GET /api/health` is the tell that it worked. `{"db":false,"migration":null}` means the
 local database hasn't been migrated — run `npm run db:migrate` again.
+
+`npm run dev` **refuses to start if port 5173 is taken**, rather than quietly moving to
+5174. That is deliberate: `APP_URL` in `.dev.vars` pins the origin, better-auth checks it,
+and a dev server on a port `APP_URL` does not name fails every passkey ceremony with
+`Invalid origin` — a message that says nothing about ports, ten minutes after the line
+you didn't read scrolled past. Free the port, or change both together.
 
 ### ⚠️ `ALLOWED_EMAILS` refuses *everyone* when it's empty
 
