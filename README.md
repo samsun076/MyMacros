@@ -32,8 +32,9 @@ One Cloudflare Worker serves the whole app: the React SPA through the assets bin
 `/api/*` through a [Hono](https://hono.dev) router in the same script. Data lives in **D1**
 (SQLite) via Kysely; meal photos live in **R2** under a `<userId>/` key prefix, where the
 prefix *is* the authorization check rather than a convention on top of one. Auth is
-[better-auth](https://better-auth.com) with Google sign-in and passkeys — no passwords
-anywhere. The macros come from Claude Sonnet 5 through the Anthropic SDK: a photo or a
+[better-auth](https://better-auth.com) with passkeys, and Google sign-in when a
+deployment configures it — no passwords anywhere, and no Google Cloud project needed to
+run your own. The macros come from Claude Sonnet 5 through the Anthropic SDK: a photo or a
 line of text goes in, a structured list of items with per-item confidence comes back, and
 nothing is written until you've had a chance to edit it. Barcodes are decoded in-browser
 and resolved against OpenFoodFacts, which needs no key.
@@ -111,12 +112,15 @@ Existing accounts are unaffected by changes here; it only gates creation.
 
 ### Signing in locally
 
-There are no Google credentials in a fresh clone, and registering a passkey requires a
-session you don't have yet — so the sign-in screen carries a **dev-only email/password
-button**. It's gated on `import.meta.env.DEV`, which Vite bakes to a literal, so a
-production build ships with those endpoints dropped from the Worker entirely and no
-environment variable can switch them back on. Sign in with it once, then enrol a passkey
-from Settings.
+*Create your account* works locally exactly as it does in production — a passkey and
+nothing else, against whatever `ALLOWED_EMAILS` in your `.dev.vars` says.
+
+The sign-in screen also carries a **dev-only email/password button**, kept because the
+tooling signs in with it (`npm run verify:auth`, the screenshot matrix) and because a
+password is easier to script than a WebAuthn ceremony. It's gated on
+`import.meta.env.DEV`, which Vite bakes to a literal, so a production build ships with
+those endpoints dropped from the Worker entirely and no environment variable can switch
+them back on.
 
 ### Deploying your own
 
@@ -130,7 +134,18 @@ npx wrangler r2 bucket create mymacros-photos
 
 Then set the secrets on the Worker (`npx wrangler secret put <NAME>`):
 `BETTER_AUTH_SECRET`, `ALLOWED_EMAILS`, `ANTHROPIC_API_KEY`, and — if you want Google
-sign-in — `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`. Passkeys work without Google.
+sign-in — `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`.
+
+**Google is genuinely optional, including for the first account.** Open the deployment,
+tap *Create your account*, type an address `ALLOWED_EMAILS` names, and confirm with Face
+ID or your fingerprint. No Google Cloud project, no OAuth consent screen. `ALLOWED_EMAILS`
+is what decides who may exist here; **empty or unset refuses everyone**, so a deployment
+that forgets it is shut rather than open.
+
+The sign-up route can only ever *claim* an address that has no way in yet. Once an account
+has a passkey or a linked Google login, adding another device needs a session — Settings →
+Passkeys. If you lose every device you enrolled, the recovery is to delete the account's
+passkey rows from your own D1 and claim it again.
 
 Edit `wrangler.jsonc` for your own deployment: `routes` (or drop it and re-enable
 `workers_dev`), and the `vars` block's `APP_URL` and `PASSKEY_RP_ID`. Then `npm run

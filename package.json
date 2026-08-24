@@ -24,6 +24,7 @@
     "verify:failure": "node tools/verify-load-failure.mjs",
     "verify:firstpaint": "node tools/verify-firstpaint.mjs",
     "verify:routing": "node tools/verify-routing.mjs",
+    "verify:signup": "node tools/verify-signup.mjs",
     "verify:viewport": "node tools/verify-viewport.mjs",
     "deploy": "npm run build && wrangler deploy"
   },

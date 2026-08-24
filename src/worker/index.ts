@@ -37,14 +37,30 @@ open.get("/health", async (c) => {
   return c.json<Health>({ ok: true, db, migration, time: new Date().toISOString() });
 });
 
-/** What the sign-in screen is allowed to offer here. */
-open.get("/auth-methods", (c) =>
-  c.json<AuthMethods>({
+/** What the sign-in screen is allowed to offer here, and which way round.
+ *
+ *  `claimed` decides whether an unauthenticated visitor is led to sign in or to
+ *  sign up (#126). A failed read counts as claimed: showing "create an
+ *  account" first on a database hiccup would invite a stranger to try claiming
+ *  an instance that already has an owner, and the refusal they'd get is
+ *  correct but bewildering. Guess towards the boring answer. */
+open.get("/auth-methods", async (c) => {
+  let claimed = true;
+  try {
+    const row = await c.env.DB.prepare("select 1 as found from users limit 1").first<{
+      found: number;
+    }>();
+    claimed = Boolean(row);
+  } catch {
+    claimed = true;
+  }
+  return c.json<AuthMethods>({
     google: Boolean(c.env.GOOGLE_CLIENT_ID && c.env.GOOGLE_CLIENT_SECRET),
     passkey: true,
     devEmail: import.meta.env.DEV,
-  }),
-);
+    claimed,
+  });
+});
 
 // better-auth owns everything under /api/auth: OAuth callbacks, session
 // endpoints, and the passkey register/authenticate ceremony.

@@ -154,7 +154,17 @@ if (!routes) {
         "/onboarding",
         "/weight",
       ]
-    : ["/"];
+    : [
+        "/",
+        // #126's sign-up form. The only unauthenticated screen with a text
+        // field on it, and the first screen a stranger deploying this repo
+        // ever types into.
+        "/#enrol",
+        // The screen a stranger meets: nobody has claimed the deployment, so
+        // the sign-up button is the primary one and the note is the longest
+        // sentence on any unauthenticated screen.
+        "/#fresh",
+      ];
 }
 
 /** Routes measured with a fabricated software keyboard (#120).
@@ -171,7 +181,7 @@ if (!routes) {
  *  screen, the fifteen routes that have no field would be measured in a state
  *  no user can reach. */
 const KEYBOARD_PX = 336;
-const KEYBOARD_ROUTES = new Set(["/log#note"]);
+const KEYBOARD_ROUTES = new Set(["/log#note", "/#enrol"]);
 
 // Runs in the page. Reports the document's overflow plus the elements whose
 // box actually crosses the viewport edge — children of an overflowing parent

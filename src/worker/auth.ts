@@ -3,6 +3,7 @@ import { betterAuth } from "better-auth";
 import { APIError } from "better-auth/api";
 import { D1Dialect } from "kysely-d1";
 import { createDb } from "./db";
+import { decideSignup, emailAllowed, normalizeEmail, SIGNUP_REFUSAL_MESSAGE } from "./signup";
 
 /** Auth for a Worker request (#6).
  *
@@ -13,14 +14,19 @@ import { createDb } from "./db";
  *
  * Google is optional on purpose: with no client id/secret in the environment
  * the provider simply isn't registered, so the app runs passkey-only.
- * Credentials land in Session B2 (see NEXT-STEPS.md).
  *
- * Sign-up path: Google creates the account, then the user adds a passkey from
- * Settings for one-tap sign-in afterwards. Passkey registration deliberately
- * requires a live session (better-auth's default) — the alternative, letting
- * an unauthenticated request mint a user, is open sign-up on a personal
- * deploy. Until Google creds land, `DEV_EMAIL_SIGN_IN` below fills the gap
- * locally.
+ * Sign-up path: a passkey, on its own, with no session and no Google (#126).
+ * `registration.requireSession` is off and `resolveUser` below decides who the
+ * ceremony is for; `src/worker/signup.ts` holds the rule and the reasoning.
+ *
+ * **This deliberately replaces the opposite instruction, which stood here for
+ * 21 days after its reason expired.** Registration required a session because
+ * "letting an unauthenticated request mint a user is open sign-up on a
+ * personal deploy" — true on 2026-08-02, and closed the next day by
+ * `ALLOWED_EMAILS`, which refuses a stranger on every path in. The comment
+ * went on asserting the dead danger because comments are not executed. The
+ * cost was that a fresh instance with no Google credentials could not be
+ * signed into at all, which made the whole self-host story unreachable.
  */
 /** Vite replaces this with a literal; `false` lets the bundler drop the
  *  email/password endpoints entirely from the production Worker. */
@@ -82,6 +88,69 @@ export function createAuth(env: Env) {
           residentKey: "preferred",
           userVerification: "preferred",
         },
+
+        // Sign-up with nothing but a face (#126). A passkey carries no email,
+        // so the sign-in screen sends one as `context` on
+        // GET /passkey/generate-register-options and `resolveUser` turns it
+        // into a user id. better-auth does NOT create the user for you.
+        //
+        // Two traps, both paid for in the spike:
+        //
+        //  1. This runs ONLY when there is no session. With one, the plugin
+        //     resolves the session user itself and never calls in here — so
+        //     Settings' "add a passkey" is untouched by any of this, and the
+        //     claim rule below cannot lock out a signed-in person adding a
+        //     second device.
+        //  2. Create through `internalAdapter`, never a raw D1 insert. The
+        //     adapter fires `databaseHooks`, which is what applies
+        //     ALLOWED_EMAILS and what writes the profile row. A raw insert
+        //     silently bypasses both, and the symptom is open sign-up.
+        registration: {
+          requireSession: false,
+          resolveUser: async ({ ctx, context }) => {
+            const email = normalizeEmail(context);
+            const found = email
+              ? await ctx.context.internalAdapter.findUserByEmail(email, { includeAccounts: true })
+              : null;
+            const passkeys = found
+              ? await ctx.context.adapter.findMany({
+                  model: "passkey",
+                  where: [{ field: "userId", value: found.user.id }],
+                })
+              : [];
+
+            const decision = decideSignup({
+              context,
+              allowList: env.ALLOWED_EMAILS,
+              existing: found
+                ? { id: found.user.id, credentials: found.accounts.length + passkeys.length }
+                : null,
+            });
+
+            if (decision.action === "refuse") {
+              throw new APIError(decision.refusal === "not_allowed" ? "FORBIDDEN" : "BAD_REQUEST", {
+                message: SIGNUP_REFUSAL_MESSAGE[decision.refusal],
+              });
+            }
+
+            // `emailVerified` stays false and that is honest: nothing on this
+            // deployment sends mail, so nobody has proved they own the
+            // address. What proves identity here is the passkey, and the
+            // allowlist is what decides the address may exist at all.
+            const id =
+              decision.action === "attach"
+                ? decision.userId
+                : (
+                    await ctx.context.internalAdapter.createUser({
+                      email: decision.email,
+                      name: decision.email,
+                      emailVerified: false,
+                    })
+                  ).id;
+
+            return { id, name: decision.email, displayName: decision.email };
+          },
+        },
       }),
     ],
 
@@ -107,12 +176,12 @@ export function createAuth(env: Env) {
           // existing account and sessions. Revoking access is a different job
           // (delete the user; the cascade takes their data with it).
           before: async (user) => {
-            if (!emailAllowed(env, user.email)) {
+            if (!emailAllowed(env.ALLOWED_EMAILS, user.email)) {
               throw new APIError("FORBIDDEN", {
                 // On the Google path better-auth turns this into the `error`
                 // query param on its error page, joining spaces with
                 // underscores — so keep it a short sentence that survives that.
-                message: "This email is not allowed on this deployment",
+                message: SIGNUP_REFUSAL_MESSAGE.not_allowed,
               });
             }
           },
@@ -162,27 +231,6 @@ function passkeyRpId(env: Env, hostname: string): string {
     );
   }
   return configured;
-}
-
-/** Whether `email` may create an account on this deployment (#33).
- *
- *  `ALLOWED_EMAILS` is a comma-separated list, matched case-insensitively —
- *  the minimum slice of the sign-up problem: no new infrastructure, and it
- *  works from the first deploy. The claim flow #33 describes (Cloudflare
- *  Access on a first-run route, first person through becomes the owner)
- *  replaces this later; it is not needed while the list has one entry.
- *
- *  **Empty or unset refuses everyone.** A guard that defaults to "allow" is
- *  the hole it was written to close: a deploy that forgets the var would look
- *  fine and be open. This way it's shut, loudly, and the fix is one secret.
- */
-function emailAllowed(env: Env, email: string | null | undefined): boolean {
-  const allowed = (env.ALLOWED_EMAILS ?? "")
-    .split(",")
-    .map((entry) => entry.trim().toLowerCase())
-    .filter(Boolean);
-  const candidate = email?.trim().toLowerCase();
-  return Boolean(candidate) && allowed.includes(candidate!);
 }
 
 export type Auth = ReturnType<typeof createAuth>;

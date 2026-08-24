@@ -18,7 +18,9 @@ PASSKEY_RP_ID="localhost"
 # this would otherwise let any Google account that finds the URL sign up, and
 # from M2 spend its ANTHROPIC_API_KEY. Existing accounts are unaffected by
 # changes here; this only gates creation.
-ALLOWED_EMAILS="dev@mymacros.local"
+# `signup-check@` is not a person: `npm run verify:signup` (#126) drives the
+# real create-an-account ceremony against it and deletes the row each run.
+ALLOWED_EMAILS="dev@mymacros.local,signup-check@mymacros.local"
 
 # Signs session cookies. Any long random string locally:
 #   openssl rand -base64 32

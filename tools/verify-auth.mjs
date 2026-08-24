@@ -13,6 +13,7 @@
 // The dev email sign-in it starts from exists only in dev builds
 // (`import.meta.env.DEV` in src/worker/auth.ts); production has Google.
 
+import { readFileSync } from "node:fs";
 import { evaluate, openPage, waitFor, withChrome } from "./cdp.mjs";
 
 const BASE = process.env.BASE_URL || "http://localhost:5173";
@@ -77,8 +78,19 @@ await withChrome(async (cdp) => {
   });
   check("sign-in screen renders unauthenticated", true);
 
+  // Asserted against what .dev.vars actually holds, not against a literal.
+  // This read `methods.google === false` from the day it was written until
+  // 2026-08-24, and went red the moment Google credentials landed in Session
+  // B2 — a check pinned to the weather rather than to the rule.
+  const googleConfigured = /^GOOGLE_CLIENT_ID=\s*["']?\S+/m.test(
+    readFileSync(".dev.vars", "utf8"),
+  );
   const methods = await evaluate(cdp, sessionId, `fetch('/api/auth-methods').then(r=>r.json())`);
-  check("google offered only when configured", methods.google === false, "(not configured yet)");
+  check(
+    "google offered exactly when it is configured",
+    methods.google === googleConfigured,
+    `offered=${methods.google} configured=${googleConfigured}`,
+  );
 
   if (!(await evaluate(cdp, sessionId, click("dev sign-in")))) {
     throw new Error("no dev sign-in button — is the server running a dev build?");

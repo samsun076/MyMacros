@@ -413,6 +413,49 @@ h1 span {
   margin-top: auto;
 }
 
+/* Sign-up (#126). The sign-in screen bottom-anchors its buttons, which is
+   right for a screen you only tap — and wrong the moment one of them is a text
+   field. Measured at 375x812 with a 336px keyboard: the email input landed at
+   589-632 and its submit at 642-688 against a keyboard line of 476, so both
+   were 113 and 166 pixels UNDER it, on a page whose scrollHeight equals its
+   viewport and therefore cannot be scrolled to reveal them. iOS lifts a
+   focused field by scrolling the visual viewport, which would have hidden half
+   of this and fixed none of it.
+
+   So sign-up stacks from the top instead of hanging from the bottom. It is the
+   first screen a stranger deploying this repo ever types into, and #121 is the
+   same defect still open on the sheets. */
+.signin-signup {
+  justify-content: flex-start;
+}
+
+.signin-signup .signin-head {
+  padding-top: 8vh;
+}
+
+.signin-signup .signin-actions {
+  margin-top: 0;
+}
+
+.signin-enrol .field {
+  margin-top: 0;
+}
+
+.signin-enrol input {
+  width: 100%;
+  background: var(--surface-raised);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-mark);
+  padding: 12px 13px;
+  color: var(--ink);
+  font-family: var(--body-font);
+  font-size: 16px;
+}
+
+.signin-enrol input::placeholder {
+  color: var(--ink-muted);
+}
+
 .signin-error {
   font-size: 12.5px;
   line-height: 1.45;

@@ -75,6 +75,24 @@ describe("the public mount", () => {
     expect(res.status).toBe(200);
     expect(await res.json()).toMatchObject({ passkey: true });
   });
+
+  it("reports an empty deployment as unclaimed, and a populated one as claimed", async () => {
+    // The sign-in screen decides which button is the big one from this (#126).
+    // Getting it backwards on a fresh instance sends the only person who can
+    // do anything to the only button that cannot work.
+    const fresh = await (await call("/api/auth-methods")).json<{ claimed: boolean }>();
+    expect(fresh.claimed).toBe(false);
+
+    await env.DB.prepare(
+      `insert into users (id, name, email, emailVerified, createdAt, updatedAt)
+       values ('claim-test', 'x', 'x@example.com', 0, '2026-01-01', '2026-01-01')`,
+    ).run();
+
+    const after = await (await call("/api/auth-methods")).json<{ claimed: boolean }>();
+    expect(after.claimed).toBe(true);
+
+    await env.DB.prepare("delete from users where id = 'claim-test'").run();
+  });
 });
 
 /** A mistyped fetch must fail loudly rather than hand back the SPA shell for

@@ -17,6 +17,16 @@ export type AuthMethods = {
   passkey: boolean;
   /** Dev-only email/password bootstrap; always false in production builds. */
   devEmail: boolean;
+  /** Whether anybody has an account here yet (#126).
+   *
+   *  An unclaimed deployment leads with "create an account", because the only
+   *  thing a stranger who just deployed this can usefully do is claim it, and
+   *  a big "Sign in with a passkey" above a grey line of prose sends them to
+   *  the one button that cannot work. A claimed one leads with signing in.
+   *
+   *  It is a count, never an identity: no address, no name, nothing that says
+   *  *who*. "Somebody lives here" is already implied by the URL resolving. */
+  claimed: boolean;
 };
 
 export type Macro = "protein" | "carbs" | "fat";
