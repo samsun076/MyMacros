@@ -558,11 +558,20 @@ The sensitivity is not small:
 ```
 
 **Asked, not assumed.** This is #74's shape and the 155 g bar's shape: a figure
-the app is confident about, that only the person can falsify. Recorded here open
-rather than resolved, because "probably fine" is the answer that made the 155 g
-bar take three weeks to look at.
+the app is confident about, that only the person can falsify. Asked rather than
+waved through, because "probably fine" is the answer that made the 155 g bar
+take three weeks to look at.
 
-*(Answer, 2026-08-24: — pending)*
+**Answered 2026-08-24: 5'5" is correct.** So `height_cm = 165.1` is a real
+measurement of a real person, the coercion bug never corrupted it, and the
+1,907 the app has been showing is right in both its arithmetic and its inputs.
+
+**That is a result, not a blank**, and it is falsifiable in the way M9's clean
+pass was: this milestone rewrote the field that produces this exact number, so
+"the stored height is the person's height" is the specific claim the pass
+existed to test. It could have come back the other way and cost 109 kcal a day
+for four months without anything else in the system noticing — no test, no
+screenshot and no type could have told the difference between 5'5" and 5'10".
 
 ### What did not need reconciling
 
@@ -577,8 +586,9 @@ bar take three weeks to look at.
   any real body (50–260 cm, 20–400 kg) and the stored values sit well inside, so
   nothing was rewritten by their arrival. Verified rather than assumed: 165.1 and 76.2.
 
-**Time:** ~30 minutes, most of it step 4. Verdict: **arithmetic exact, one input
-outstanding.**
+**Time:** ~35 minutes, most of it step 4. Verdict: **clean — arithmetic exact,
+every input confirmed.** Third clean pass in the file (M9, and now this),
+against three that found defects.
 
 ## M11 (#23, #29, #30, #80) — no computed figure, not applicable, 2026-08-14
 
