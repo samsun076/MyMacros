@@ -433,6 +433,22 @@ h1 span {
   padding-top: 8vh;
 }
 
+/* The headline is the variable, and it is what pushed the note under the
+   keyboard on two of the three packs (build rule 4, measured at 375x812 with a
+   336px inset): the same 40px wraps to 2 lines in Night Athletic, 3 in Field
+   Notes and 4 in Instrument, so the note's bottom landed at 437, 485 and 530
+   against a keyboard line of 476. Build rule 1 puts all polish in Night
+   Athletic, which is exactly how a layout that fits there fails everywhere
+   else.
+
+   Smaller here rather than a per-pack override: this branch has one job, the
+   pitch has already been read by anyone who got to it, and a size that fits the
+   widest pack fits all of them. */
+.signin-signup .signin-head h1 {
+  font-size: 27px;
+  margin-top: 10px;
+}
+
 .signin-signup .signin-actions {
   margin-top: 0;
 }
