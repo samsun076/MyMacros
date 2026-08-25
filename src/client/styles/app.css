@@ -429,6 +429,32 @@ h1 span {
   justify-content: flex-start;
 }
 
+/* The note goes ABOVE the form, and this is the second attempt.
+   The first shrank the headline so everything cleared a 336px synthetic
+   keyboard by 58-69px in all three packs — and on a real 13 mini the note was
+   still covered and had to be scrolled to. CLAUDE.md says exactly why the
+   measurement could not have known: the fake keyboard has no accessory bar, no
+   predictive row, and no `visualViewport.offsetTop`, which is the term iOS
+   actually moves. A number that is right about a fake keyboard is not evidence
+   about a real one.
+
+   So it stops competing for the space. The note says which addresses may sign
+   up, which is the one thing a first-time visitor needs *before* they type —
+   putting it under the button was always the wrong order, and only the keyboard
+   made that visible. Nothing below the button now, so nothing to lose to it. */
+.signin-signup .signin-head {
+  order: 0;
+}
+.signin-signup .signin-note {
+  order: 1;
+}
+.signin-signup .signin-enrol {
+  order: 2;
+}
+.signin-signup .signin-error {
+  order: 3;
+}
+
 .signin-signup .signin-head {
   padding-top: 8vh;
 }
