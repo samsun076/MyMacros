@@ -3411,3 +3411,128 @@ node tools/seed-demo.mjs --weeks 12, and mint a session cookie from the DEV-only
 email/password route (the Origin header is required and must match APP_URL, or
 better-auth answers 403).
 ```
+
+## Session Z, continued — the tail where a reversal surfaced — 2026-08-25
+
+Six more commits after the milestone closed. Two of them fixed things Dave found
+by reading, and the last one exists because he pushed back on a decision that
+should never have been made without him.
+
+**#133, #135** — CLAUDE.md is the agent documentation and it had gone stale in a
+day: `:1119` still said passkey registration "needs an existing session", the
+requirement #126 removed that morning. `tools/docs.test.mjs` (44 checks) now
+pins the mechanical half; **build rule 10** — *when you remove a constraint,
+grep for its justification* — covers the half no test can reach.
+
+**#136, #137** — the deployer. Two things went wrong here and the second is the
+one worth carrying.
+
+## The reversal, and why it matters more than the decision
+
+#130's first build item was **"Ship releases."** It was closed with *"No
+releases, and that is the decision rather than the omission"*, and Dave was told
+in **one row of a summary table**.
+
+He read `install.md` back days later and could not make it fit what he
+remembered agreeing:
+
+> the idea is to have the same exact app for everyone to run the same exact
+> way... my instance would get the commits and after a month or whatever
+> interval we would have a release... where am I wrong
+
+He was not wrong. **The reasoning against releases was sound about a different
+artifact** — a public Releases page rotting because nobody remembers to tag —
+and irrelevant to a release *channel*, where the tag IS the deploy and
+forgetting it means nothing ships.
+
+And it missed his actual argument entirely: **his instance is the canary.**
+Every defect this project has found came from him opening the app. On
+2026-08-25 six commits shipped and two needed follow-up fixes within the hour —
+on an every-commit channel a second instance would have had a broken sign-up
+screen twice in one day.
+
+**The failure was not the call. It was the volume.** A reversal of something
+already written was reported at the same volume as a routine detail, so the one
+thing needing his attention got none of it. That is #139.
+
+## Where it stands
+
+Live at the SHA `git log --oneline -1` reports. **1,282 tests. Twelve of twelve
+milestones closed. Production D1 on `0010`.**
+
+Deploy is **still Workers Builds**. `.github/workflows/deploy.yml` exists and is
+inert — verified on push: `gate` succeeded, both deploy jobs skipped.
+
+## Next
+
+**#139 first, before any building.** The decision audit. Dave asked "am I
+wondering if I missed other shit" and that deserves an answer produced by
+looking.
+
+Then **#138** (three docs still describe the pre-#137 update path), then
+**#134** (the app's own explanations — the writing job), then the dry run.
+
+**Blocked on Dave, and only Dave:**
+
+1. A Cloudflare API token → repo secrets, `DEPLOY_PRIMARY=true`.
+2. **Workers Builds turned off in the same sitting** — two deployers race.
+3. A second Cloudflare account, for the dry run.
+
+## Starter prompt (paste verbatim)
+
+```
+Working on MyMacros (~/Projects/MyMacros). Read CLAUDE.md, then the Session Z
+sections of NEXT-STEPS.md — they run to the end of the file.
+
+Run `git log --oneline -1` for the real HEAD. This prompt names no SHA on purpose;
+Session X's tail explains why.
+
+START WITH #139 AND DO NOT BUILD ANYTHING FIRST. It is an audit of the previous
+session's decisions: which were Dave's to make, and did he get to make them. It
+exists because a written plan (#130's "Ship releases") was reversed and reported
+to him as one row in a summary table, he caught it days later, and asked whether
+he had missed anything else. He deserves an answer produced by looking rather
+than reassurance. The issue lists the known entries; the list is certainly
+incomplete.
+
+THE LESSON THAT PRODUCED IT: the failure was not a bad decision — "no releases"
+was defensible in isolation. The failure was reporting a REVERSAL at the same
+volume as a routine detail. When you overturn something already written down,
+that is not a detail, and a table row is not telling him.
+
+ALL TWELVE MILESTONES ARE CLOSED. 1,282 tests. Production D1 on 0010. Deploy is
+STILL Workers Builds — .github/workflows/deploy.yml exists but is inert until
+Dave sets DEPLOY_PRIMARY, and he must turn Workers Builds off in the same
+sitting or two deployers will race.
+
+THE UPDATE MODEL, settled 2026-08-25 and not to be re-litigated: `main` deploys
+to Dave's instance only, because he is the canary and every defect this project
+has found came from him opening the app. A `v*` tag deploys to every other
+instance. A tag rather than a schedule — a monthly release ships whatever is on
+main that morning. Settings → App shows the running version, baked in at build,
+never fetched.
+
+Then #138 (three docs still describe the pre-#137 update path — read the words,
+the docs test cannot see prose), then #134 (the app's own explanations, which is
+a writing job and the last real OSS gap), then the dry run.
+
+Dave does not review diffs or run builds. That is yours end to end — build, test,
+commit, push, verify the deploy. His job is a thumb on an iPhone 13 mini and
+decisions no tool can make. Never hand him a diff; hand him a short numbered list
+of things to go tap, and GET IT DEPLOYED FIRST.
+
+WRITE SHORT. He asked for "simple yes or no" and "simple verbage" after a reply
+that buried the answer in three screens of prose. Lead with the answer. Reasoning
+goes in the commit message and the issue, not the chat.
+
+When you build: push decisions into lib/-shaped functions so an oracle exists,
+drive the screen with CDP for the rest, and say plainly that no drive runs in CI.
+Ask of every check: COULD THIS EVER HAVE FAILED? Rule 4a: a claim about what a
+screen LOOKS like needs a measurement — and a measurement against a SYNTHETIC
+keyboard is not evidence about a real one, which cost a wrong report on 2026-08-25.
+
+Environment, if starting cold: kill any orphan dev server on 5173 (npm run dev
+refuses to start if it is taken, deliberately), npm run db:migrate,
+node tools/seed-demo.mjs --weeks 12, and mint a session cookie from the DEV-only
+email/password route (the Origin header is required and must match APP_URL).
+```
