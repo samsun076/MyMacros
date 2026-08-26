@@ -1,4 +1,6 @@
+import { execSync } from "node:child_process";
 import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
 import { readFile, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
@@ -188,7 +190,36 @@ function serviceWorker() {
   };
 }
 
+/** What build this is, baked in at build time (#137).
+ *
+ *  On a tag this is the tag (`v0.2.0`); on main it is the tag plus a distance
+ *  and a short sha (`v0.2.0-12-gabc1234`); with no tags at all it is the sha.
+ *  Everyone on the release channel therefore runs a version they can read back,
+ *  which is what makes "the same exact app, run the same exact way" checkable
+ *  rather than merely intended.
+ *
+ *  **Baked, never fetched.** An instance must not phone home to ask what is
+ *  current — that leaks the existence and liveness of every deployment and makes
+ *  one person's uptime a dependency of everybody else's app. Displaying what you
+ *  ARE needs no network; asking what you SHOULD BE does.
+ *
+ *  Falls back to `package.json` where git is unavailable (a tarball, some CI
+ *  checkouts) rather than failing the build over a label. */
+function appVersion(): string {
+  try {
+    const described = execSync("git describe --tags --always --dirty", {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    }).trim();
+    if (described) return described;
+  } catch {
+    /* no git, no tags, or a shallow clone — fall through */
+  }
+  return `v${JSON.parse(readFileSync("package.json", "utf8")).version}`;
+}
+
 export default defineConfig({
+  define: { __APP_VERSION__: JSON.stringify(appVersion()) },
   plugins: [react(), cloudflare(), inlineStylesheets(), serviceWorker()],
   resolve: {
     // regex rather than a plain string key: the import carries a `?url`

@@ -32,7 +32,9 @@ name: Deploy
 #        secret   CF_API_TOKEN_<NAME>
 #        secret   CF_ACCOUNT_ID_<NAME>
 #        variable DEPLOY_<NAME> = true
-#   3. Copy a job below, change the three names and the config path.
+#   3. Copy the `wife` job below, change the three names and the config path.
+#      Copy `wife`, never `primary` — `primary` is the every-commit channel and
+#      belongs to exactly one instance.
 #
 # Each instance needs its own wrangler config, because `database_id`, `routes`
 # and `APP_URL` differ. `wrangler.jsonc` is the primary instance's;
@@ -40,9 +42,28 @@ name: Deploy
 # file with `env` blocks so that a mistake in one cannot silently deploy to the
 # other — the same reasoning as #127's preflight.
 
+# ── Two channels, and the split is the point (#137) ──────────
+#
+# **main** is the author's own instance and nothing else. He is the canary:
+# every defect this project has ever found came from him opening the app, so
+# his instance takes every commit and breakage there is cheap. On 2026-08-25
+# six commits shipped and two needed follow-up fixes within the hour.
+#
+# **a tag** is everybody else. One known-good point that every other instance
+# converges on, so "the same exact app, run the same exact way" is true and
+# "what version are you on" has an answer.
+#
+# A tag rather than a schedule, deliberately: a monthly release ships whatever
+# happens to be on main that morning, where a tag ships what somebody decided
+# was good. Trigger, not calendar — the same rule as build rules 4b and 10.
+#
+# And nobody can forget to tag, which was the objection that killed the first
+# attempt at this: the tag IS the deploy, so forgetting it means nothing
+# shipped, which is loud.
 on:
   push:
     branches: [main]
+    tags: ["v*"]
   workflow_dispatch:
 
 concurrency:
@@ -69,7 +90,9 @@ jobs:
 
   primary:
     needs: gate
-    if: vars.DEPLOY_PRIMARY == 'true'
+    # main only. A tag is already on main, so without the ref test this would
+    # deploy twice for one commit.
+    if: vars.DEPLOY_PRIMARY == 'true' && startsWith(github.ref, 'refs/heads/')
     runs-on: ubuntu-latest
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_TOKEN_PRIMARY }}
@@ -121,7 +144,8 @@ jobs:
   # Inert until DEPLOY_WIFE is set, so it costs nothing while it waits.
   wife:
     needs: gate
-    if: vars.DEPLOY_WIFE == 'true'
+    # Tags only. This instance never sees an untagged commit.
+    if: vars.DEPLOY_WIFE == 'true' && startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_TOKEN_WIFE }}

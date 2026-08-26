@@ -407,7 +407,11 @@ function UpdateSection() {
     <section>
       <div className="sec-head">
         <span className="eyebrow">App</span>
-        <span className="mono">#54</span>
+        {/* What build this is (#137). Baked in at build time — displaying what
+            you ARE needs no network, where asking what you SHOULD BE would mean
+            an instance phoning home. It is the first answer to "what version is
+            she running", which had none while every instance took every commit. */}
+        <span className="mono">{__APP_VERSION__}</span>
       </div>
       <p className="placeholder-note" role="status">
         {copy[state]}

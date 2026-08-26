@@ -197,11 +197,19 @@ Cron Trigger so no Mac is involved.
 
 ## Keeping it updated
 
-There is no in-app update button, and there structurally cannot be one: a Worker cannot
-deploy a Worker — no filesystem, no shell — and handing the running app a
-deploy-capable API token so it could update itself is not a trade worth making. The
-button you may be looking for, familiar from Nextcloud or Home Assistant, is not
-missing here; it is unavailable.
+**Settings → App has a *Check for updates* button, and it is not the one you think.**
+It asks the service worker whether the Worker is now serving a newer build than the one
+cached on the phone, and swaps it if so. It picks up a deploy that has already happened.
+It does not cause one.
+
+**Causing one from inside the app is what cannot exist.** A Worker has no filesystem and
+no shell, so it cannot deploy a Worker; the only mechanism would be giving the running app
+a deploy-capable API token, which is not a trade worth making. The Nextcloud-style "update
+now and it installs itself" button is unavailable here rather than missing.
+
+Settings → App also shows **which build this instance is running** — a tag on the release
+channel. That is baked in at build time, never fetched: displaying what you *are* needs no
+network, where asking what you *should be* would mean every instance phoning home.
 
 ### Learning that an update exists
 
