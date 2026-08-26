@@ -240,15 +240,37 @@ Your `wrangler.jsonc` edits live in your fork and upstream rarely touches that f
 is normally conflict-free. If it ever does conflict there, **keep your version** — it is
 the file that defines your deployment.
 
-**To automate it**, point your own CI at your fork. Two options and the trade is real:
+### Automating it
 
-- **Cloudflare Workers Builds** — a dashboard setting on *your* account pointed at
-  *your* fork. Every push deploys. **It cannot run migrations**, so step 3 stays manual.
-- **GitHub Actions** — can do migrate-then-deploy as one ordered job, at the cost of a
-  Cloudflare API token in your repo secrets.
+**`.github/workflows/deploy.yml` already does all five steps.** It is in your fork and it
+is inert until you switch it on, so it costs nothing while you decide.
 
-Neither is wrong. Workers Builds is less setup and leaves you a manual step that is easy
-to forget; Actions is more setup and cannot forget.
+Per instance:
+
+1. In that instance's Cloudflare account: **My Profile → API Tokens → Create**, using the
+   *Edit Cloudflare Workers* template, and add **D1 → Edit**. Copy the token and the
+   Account ID.
+2. In your fork: **Settings → Secrets and variables → Actions**
+
+   | | |
+   |---|---|
+   | secret | `CF_API_TOKEN_PRIMARY` |
+   | secret | `CF_ACCOUNT_ID_PRIMARY` |
+   | variable | `DEPLOY_PRIMARY` = `true` |
+   | variable | `APP_URL_PRIMARY` = your URL |
+
+Every push to `main` then runs check + test, migrates, builds, preflights, deploys, and
+polls `/api/health` until it reports `ok:true`.
+
+⚠️ **If you also set up Cloudflare Workers Builds, turn it off now.** Two deployers
+pointed at one Worker will race, and which version survives is arbitrary. Pick one — and
+Workers Builds is the one that cannot run migrations, which is the whole reason the
+ordered pair above exists.
+
+**A second instance is another job in the same file.** Copy the `wife:` block, change the
+three names and the config path, and give it a `wrangler.<name>.jsonc` of its own —
+`database_id`, `routes` and `APP_URL` differ per instance, and separate files mean a
+mistake in one cannot silently deploy to the other.
 
 ---
 

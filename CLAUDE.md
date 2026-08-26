@@ -903,7 +903,16 @@ result about the *inputs* and says nothing about this register.
   and the two feel identical from inside the session. `git log -S` on the
   offending line answers it in seconds and should be run before anyone changes
   how the work is done.
-- Push to `main` deploys via Workers Builds (wired in M1 #7).
+- **Push to `main` deploys via `.github/workflows/deploy.yml`** (#136) — check +
+  test, then per instance: migrate, build, preflight, deploy, poll
+  `/api/health` until `ok:true`. Migration is unconditional because a `--remote`
+  apply with nothing pending is a no-op, and a step nobody has to decide about
+  cannot be decided wrong. Every deploy job is gated on a repo *variable*
+  (`vars`, not `secrets` — the latter is unavailable in a job-level `if`), so
+  the workflow is inert until an instance opts in.
+  **Workers Builds was the deployer until #136 and must not run alongside it** —
+  two deployers on one Worker race and the winner is arbitrary. It could never
+  run migrations, which is why it was replaced.
 - **Read the build result off GitHub, not by polling the asset hash:**
   ```bash
   gh api repos/samsun076/MyMacros/commits/<sha>/check-runs \

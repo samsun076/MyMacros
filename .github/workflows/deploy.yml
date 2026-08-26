@@ -1,0 +1,152 @@
+name: Deploy
+
+# Migrate, then deploy, for every instance this repo feeds — in that order,
+# mechanically, so it cannot be forgotten (#136).
+#
+# ## Why this exists rather than Workers Builds
+#
+# Workers Builds is a dashboard setting pointed at a repo, and it deploys on
+# push. It **cannot run migrations**. So the ordered pair that matters —
+# migrate first, deploy second — is half automatic and half a thing somebody
+# remembers, and the failure when they don't is #129's: the Worker boots, the
+# app loads, every query answers, and the first request touching a new column
+# 500s.
+#
+# It also cannot reach a second Cloudflare account. The settled model is one
+# account per instance, so a family of instances needs a deployer that can hold
+# more than one set of credentials. That is this file.
+#
+# ## Inert until switched on
+#
+# Every job is gated on a repository *variable*, not a secret, because a
+# workflow that fails on every push for want of a token is worse than no
+# workflow. Nothing here runs until someone sets `DEPLOY_<NAME>` to `true` and
+# adds that instance's credentials.
+#
+# ## Adding an instance
+#
+#   1. In that instance's Cloudflare account: My Profile → API Tokens → Create,
+#      using the "Edit Cloudflare Workers" template, plus D1 Edit. Copy the
+#      token and the Account ID.
+#   2. In this repo: Settings → Secrets and variables → Actions.
+#        secret   CF_API_TOKEN_<NAME>
+#        secret   CF_ACCOUNT_ID_<NAME>
+#        variable DEPLOY_<NAME> = true
+#   3. Copy a job below, change the three names and the config path.
+#
+# Each instance needs its own wrangler config, because `database_id`, `routes`
+# and `APP_URL` differ. `wrangler.jsonc` is the primary instance's;
+# `wrangler.<name>.jsonc` is another's. They are separate files rather than one
+# file with `env` blocks so that a mistake in one cannot silently deploy to the
+# other — the same reasoning as #127's preflight.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  # One deploy at a time per branch. Two overlapping runs could interleave a
+  # migration with the other's deploy, which is the exact ordering this file
+  # exists to guarantee.
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  gate:
+    # `npm run build` runs check + test, and push-to-main is the only gate this
+    # workflow has. A red test must stop a deploy, not annotate one.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+      - run: npm test
+
+  primary:
+    needs: gate
+    if: vars.DEPLOY_PRIMARY == 'true'
+    runs-on: ubuntu-latest
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_TOKEN_PRIMARY }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID_PRIMARY }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+
+      # ── the ordered pair ──────────────────────────────────────
+      # Migrate first. An unused column costs nothing; code expecting a column
+      # that isn't there 500s. `--remote` with no pending migrations is a no-op
+      # that prints an empty table, so this is unconditional on purpose — a step
+      # you never have to decide about cannot be decided wrong.
+      - name: Migrate
+        run: npx wrangler d1 migrations apply mymacros-db --remote
+
+      - name: Build
+        run: npm run build
+
+      # Not `npm run deploy`: that also runs the build, and the gate job above
+      # already ran the tests. The preflight is kept — it is the thing that
+      # refuses to overwrite another instance (#127).
+      - name: Preflight
+        run: npm run preflight
+
+      - name: Deploy
+        run: npx wrangler deploy
+
+      # The honest post-deploy check, and the reason #129 exists. `ok` is false
+      # if the database is unreachable OR older than the code, so this catches a
+      # deploy that landed against the wrong database as well as one that raced
+      # its own migration.
+      - name: Verify
+        run: |
+          for i in $(seq 1 10); do
+            body=$(curl -fsS "${{ vars.APP_URL_PRIMARY }}/api/health" || echo '{}')
+            echo "$body"
+            if [ "$(echo "$body" | jq -r '.ok')" = "true" ]; then exit 0; fi
+            sleep 6
+          done
+          echo "::error::/api/health never reported ok:true after the deploy"
+          exit 1
+
+  # ── A second instance. Copy this block per instance. ─────────
+  # Inert until DEPLOY_WIFE is set, so it costs nothing while it waits.
+  wife:
+    needs: gate
+    if: vars.DEPLOY_WIFE == 'true'
+    runs-on: ubuntu-latest
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_TOKEN_WIFE }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID_WIFE }}
+      CONFIG: wrangler.wife.jsonc
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Migrate
+        run: npx wrangler d1 migrations apply mymacros-db --remote --config "$CONFIG"
+      - name: Build
+        run: npm run build
+      - name: Deploy
+        run: npx wrangler deploy --config "$CONFIG"
+      - name: Verify
+        run: |
+          for i in $(seq 1 10); do
+            body=$(curl -fsS "${{ vars.APP_URL_WIFE }}/api/health" || echo '{}')
+            echo "$body"
+            if [ "$(echo "$body" | jq -r '.ok')" = "true" ]; then exit 0; fi
+            sleep 6
+          done
+          echo "::error::/api/health never reported ok:true after the deploy"
+          exit 1
