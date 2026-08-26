@@ -95,8 +95,8 @@ npm run dev                      # SPA + Worker + local D1, one process
 `GET /api/health` is the tell that it worked, and it answers two questions rather than one:
 
 ```json
-{"ok":true,"db":true,"migration":"0009_portion.sql",
- "expected_migration":"0009_portion.sql","migration_behind":false}
+{"ok":true,"db":true,"migration":"0010_run_source_neutral.sql",
+ "expected_migration":"0010_run_source_neutral.sql","migration_behind":false}
 ```
 
 `db:false` means the local database hasn't been migrated — run `npm run db:migrate` again.

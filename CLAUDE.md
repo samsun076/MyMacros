@@ -32,8 +32,16 @@ shots/           screenshot output (gitignored)
 ## Commands
 
 ```bash
-npm run dev            # vite dev — SPA + Worker + local D1, one process
+npm run dev            # vite --strictPort — SPA + Worker + local D1, one process.
+                       # REFUSES to start if 5173 is taken rather than moving to
+                       # 5174: APP_URL pins the origin, and a dev server on a
+                       # port it doesn't name fails every passkey ceremony with
+                       # `Invalid origin`, a message that names no port.
 npm run build          # check + test + production build to dist/
+npm run preview        # serve dist/ — plain vite preview, no Worker
+npm run deploy         # preflight + build + wrangler deploy (#127)
+npm run preflight      # refuse a deploy that would replace another instance (#127)
+npm run auth:generate  # regenerate better-auth's table DDL after a config change
 npm run check          # tsc --noEmit across app, worker, and node tsconfigs
 npm test               # vitest, both projects (#47)
 npm run test:watch     # same, watching
@@ -50,6 +58,9 @@ npm run verify:failure -- --cookie <name>=<token>  # a failed read says what hap
 npm run verify:routing -- https://fuel.debrief.run   # /api survives navigation; SPA still falls back
 npm run verify:viewport -- --cookie <name>=<token>   # no screen overflows horizontally (#51)
 npm run verify:firstpaint   # needs `npm run build` first — the document paints the app alone (#53)
+npm run verify:signup       # sign up with a passkey alone, and the account can't be taken twice (#126)
+npm run verify:onboarding   # the two typed fields a first-run stranger meets, and Dave cannot (#37)
+npm run shots               # shot-matrix, same thing with fewer keystrokes
 node tools/shot-matrix.mjs <file.html|url>   # 375/390/428 render matrix
 node tools/shot-matrix.mjs --theme field-notes --cookie <c> <url>   # build rule 4's light-pack check (#123)
 ```
@@ -566,6 +577,34 @@ reorder.
    records its measured CVD limit — under deuteranopia no colour separates
    from all three accents, so every use must be sign-carrying and labelled.
 
+10. **When you remove a constraint, grep for its justification** (#135,
+   2026-08-25). A constraint's *reason* usually lives somewhere other than the
+   code enforcing it — in this file, in a comment two files away, in the README,
+   on the site. Deleting the constraint does not delete the argument for it, and
+   the argument then goes on being read as true by everyone who arrives next.
+
+   **Earned twice by the same sentence.** `auth.ts` said passkey registration
+   required a session because "the alternative is open sign-up on a personal
+   deploy" — true on 2026-08-02, closed the next day by `ALLOWED_EMAILS`, and
+   still asserted 21 days later. That is #131, and it cost the whole self-host
+   story: a fresh instance could not be signed into at all. #126 fixed the code
+   and **replaced** the comment. Then, one day later, `CLAUDE.md:1119` was found
+   still saying *"passkey registration needs an existing session"* — the same
+   dead claim, in the file that documents the rule about dead claims, surviving
+   because nobody grepped.
+
+   It is a grep. It costs seconds and it would have caught both, because in
+   each case the commit removing the constraint quoted the sentence it was
+   invalidating.
+
+   **Trigger, not calendar**, like 4b: a commit that removes a limit, a guard or
+   a requirement owes the grep. One that adds a feature owes nothing.
+
+   **`npm test` covers the mechanical half only** (`tools/docs.test.mjs`) —
+   commands that exist, paths that exist, migrations that are current. No test
+   can know that a well-formed sentence stopped being true, which is why this is
+   a rule and not a check.
+
 ### One quantity, one source — the register (#86)
 
 #78, #84 and #85 were one defect at three depths: **two things that should be one
@@ -901,9 +940,13 @@ result about the *inputs* and says nothing about this register.
   keyed by `d1_databases[0].database_id` in `wrangler.jsonc`, so changing that
   id silently repoints local dev at a fresh, empty, unmigrated database (the
   old one stays on disk under the previous id's filename). Verified by
-  experiment, not assumed. `GET /api/health` is the tell:
-  `{"db":false,"migration":null}` means you're on an unmigrated file — run
-  `npm run db:migrate`.
+  experiment, not assumed. `GET /api/health` is the tell, and since #129 it
+  answers two questions: `{"db":false,"migration":null}` means you're on an
+  unmigrated file, and `{"migration_behind":true}` means the code is newer
+  than whatever database it *did* find. `ok` is false for either — run
+  `npm run db:migrate`. **`migration_ahead` is the harmless direction**, the
+  window between `db:migrate:remote` and the deploy after it, which the
+  documented order opens on purpose.
 - **`gh issue view` prints nothing on this machine** unless the pager is
   disabled — prefix every `gh` read with `GH_PAGER=cat`, or use `--json`. It
   exits 0 with empty output, so it looks like an empty issue rather than a
@@ -1112,14 +1155,21 @@ result about the *inputs* and says nothing about this register.
   scan still decodes. Separately, OpenFoodFacts answers an unknown product with
   **HTTP 200 and `status: 0`** — checking the status code reports every unknown
   barcode as a success and then reads nutriments off an empty object.
-- Google OAuth creds and the real D1 binding are placeholders until Session
-  B2 (see NEXT-STEPS.md); `wrangler deploy` fails until `database_id` is real.
-  Passkeys work locally without any of that.
-- **Signing in locally:** there's no Google yet, and passkey registration
-  needs an existing session, so the sign-in screen has a dev-only
-  email/password button. It's gated on `import.meta.env.DEV`, which Vite
-  bakes to a literal — a production Worker is built with email/password off
-  and no env var can switch it back on. Never make that gate runtime.
+- **Signing in locally needs nothing.** *Create your account* works with a
+  passkey and nothing else — no session, no Google, no Google Cloud project
+  (#126). `ALLOWED_EMAILS` in `.dev.vars` decides who may claim it, and empty
+  or unset refuses everyone.
+  **This bullet used to say the opposite**, which is why #133 exists: it read
+  *"passkey registration needs an existing session"* for a day after #126
+  removed the requirement — the expired-justification defect #131 is about,
+  reproduced inside the file that documents it. When you remove a constraint,
+  grep for its justification.
+- **The dev-only email/password button stays**, because the tooling signs in
+  with it — `verify:auth`, `verify:onboarding`, the screenshot matrix — and a
+  password is far easier to script than a WebAuthn ceremony. Gated on
+  `import.meta.env.DEV`, which Vite bakes to a literal, so a production Worker
+  is built with those endpoints refusing and no env var can switch them back
+  on. Never make that gate runtime.
 - A missing static asset doesn't 404: `not_found_handling:
   single-page-application` serves index.html instead, so a mistyped asset
   path shows up as HTML with the wrong content-type rather than an error.

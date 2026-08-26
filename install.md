@@ -75,8 +75,8 @@ curl -s localhost:5173/api/health
 ```
 
 ```json
-{"ok":true,"db":true,"migration":"0009_portion.sql",
- "expected_migration":"0009_portion.sql","migration_behind":false}
+{"ok":true,"db":true,"migration":"0010_run_source_neutral.sql",
+ "expected_migration":"0010_run_source_neutral.sql","migration_behind":false}
 ```
 
 `ok` must be `true`. If `db` is `false` the migration did not run. If
