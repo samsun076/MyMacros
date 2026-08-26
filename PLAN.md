@@ -8,7 +8,7 @@ Built for weight loss, built for one user first (Dave), but shaped so other peop
 
 | Area | Decision |
 |---|---|
-| Stack | Vite + React + Hono on **Cloudflare Workers**, D1 (SQLite), R2 (photos), better-auth. Free tier. Repo connected to Workers Builds → push to main = deploy |
+| Stack | Vite + React + Hono on **Cloudflare Workers**, D1 (SQLite), R2 (photos), better-auth. Free tier. Deploy model is `.github/workflows/deploy.yml` (#136): `main` → the author's instance only, a `v*` tag → every other instance (#137) — built, and **inert until a repo variable is set**, so Workers Builds is still the live deployer as of 2026-08-26. See CLAUDE.md |
 | AI | **Claude Sonnet 5** vision + structured outputs (JSON schema) for photo→macros and text→macros. ~1–3¢ per photo |
 | API key | v1: `ANTHROPIC_API_KEY` as a Workers secret. OSS path: agent-install directives (Claude Code sets up D1/R2/secrets for the self-hoster) **and** optional per-user key in app settings for hosted multi-user |
 | Run data | Sync from **debrief's `runs.db`** — a small addition to the existing launchd pipeline POSTs recent runs (date, distance, kcal, TSS) to MyMacros' API. No new Suunto OAuth in v1 |
@@ -85,13 +85,15 @@ The app never talks to Suunto or Garmin directly in v1 — the Mac does, using a
 ## Build order (milestones)
 
 1. **M0 Design** — ✅ complete. Mockup rounds (v1 + v2, all three v2s adopted as themes); tweak list folded into Night Athletic; token schema + pack in `design/tokens.css` + `design/TOKENS.md` (#2); log-flow mockup `sketches/e-log-flow.html` (#3); screenshot-matrix QA tooling `tools/shot-matrix.mjs` (#31)
-2. **M1 Scaffold** — Workers project, D1 schema (incl. theme + accent columns), auth, PWA shell, push-to-deploy
+2. **M1 Scaffold** — Workers project, D1 schema (incl. theme + accent columns), auth, PWA shell, push-to-deploy (Workers Builds at the time; replaced by #136/#137)
 3. **M2 Core loop** — text quick-add → confirm sheet → Today screen, built in Night Athletic (proves AI+DB+UI without camera complexity)
 4. **M3 Photo & barcode** — camera + R2 + vision; OpenFoodFacts
 5. **M4 Budget engine** — TDEE onboarding, weight sync, runs sync, eat-back
 6. **M5 Trends & polish** — trends screen, settings (incl. theme switcher + accent picker #29), Field Notes + Instrument theme ports (#30), micro-interactions, install prompt
 
-**M0–M5 and M8, M9 are complete; the board past M5 is not this list.** M5 grew to 17 open
+**All twelve milestones have shipped their work; the board past M5 is not this list.**
+As of 2026-08-26 every milestone has 0 open issues — M6 OSS-ready is the one still
+marked `open` on GitHub, with nothing left in it. M5 grew to 17 open
 issues and a name that stopped being true the day Trends shipped, so on 2026-08-10 it was
 split into **M7 Log flow**, **M9 Budget truth**, **M10 Launch & offline** and **M11 Look &
 feel**, with **M6 OSS-ready** unchanged. Restating them here would be the same two-sources

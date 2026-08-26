@@ -59,9 +59,11 @@ and the answer deliberately not printed beside them.
 Trends is real now: a smoothed weight trend, weekly intake against target, and two rates
 that are allowed to disagree — one observed from the scale, one predicted from the energy
 model — because pretending they reconcile is how a number stops being checkable. Weight
-has a manual entry screen alongside the sync. What's still missing is the polish layer:
-the light theme packs are unported, there's no service worker, and a cold launch shows a
-white frame before first paint.
+has a manual entry screen alongside the sync. All three theme packs render — Night
+Athletic plus the Field Notes and Instrument light packs (#30) — and a service worker
+precaches the shell, so the app launches without the network and Settings → App can pick
+up a new build. It precaches the shell only: no API response is ever cached, so offline
+you get the app and an honest failure state rather than yesterday's numbers.
 
 No state-management library, no component library, no CSS framework — semantic design
 tokens (`design/tokens.css`) and plain stylesheets. 375px (iPhone 13 mini) is the
@@ -76,6 +78,23 @@ reference width and every screen is verified there first.
 >
 > Don't point an agent at [CLAUDE.md](CLAUDE.md) for this — that is the maintainer's file,
 > and nothing in it is needed to run your own instance.
+
+**How updates reach your instance.** The model is two channels: pushes to `main` deploy
+the maintainer's own instance and nothing else — he is the canary, and the defects no
+automated check can see are the ones he finds by opening the app — while a `v*` tag
+deploys every other instance, including yours. One known-good point everybody converges
+on, so *the same app, run the same way* is true. Watch the repo's tags, not its commits.
+`.github/workflows/deploy.yml` ships here and implements both channels; the manual
+five-step version is there too. Settings → App shows which build you are running, baked
+in at build time and never fetched, and its *Check for updates* button asks your own
+Worker — nothing phones home.
+[Keeping it updated](install.md#keeping-it-updated) is the detail.
+
+> **Status, 2026-08-26.** The workflow is **inert** — every job is gated on a repo
+> variable and none is set, so the maintainer's own instance still deploys through
+> Cloudflare Workers Builds and **no `v*` tag has been cut yet**. The two channels are
+> built and wired; they are not carrying traffic. This paragraph describes the model,
+> and this note is here so it cannot be read as a description of today.
 
 Local development needs **Node 22.12+** (Wrangler wants ≥22, Vite 8 wants ≥22.12) and
 nothing else. D1 and R2 are emulated by miniflare, so **you do not need a Cloudflare
@@ -137,8 +156,9 @@ The sign-in screen also carries a **dev-only email/password button**, kept becau
 tooling signs in with it (`npm run verify:auth`, the screenshot matrix) and because a
 password is easier to script than a WebAuthn ceremony. It's gated on
 `import.meta.env.DEV`, which Vite bakes to a literal, so a production build ships with
-those endpoints dropped from the Worker entirely and no environment variable can switch
-them back on.
+those endpoints **refusing** and no environment variable can switch them back on.
+better-auth still routes `/sign-up/email` and `/sign-in/email` either way — measured
+against the built Worker, sign-up answers `EMAIL_PASSWORD_SIGN_UP_DISABLED`.
 
 ### Deploying your own
 
@@ -183,13 +203,16 @@ first instance's data isn't deleted; it's orphaned behind a Worker that no longe
 at it, which is worse, because the app stays up and belongs to somebody else. Override
 with `npm run deploy -- --force` when you mean it.
 
-**The migrate/deploy order is load-bearing and nothing enforces it.** Deploying code that expects a column
-the database doesn't have yet is the quiet failure `migration_behind` exists to name; doing
-it the other way round is harmless, because an unused column costs nothing. If you wire up
-CI, make it one ordered job — Cloudflare Workers Builds **cannot run migrations**, so it
-gives you automatic deploys and leaves the migration to you. A GitHub Actions workflow can
-do both in order, at the cost of a Cloudflare API token in your repo secrets. Neither is
-wrong; the trade is real and you should pick deliberately.
+**The migrate/deploy order is load-bearing, and `.github/workflows/deploy.yml` is what
+will enforce it once it is switched on.** Deploying code that expects a column the database doesn't have yet is the
+quiet failure `migration_behind` exists to name; doing it the other way round is harmless,
+because an unused column costs nothing. The workflow ships in this repo, runs the pair in
+order, and is inert until you set the repo variables — see
+[Keeping it updated](install.md#keeping-it-updated). Cloudflare Workers Builds is not an
+alternative to it: it **cannot run migrations** and cannot reach a second Cloudflare
+account, so it leaves the half that matters to somebody's memory. If you turn the workflow
+on, turn Workers Builds off in the same sitting — two deployers pointed at one Worker
+race, and which version survives is arbitrary.
 
 Two traps worth knowing before you hit them:
 

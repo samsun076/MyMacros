@@ -151,7 +151,7 @@ npm run db:migrate:remote
 npm run deploy
 ```
 
-**The order is load-bearing and nothing enforces it.** Deploying code that expects a
+**The order is load-bearing and nothing enforces it today.** (`.github/workflows/deploy.yml` does enforce it, and is inert until switched on — see *Keeping it updated*.) Deploying code that expects a
 column the database does not have yet is a silent half-failure; doing it the other way
 round is harmless, because an unused column costs nothing.
 
@@ -197,88 +197,120 @@ Cron Trigger so no Mac is involved.
 
 ## Keeping it updated
 
+**There are two channels, and which one you are on is the whole of this section.**
+
+- **`main` is the author's own instance and nothing else.** He is the canary: the
+  defects no automated check can see are the ones he finds by opening the app, so his
+  instance takes every commit and breakage there is cheap. Commits here land several a
+  day and some of them correct the one before.
+- **A `v*` tag is every other instance, yours included.** One known-good point that
+  everybody converges on, so "the same app, run the same way" is true and "what version
+  are you on" has an answer.
+
+A tag rather than a schedule, deliberately. A monthly release ships whatever happens to
+be on `main` that morning; a tag ships what somebody decided was good. And nobody can
+forget to tag, because the tag *is* the deploy — forgetting it means nothing shipped,
+which is loud.
+
+### What the app tells you
+
 **Settings → App has a *Check for updates* button, and it is not the one you think.**
-It asks the service worker whether the Worker is now serving a newer build than the one
-cached on the phone, and swaps it if so. It picks up a deploy that has already happened.
-It does not cause one.
+It asks *your own* Worker whether it is now serving a newer build than the one cached on
+the phone, and swaps it if so. It picks up a deploy that has already happened. It does
+not cause one, and it does not talk to the author's infrastructure — nothing about your
+instance is visible to anybody else.
 
-**Causing one from inside the app is what cannot exist.** A Worker has no filesystem and
-no shell, so it cannot deploy a Worker; the only mechanism would be giving the running app
-a deploy-capable API token, which is not a trade worth making. The Nextcloud-style "update
-now and it installs itself" button is unavailable here rather than missing.
+**Causing a deploy from inside the app is what cannot exist.** A Worker has no
+filesystem and no shell, so it cannot deploy a Worker; the only mechanism would be
+giving the running app a deploy-capable API token, which is not a trade worth making.
+The Nextcloud-style "update now and it installs itself" button is unavailable here
+rather than missing.
 
-Settings → App also shows **which build this instance is running** — a tag on the release
-channel. That is baked in at build time, never fetched: displaying what you *are* needs no
-network, where asking what you *should be* would mean every instance phoning home.
+Settings → App also shows **which build this instance is running**. It comes from
+`git describe --tags --always --dirty` at build time, and takes one of four forms: the
+bare tag (`v0.2.0`) when the build sat exactly on one, `v0.2.0-14-gabc1234` for a build
+off `main` past that tag, a bare commit sha when the repo has no tags at all — **which
+is the form in effect today** — and `v` plus `package.json`'s version where git is not
+available. It is baked in, never fetched: displaying what you *are* needs no network,
+where asking what you *should be* would mean every instance phoning home.
 
 ### Learning that an update exists
 
-**There are no tagged releases, deliberately.** There is no version scheme here and
-commits land several a day, so a release process that depends on remembering to tag
-would stop halfway through a year — and a Releases page that stops reads as an
-abandoned project rather than an untagged one. Two things that cannot rot instead:
+**A new `v*` tag on the repo is the notification.** Watch the repo on GitHub, or look
+at the tag list. The commits between two tags are the release notes — messages here are
+long and say what changed and why.
 
-- **Your fork's own page says "N commits behind".** That is the update notification,
-  it is always accurate, and it costs nobody anything to maintain.
-- **The commit log is the changelog.** Messages in this repo are long and say what
-  changed and why, which is more than a generated release note would carry.
+⚠️ **No tag has been cut yet** (measured: 0 tags, 0 releases as of 2026-08-26). The
+first one lands when the first instance other than the author's stands up, which is what
+the channel exists for. Until then there is nothing to follow and nothing to check out,
+and this section describes the model rather than a stream you can join today.
+
+Do not follow "N commits behind" on your fork's page. That counts `main`, which is the
+canary stream; taking those is exactly what the two-channel split exists to prevent.
 
 **You never need to ask whether an update includes a migration.** Run
-`db:migrate:remote` every time; when there is nothing pending it is a no-op that
-prints an empty table. That is why the procedure below has it unconditionally rather
-than as a step to decide about.
+`db:migrate:remote` every time; when there is nothing pending it is a no-op that prints
+an empty table. That is why the procedures below have it unconditionally rather than as
+a step to decide about.
 
-There is also no in-app "update available" check, and there will not be: an instance
-should not phone home to the author's infrastructure to ask whether it is current. It
-would leak the existence and liveness of every deployment, and make one person's
-uptime a dependency of everybody else's app.
+### Applying one — the automatic path
 
-### Applying one
+**`.github/workflows/deploy.yml` is in your fork and does the whole thing.** It is inert
+until you switch it on, so it costs nothing while you decide.
 
-**Fork the repo** rather than cloning it, and updating becomes:
-
-1. GitHub's **Sync fork** button on your fork.
-2. `git pull` locally.
-3. `npm run db:migrate:remote` — **first**.
-4. `npm run deploy`.
-5. `curl https://<your-host>/api/health` → `ok:true`.
-
-Your `wrangler.jsonc` edits live in your fork and upstream rarely touches that file
-(measured: 6 changes in 234 commits, all in the project's first five days), so Sync fork
-is normally conflict-free. If it ever does conflict there, **keep your version** — it is
-the file that defines your deployment.
-
-### Automating it
-
-**`.github/workflows/deploy.yml` already does all five steps.** It is in your fork and it
-is inert until you switch it on, so it costs nothing while you decide.
-
-Per instance:
-
-1. In that instance's Cloudflare account: **My Profile → API Tokens → Create**, using the
+1. In your Cloudflare account: **My Profile → API Tokens → Create**, using the
    *Edit Cloudflare Workers* template, and add **D1 → Edit**. Copy the token and the
    Account ID.
 2. In your fork: **Settings → Secrets and variables → Actions**
 
    | | |
    |---|---|
-   | secret | `CF_API_TOKEN_PRIMARY` |
-   | secret | `CF_ACCOUNT_ID_PRIMARY` |
-   | variable | `DEPLOY_PRIMARY` = `true` |
-   | variable | `APP_URL_PRIMARY` = your URL |
+   | secret | `CF_API_TOKEN_WIFE` |
+   | secret | `CF_ACCOUNT_ID_WIFE` |
+   | variable | `DEPLOY_WIFE` = `true` |
+   | variable | `APP_URL_WIFE` = your URL |
 
-Every push to `main` then runs check + test, migrates, builds, preflights, deploys, and
-polls `/api/health` until it reports `ok:true`.
+3. Give your instance its own `wrangler.wife.jsonc` — `database_id`, `routes` and
+   `APP_URL` differ per instance, and separate config files mean a mistake in one cannot
+   silently deploy to another.
 
-⚠️ **If you also set up Cloudflare Workers Builds, turn it off now.** Two deployers
-pointed at one Worker will race, and which version survives is arbitrary. Pick one — and
+Pushing a `v*` tag then runs check + test, migrates, builds, deploys, and polls
+`/api/health` until it reports `ok:true`.
+
+⚠️ **It does not run `npm run preflight`, and that is a known gap, not a simplification.**
+`tools/preflight-deploy.mjs` reads `wrangler.jsonc` unconditionally and takes no config
+argument, so it cannot check a `wrangler.<name>.jsonc` instance — the guard that refuses
+to replace somebody else's Worker is therefore absent from exactly the path a
+self-hoster uses. Tracked separately. Until it is fixed, check your `database_id` by eye
+before the first deploy of a new instance.
+
+⚠️ **`WIFE` is a name, not a person — rename it to whatever you like.** What matters is
+that you copy the `wife:` job in that file and **never the `primary:` job**. `primary`
+is gated on `refs/heads/` and fires on every commit to `main`; that channel belongs to
+exactly one instance and it is not yours. Every other job is gated on `refs/tags/v`.
+Setting `DEPLOY_PRIMARY` on your own fork puts you on the canary stream.
+
+⚠️ **If you also set up Cloudflare Workers Builds, turn it off in the same sitting.**
+Two deployers pointed at one Worker will race, and which version survives is arbitrary.
 Workers Builds is the one that cannot run migrations, which is the whole reason the
 ordered pair above exists.
 
-**A second instance is another job in the same file.** Copy the `wife:` block, change the
-three names and the config path, and give it a `wrangler.<name>.jsonc` of its own —
-`database_id`, `routes` and `APP_URL` differ per instance, and separate files mean a
-mistake in one cannot silently deploy to the other.
+### Applying one — by hand
+
+If you would rather not give a token to GitHub Actions, the same five steps run from
+your laptop. This is the fallback, not the main path.
+
+1. Fetch tags and check out the newest one: `git fetch --tags && git checkout v0.2.0`
+   (substitute the newest tag; see the warning above — there are none yet).
+2. `npm install` if dependencies changed.
+3. `npm run db:migrate:remote` — **first**.
+4. `npm run deploy`.
+5. `curl https://<your-host>/api/health` → `ok:true`.
+
+Your `wrangler.*.jsonc` edits live in your fork and upstream rarely touches that file
+(re-measured 2026-08-26: 6 changes to `wrangler.jsonc` in 249 commits, the last on
+2026-08-06, the project's sixth day), so pulling is normally conflict-free. If it ever does conflict, **keep your version** — it is the
+file that defines your deployment.
 
 ---
 

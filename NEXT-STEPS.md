@@ -3384,6 +3384,15 @@ Cloudflare account per instance · SaaS stays out · self-hosters accept the ris
 no tagged releases (the fork's own commits-behind count is the notification) ·
 CONTRIBUTING stays closed to issues and PRs.
 
+[SUPERSEDED 2026-08-26 — "no tagged releases" was NOT Dave's decision and was
+reversed by #137. Tagged releases ARE the model: `main` → Dave's instance only,
+a `v*` tag → every other instance. It reached this list because the assistant
+wrote it here and Dave pasted the prompt back, which returned an assistant
+decision in Dave's own words carrying his authority. #139's audit found this and
+the rule that follows from it: nothing enters a DECIDED list that was not put to
+Dave as a question. The other four items on this list were checked against his
+own messages and are genuinely his.]
+
 Dave does not review diffs or run builds. That is yours end to end — build, test,
 commit, push, verify the deploy. His job is a thumb on an iPhone 13 mini and
 decisions no tool can make. Never hand him a diff; hand him a short numbered list

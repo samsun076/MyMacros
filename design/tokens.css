@@ -7,7 +7,8 @@
  * per-theme code) are documented in design/TOKENS.md.
  *
  * Ground truth: sketches/c2-night-athletic.html (post tweak-list).
- * Light packs (field-notes, instrument) land with the M5 port (#30).
+ * Light packs (field-notes, instrument) landed in M11 (#30) — planned for M5,
+ * shipped later; both render.
  */
 
 /* **Night Athletic is the BASE pack, not one of three siblings** (#29).

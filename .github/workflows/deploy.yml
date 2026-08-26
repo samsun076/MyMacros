@@ -44,10 +44,15 @@ name: Deploy
 
 # ── Two channels, and the split is the point (#137) ──────────
 #
-# **main** is the author's own instance and nothing else. He is the canary:
-# every defect this project has ever found came from him opening the app, so
-# his instance takes every commit and breakage there is cheap. On 2026-08-25
-# six commits shipped and two needed follow-up fixes within the hour.
+# **main** is the author's own instance and nothing else. He is the canary: the
+# defects no automated check can see are the ones he finds by opening the app,
+# so his instance takes every commit and breakage there is cheap. Commits here
+# land several a day and some of them correct the one before.
+#
+# (This comment said "every defect this project has ever found" and cited six
+# commits on 2026-08-25. Both were wrong — that day had two — and #138's sweep
+# caught them. Rule 4a applies to a figure in a comment as much as to a claim
+# about a screenshot.)
 #
 # **a tag** is everybody else. One known-good point that every other instance
 # converges on, so "the same exact app, run the same exact way" is true and

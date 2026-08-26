@@ -403,7 +403,10 @@ The walkthrough at **https://mymacros.debrief.run** is built from
   `:root[data-theme]` overrides. Both were removed: nothing sets `data-theme`
   off-platform, and the light values were the unported "Instrument" pack (#30)
   — a light page wrapped around eight dark screenshots, advertising a theme the
-  app can't render. When #30 lands, that's when it comes back.
+  app can't render. **#30 has since landed and the app renders all three**, so the
+  argument for restoring the site's light pack is now live — but it must be
+  re-ported from the shipped `design/tokens.css`, not from the values that were
+  removed, which were never correct.
 - **The site asserts things about the app, and the app falsifies them
   silently.** M4 alone broke three claims (runs exist now, so "the day route
   returns no run at all" and the drawn budget-meter diagram are both false).
@@ -451,7 +454,9 @@ cite these by number — changing one renumbers the references, so append rather
 reorder.
 
 1. **Night Athletic first.** It's the primary/default dark theme; polish
-   happens there. Light packs (Field Notes, Instrument) port in M5 (#30).
+   happens there. Light packs (Field Notes, Instrument) ported in **M11** (#30)
+   and all three render; polish still starts in Night Athletic. (The plan put
+   them in M5; they landed in M11. Cite the milestone that shipped it.)
 2. **Never hardcode a color, font, or radius.** Everything through the
    semantic tokens in `design/tokens.css`. If a value isn't a token yet,
    add a token — don't inline it.
@@ -903,16 +908,44 @@ result about the *inputs* and says nothing about this register.
   and the two feel identical from inside the session. `git log -S` on the
   offending line answers it in seconds and should be run before anyone changes
   how the work is done.
-- **Push to `main` deploys via `.github/workflows/deploy.yml`** (#136) — check +
-  test, then per instance: migrate, build, preflight, deploy, poll
-  `/api/health` until `ok:true`. Migration is unconditional because a `--remote`
-  apply with nothing pending is a no-op, and a step nobody has to decide about
-  cannot be decided wrong. Every deploy job is gated on a repo *variable*
-  (`vars`, not `secrets` — the latter is unavailable in a job-level `if`), so
-  the workflow is inert until an instance opts in.
-  **Workers Builds was the deployer until #136 and must not run alongside it** —
-  two deployers on one Worker race and the winner is arbitrary. It could never
-  run migrations, which is why it was replaced.
+- **Workers Builds is STILL the live deployer.** `.github/workflows/deploy.yml`
+  exists (#136) and is **inert** — every job is gated on a repo *variable*
+  (`vars`, not `secrets`, because the latter is unavailable in a job-level
+  `if`), and none is set. Verified on push: `gate` succeeded, both deploy jobs
+  skipped. It takes over when Dave sets `DEPLOY_PRIMARY` **and turns Workers
+  Builds off in the same sitting** — two deployers on one Worker race and the
+  winner is arbitrary. Until then, the bullet below is how you read a build.
+  **Do not write this bullet in the past tense before that happens**; it said
+  Workers Builds "was replaced" for a day while the next bullet told you to read
+  its check-runs, which is the same self-contradiction #133 was about.
+  The workflow itself does: check + test, then per instance migrate, build,
+  deploy, poll `/api/health` until `ok:true`. Migration is unconditional because
+  a `--remote` apply with nothing pending is a no-op, and a step nobody has to
+  decide about cannot be decided wrong.
+  **Only `primary:` runs the preflight, and that is a gap rather than a
+  simplification.** `tools/preflight-deploy.mjs` calls `readWranglerConfig()`
+  with no argument and parses only `--force`, so it always reads
+  `wrangler.jsonc` and structurally cannot check a `wrangler.<name>.jsonc`
+  instance — #127's "refuse to replace another instance" guard is therefore
+  absent from exactly the path a self-hoster uses. Don't paper over it in the
+  docs; it needs a `--config` flag and a step in every job.
+- **Two channels, and the split is load-bearing** (#137). `main` deploys
+  **Dave's instance only** — he is the canary, and the defects no automated check
+  can see are the ones he finds by opening the app. (Not *every* defect: rule 4's
+  shot-matrix found #123 on its first real run, #81's D1 ceiling came from
+  measuring against workerd, #74 from a rule-4b reconciliation. Rule 4a applies
+  to this sentence too.) A **`v*` tag** deploys every other
+  instance. `primary:` is gated on `refs/heads/`, every other job on
+  `refs/tags/v`; **copy the `wife:` job for a new instance, never `primary:`**.
+  A tag rather than a schedule: trigger, not calendar, the same rule as 4b and
+  10 — and nobody can forget to tag, because the tag *is* the deploy.
+  **The version in Settings → App is baked in at build time**
+  (`__APP_VERSION__`, from `git describe --tags --always --dirty`, falling back
+  to `package.json`) and **must never become a runtime fetch**: displaying what
+  you *are* needs no network, where asking what you *should be* means every
+  instance phoning home. `Check for updates` asks the instance's **own** Worker
+  via the service worker — it picks up a deploy that already happened and does
+  not cause one.
 - **Read the build result off GitHub, not by polling the asset hash:**
   ```bash
   gh api repos/samsun076/MyMacros/commits/<sha>/check-runs \

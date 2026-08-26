@@ -7,8 +7,11 @@
  *
  * ── What is cached, and what deliberately is not ──────────────────────────
  *
- * The shell only: index.html, the JS chunks, the fonts, the icons and the
- * manifest. **No API responses.** M9 spent a milestone removing second sources
+ * The shell only: index.html, the JS chunks and the shell fonts. **Not** the
+ * icons or the manifest — everything in `public/` is excluded on size, along
+ * with the 991 KB barcode wasm; the emitter in vite.config.ts filters to `.js`
+ * and shell-family `.woff2`, and this comment claimed otherwise until #138.
+ * **No API responses.** M9 spent a milestone removing second sources
  * for one number (see the register in CLAUDE.md); a cached `/api/day` beside a
  * live one is exactly that defect with a stale timestamp attached. The budget
  * a screen shows must always be the budget the Worker just computed.
