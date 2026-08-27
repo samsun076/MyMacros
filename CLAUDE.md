@@ -66,6 +66,13 @@ npm run verify:viewport -- --cookie <name>=<token>   # no screen overflows horiz
 npm run verify:firstpaint   # needs `npm run build` first — the document paints the app alone (#53)
 npm run verify:signup       # sign up with a passkey alone, and the account can't be taken twice (#126)
 npm run verify:onboarding   # the two typed fields a first-run stranger meets, and Dave cannot (#37)
+npm run docs:shots          # regenerate every screenshot in docs/features/img (#134).
+                            # Needs `npm run dev` up. Add `--seed` to rebuild the
+                            # demo data first (mints the session BEFORE seeding —
+                            # seed-demo writes to the oldest user row and is a
+                            # SILENT no-op with none). `--only <id>` for one shot.
+                            # The clock is pinned in-page to a fixed date so a
+                            # re-run does not rewrite every PNG with a new date.
 npm run shots               # shot-matrix, same thing with fewer keystrokes
 node tools/shot-matrix.mjs <file.html|url>   # 375/390/428 render matrix
 node tools/shot-matrix.mjs --theme field-notes --cookie <c> <url>   # build rule 4's light-pack check (#123)

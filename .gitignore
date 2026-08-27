@@ -24,3 +24,6 @@ plans/
 # session (Session R onward). Read it, act on it, delete it — it is a
 # handover note, not a record, and the commits are the record.
 REVIEW.md
+
+# doc-shots Chrome profile
+.doc-shots-profile/

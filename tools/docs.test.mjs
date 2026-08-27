@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 /** Documentation truth, for the part of it that is decidable (#135).
@@ -33,7 +33,17 @@ const pkg = JSON.parse(read("package.json"));
 /** The docs that make checkable claims. NEXT-STEPS.md is deliberately absent:
  *  it is a session log, an append-only record of what was true on a given day,
  *  and holding history to present-tense truth would be wrong. */
-const DOCS = ["CLAUDE.md", "README.md", "install.md", "CONTRIBUTING.md", "PLAN.md"];
+const DOCS = [
+  "CLAUDE.md",
+  "README.md",
+  "install.md",
+  "CONTRIBUTING.md",
+  "PLAN.md",
+  "docs/what-the-numbers-mean.md",
+  ...readdirSync("docs/features")
+    .filter((f) => f.endsWith(".md"))
+    .map((f) => `docs/features/${f}`),
+];
 
 describe("every npm script is documented", () => {
   const claude = read("CLAUDE.md");
@@ -204,5 +214,66 @@ describe("every number the walkthrough quotes matches its constant", async () =>
   it("checked a plausible number of quotations", () => {
     expect(QUOTED.length).toBeGreaterThan(8);
     expect(raw.length).toBeGreaterThan(4000);
+  });
+});
+
+/** Every screenshot a feature article cites is generated, and still there (#134).
+ *
+ *  The whole design of `docs/features/` rests on one claim: **no image in it is
+ *  hand-placed**. CLAUDE.md's account of how the site's documentation rotted is
+ *  *"images decay loudly and prose decays quietly"* — loud decay is only the
+ *  better half if the images are cheap to redo, and they are only cheap to redo
+ *  if every one of them is in the manifest `npm run docs:shots` walks.
+ *
+ *  So this asserts the two halves of that claim in the two directions that can
+ *  break:
+ *
+ *    - an article cites an image no manifest entry produces (someone dropped a
+ *      PNG in by hand, and it will silently age forever), and
+ *    - an article cites an image that is not on disk (the manifest entry was
+ *      renamed or removed and the article was not).
+ *
+ *  What it deliberately does NOT assert is that the images are up to date. No
+ *  test can know that a screenshot stopped resembling the app — that is the
+ *  same half build rule 10 exists for, one medium over.
+ */
+describe("every feature-article screenshot is generated and present", async () => {
+  const { MANIFEST } = await import("./doc-shots.mjs");
+  const ids = new Set(MANIFEST.map((s) => s.id));
+  const articles = readdirSync("docs/features")
+    .filter((f) => f.endsWith(".md") && f !== "README.md")
+    .map((f) => `docs/features/${f}`);
+
+  it("the manifest is populated", () => {
+    expect(MANIFEST.length).toBeGreaterThan(20);
+    expect(new Set(MANIFEST.map((s) => s.id)).size, "duplicate ids overwrite each other").toBe(
+      MANIFEST.length,
+    );
+  });
+
+  it("there is at least one article to check", () => {
+    // Without this, an empty docs/features/ makes every assertion below vacuous
+    // and the family reports a clean pass over nothing at all.
+    expect(articles.length).toBeGreaterThan(0);
+  });
+
+  it.each(articles)("%s cites only generated, existing images", (article) => {
+    const cited = [...read(article).matchAll(/\]\(img\/([a-z0-9-]+)\.png\)/g)].map((m) => m[1]);
+    expect(cited.length, `${article} cites no screenshot at all — is it really a feature article?`)
+      .toBeGreaterThan(0);
+
+    const unmanaged = cited.filter((id) => !ids.has(id));
+    expect(
+      unmanaged,
+      `${article} cites images that no manifest entry in tools/doc-shots.mjs produces: ` +
+        `${unmanaged.join(", ")}. A hand-placed screenshot cannot be regenerated and will ` +
+        `age silently — add it to MANIFEST instead.`,
+    ).toEqual([]);
+
+    const absent = cited.filter((id) => !existsSync(`docs/features/img/${id}.png`));
+    expect(
+      absent,
+      `${article} cites images that are not on disk: ${absent.join(", ")}. Run npm run docs:shots.`,
+    ).toEqual([]);
   });
 });

@@ -290,7 +290,7 @@ function seedWindow(weeks) {
 
     ...runs.map(
       (r) => `INSERT INTO runs (id, user_id, ran_on, started_at, distance_m, duration_s, kcal, source, external_id)
-       SELECT ${q(`demo-w-run-${r.day}`)}, id, ${q(r.day)}, ${q(at(r.day, 6))}, ${r.distance_m}, ${r.duration_s}, ${r.kcal}, 'debrief', ${q(`demo-w-${r.day}`)}
+       SELECT ${q(`demo-w-run-${r.day}`)}, id, ${q(r.day)}, ${q(at(r.day, 6))}, ${r.distance_m}, ${r.duration_s}, ${r.kcal}, 'sync', ${q(`demo-w-${r.day}`)}
        FROM users ORDER BY createdAt LIMIT 1;`,
     ),
 

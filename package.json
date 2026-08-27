@@ -28,7 +28,8 @@
     "verify:signup": "node tools/verify-signup.mjs",
     "verify:viewport": "node tools/verify-viewport.mjs",
     "preflight": "node tools/preflight-deploy.mjs",
-    "deploy": "npm run preflight && npm run build && wrangler deploy"
+    "deploy": "npm run preflight && npm run build && wrangler deploy",
+    "docs:shots": "node tools/doc-shots.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.115.0",
