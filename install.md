@@ -195,6 +195,15 @@ Cron Trigger so no Mac is involved.
 
 ---
 
+## What the app is telling you
+
+[`docs/what-the-numbers-mean.md`](docs/what-the-numbers-mean.md) is the walkthrough for
+whoever ends up using this — why the budget draws in two parts, why a run only gives back
+half, why your weight lags the scale by days, what the coloured macro bar is, and what it
+means when a feed goes quiet. Worth reading once before handing an instance to somebody.
+
+---
+
 ## Keeping it updated
 
 **There are two channels, and which one you are on is the whole of this section.**

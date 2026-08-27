@@ -5,6 +5,11 @@ calorie budget breathes with your running. One user first (Dave), but
 multi-user-shaped from day one.
 
 **Read [PLAN.md](PLAN.md) for locked decisions** (stack, theming, v1 scope).
+**[docs/what-the-numbers-mean.md](docs/what-the-numbers-mean.md)** explains the app's
+figures to the person using it — and every number it quotes is pinned to its constant by
+`tools/docs.test.mjs`, so changing `TREND_WINDOW_DAYS` fails the build until the sentence
+about it changes too. A claim about the app lives next to the code that can falsify it
+(#134); the site renders this file rather than restating it.
 **[NEXT-STEPS.md](NEXT-STEPS.md)** is the session playbook — what to run next.
 Work is tracked in GitHub issues, grouped by milestone.
 
@@ -23,6 +28,7 @@ src/client/      React SPA — routes/, components/, lib/
 src/worker/      Hono API — index.ts (entry), auth.ts, db.ts, routes/, middleware/
 src/shared/      types shared across the wire
 migrations/      D1 migrations (wrangler d1 migrations)
+docs/            what-the-numbers-mean.md — the user-facing walkthrough (#134)
 design/          tokens.css (the token pack) + TOKENS.md (schema + motif slots)
 sketches/        frozen design ground truth — read, don't edit
 tools/           shot-matrix.mjs (design QA), make-icons.mjs (PWA icons)

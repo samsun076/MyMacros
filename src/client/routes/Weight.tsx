@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router";
 import type { Me, WeightsResponse } from "../../shared/api";
 import { displayWeight, lbToKg } from "../../shared/units";
-import { weightBounds } from "../../shared/weight";
+import { TREND_WINDOW_DAYS, weightBounds } from "../../shared/weight";
 import { LoadFailureNote } from "../components/LoadFailureNote";
 import { ApiError, api, useApi } from "../lib/api";
 import { localDay } from "../lib/day";
@@ -195,7 +195,7 @@ export function Weight() {
       <section>
         <div className="sec-head">
           <span className="eyebrow">Trend</span>
-          <span className="mono">7-DAY</span>
+          <span className="mono">{TREND_WINDOW_DAYS}-DAY</span>
         </div>
         {trend ? (
           <>
@@ -204,8 +204,8 @@ export function Weight() {
               <span className="hero-of">{trend.unit}</span>
             </div>
             <p className="opt-hint">
-              Smoothed over the last 7 days — this is the number your budget follows, not
-              the reading on any one morning.
+              Smoothed over the last {TREND_WINDOW_DAYS} days — this is the number your
+              budget follows, not the reading on any one morning.
             </p>
           </>
         ) : data ? (

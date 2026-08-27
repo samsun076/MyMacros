@@ -102,8 +102,10 @@ export function currentTrendWeightKg(entries: WeighIn[], today: string): number 
  *  midnight for several hours every evening. The symptom is the worst kind —
  *  the newest weight is invisible, `computeBudget` declines for want of data,
  *  and the stored target simply stays where it was. Caught during M4's own
- *  verification: a fresh profile stayed on the M2 default of 1,810 while the
- *  day endpoint happily reported `onboarded: true`.
+ *  verification: a fresh profile stayed on the deployment default while the day
+ *  endpoint happily reported `onboarded: true`. (This said "the M2 default of
+ *  1,810"; `migrations/0002_target_kcal.sql` sets 1800. A figure in a comment
+ *  is a second source like any other — #134.)
  *
  *  There is nothing to protect by refusing a future date. The question is
  *  "what does this person weigh now", and the newest weight is the best

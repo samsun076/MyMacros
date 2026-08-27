@@ -3,7 +3,7 @@ import { Link } from "react-router";
 import type { Goal, Me, TrendsResponse, Units } from "../../shared/api";
 import { buildTrends, MIN_LOGGED_DAYS, MIN_TREND_SPAN_DAYS } from "../../shared/trends";
 import { kgToLb } from "../../shared/units";
-import { shiftDay } from "../../shared/weight";
+import { shiftDay, TREND_WINDOW_DAYS } from "../../shared/weight";
 import { IntakeWeeks } from "../components/IntakeWeeks";
 import { LoadFailureNote } from "../components/LoadFailureNote";
 import { WeightChart } from "../components/WeightChart";
@@ -218,8 +218,8 @@ export function Trends() {
                 units={units}
               />
               <p className="chart-key">
-                <b>Trend</b> is the 7-day smoothed weight your budget follows; the dots are the
-                mornings it's built from.
+                <b>Trend</b> is the {TREND_WINDOW_DAYS}-day smoothed weight your budget
+                follows; the dots are the mornings it's built from.
               </p>
             </>
           ) : (

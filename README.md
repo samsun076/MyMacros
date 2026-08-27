@@ -79,6 +79,11 @@ reference width and every screen is verified there first.
 > Don't point an agent at [CLAUDE.md](CLAUDE.md) for this — that is the maintainer's file,
 > and nothing in it is needed to run your own instance.
 
+**What the numbers mean.** [docs/what-the-numbers-mean.md](docs/what-the-numbers-mean.md)
+explains the budget, the earned run bonus, the eat-back hedge, trend weight, the focus
+macro, corrections, the sync heartbeat and the day boundary — in the order you meet them
+opening the app. Every figure in it is checked against the constant it describes.
+
 **How updates reach your instance.** The model is two channels: pushes to `main` deploy
 the maintainer's own instance and nothing else — he is the canary, and the defects no
 automated check can see are the ones he finds by opening the app — while a `v*` tag

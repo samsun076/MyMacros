@@ -117,3 +117,92 @@ describe("every migration a doc names is the CURRENT one", () => {
     ).toEqual([]);
   });
 });
+
+/** Every number the walkthrough quotes matches the constant it describes (#134).
+ *
+ *  #134 said, in a "Watch for" block: *"Do not restate a number. Anything
+ *  quoting a threshold (7 days, 60%, 18h) is a second statement of a constant in
+ *  `src/shared/`."* That is correct and it is also unusable — you cannot explain
+ *  a trend weight to a person without saying "seven days", and "about a week"
+ *  ages beautifully while helping nobody.
+ *
+ *  So the walkthrough quotes the real numbers and this family is the price. It
+ *  is the same shape as the migration family above: a doc states a value, a
+ *  constant is the source, and the build fails when they disagree.
+ *
+ *  The constants are IMPORTED rather than regexed out of source, which
+ *  `tools/schema.test.mjs` established is possible here — a `tools/*.test.mjs`
+ *  runs under the unit project and Vite transforms the TypeScript. Regexing them
+ *  would make this a check on two strings rather than on a value and a string.
+ *
+ *  **The pattern must match, or the check is decorative.** Every entry asserts
+ *  its own regex found something before comparing, because a doc reworded past
+ *  its pattern and a doc that agrees with the code produce the same green run —
+ *  and that is the failure mode CLAUDE.md's test section warns about most.
+ */
+describe("every number the walkthrough quotes matches its constant", async () => {
+  const { TREND_WINDOW_DAYS } = await import("../src/shared/weight.ts");
+  const { KCAL_PER_KG, MIN_LOGGED_DAYS, MIN_LOGGED_SHARE } = await import("../src/shared/trends.ts");
+  const { STALE_AFTER_HOURS } = await import("../src/shared/sync.ts");
+  const { KCAL_PER_G, PROTEIN_G_PER_KG } = await import("../src/shared/budget.ts");
+  const { PROFILE_DEFAULTS } = await import("../src/shared/profile.ts");
+
+  const WALKTHROUGH = "docs/what-the-numbers-mean.md";
+  const raw = read(WALKTHROUGH);
+  /** Matched against whitespace-collapsed prose. Markdown hard-wraps at 90
+   *  columns, so a pattern written against the rendered sentence breaks the
+   *  moment a paragraph reflows — which is a check going silent for a reason
+   *  that has nothing to do with the claim. Caught on this family's first run:
+   *  the line wrapped between "day's" and "budget" and the pattern found
+   *  nothing. The empty-match guard below is what reported it. */
+  const doc = raw.replace(/\s+/g, " ");
+
+  /** [label, /regex with one capture group/g, expected value].
+   *  Written against the doc's actual sentences, so rewording the doc past a
+   *  pattern fails loudly rather than quietly stopping the check. */
+  const QUOTED = [
+    ["trend window (list)", /mean of every weigh-in in the last (\d+) days/g, TREND_WINDOW_DAYS],
+    ["trend window (lead)", /a \*\*(\d+)-day average\*\*, not today's reading/g, TREND_WINDOW_DAYS],
+    ["trend window (summary)", /A (\d+)-day mean, because daily weight/g, TREND_WINDOW_DAYS],
+    ["eat-back default", /The default eat-back is \*\*(\d+)%\*\*/g, PROFILE_DEFAULTS.eat_back_pct],
+    ["stale hours (body)", /has not checked in for \*\*(\d+) hours\*\*/g, STALE_AFTER_HOURS],
+    ["stale hours (summary)", /quiet for over (\d+) hours/g, STALE_AFTER_HOURS],
+    ["protein on a cut", /the target is \*\*([\d.]+) g\*\* per kg/g, PROTEIN_G_PER_KG.cut],
+    ["protein on maintenance", /but ([\d.]+) on maintenance/g, PROTEIN_G_PER_KG.maintain],
+    ["kcal per kg of tissue", /\*\*([\d,]+) kcal per kg\*\*/g, KCAL_PER_KG],
+    ["minimum logged days", /at least \*\*(\d+)\*\* logged days/g, MIN_LOGGED_DAYS],
+    ["minimum logged share", /at least \*\*(\d+)%\*\* of that day's budget/g, MIN_LOGGED_SHARE * 100],
+  ];
+
+  it.each(QUOTED)("%s", (label, re, expected) => {
+    const found = [...doc.matchAll(re)].map((m) => Number(m[1].replace(/,/g, "")));
+    expect(
+      found.length,
+      `${WALKTHROUGH} no longer contains the sentence this check reads (${label}). ` +
+        `Either the doc was reworded — update the pattern — or the claim was dropped. ` +
+        `A pattern that matches nothing is a check that cannot fail.`,
+    ).toBeGreaterThan(0);
+    for (const n of found) {
+      expect(n, `${WALKTHROUGH} quotes ${n} for ${label}; the constant says ${expected}`).toBe(
+        expected,
+      );
+    }
+  });
+
+  it("quotes the macro energy values the code uses", () => {
+    const m = doc.match(/protein (\d+) kcal, carbs (\d+) kcal, fat (\d+) kcal/);
+    expect(m, `${WALKTHROUGH} no longer states the per-gram energy values`).not.toBeNull();
+    expect([Number(m[1]), Number(m[2]), Number(m[3])]).toEqual([
+      KCAL_PER_G.protein,
+      KCAL_PER_G.carbs,
+      KCAL_PER_G.fat,
+    ]);
+  });
+
+  /** The guard every family in this file carries: a corpus that went empty, or a
+   *  table someone trimmed, must not pass as coverage. */
+  it("checked a plausible number of quotations", () => {
+    expect(QUOTED.length).toBeGreaterThan(8);
+    expect(raw.length).toBeGreaterThan(4000);
+  });
+});

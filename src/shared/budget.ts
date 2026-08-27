@@ -63,7 +63,8 @@ export type Budget = {
   /** Maintenance: BMR × activity factor, excluding logged exercise. */
   tdee: number;
   /** The BASE daily target. The earned run bonus is never folded in — base
-   *  and earned always draw separately (PLAN.md build rule 7). */
+   *  and earned always draw separately (CLAUDE.md build rule 7 — the list moved
+   *  there on 2026-08-10 and PLAN.md is a pointer, not a copy). */
   target_kcal: number;
   /** True when MIN_TARGET_KCAL raised the target above deficit-from-TDEE. */
   floored: boolean;
