@@ -414,10 +414,11 @@ describe("computeBudget — under 18 (#128)", () => {
    *  scenario separates the two implementations. That is worth knowing before
    *  anyone deletes this as unrealistic. */
   it("does not claim the adult floor protected a minor", () => {
-    // 9-year-old, 21 kg, sedentary. Schofield female 3–10: 22.5 × 21 + 499 =
-    // 971.5 → × 1.2 = 1165.8. The female floor is 1,200, so an unexempted floor
-    // would raise the target AND set `floored: true`, which renders on screen
-    // as "we protected you" while handing a growing child an adult's number.
+    // 9-year-old, 21 kg, sedentary. Schofield female 3–10: 20.315 × 21 + 485.9
+    // = 912.515 → × 1.2 = 1095.018. The female floor is 1,200, so an unexempted
+    // floor would raise the target AND set `floored: true`, which renders on
+    // screen as "we protected you" while handing a growing child an adult's
+    // number.
     const child = computeBudget(
       {
         ...TEEN,
@@ -430,7 +431,7 @@ describe("computeBudget — under 18 (#128)", () => {
       },
       TODAY,
     );
-    expect(child?.tdee).toBe(1166);
+    expect(child?.tdee).toBe(1095);
     expect(child?.tdee).toBeLessThan(MIN_TARGET_KCAL.female);
     expect(child?.target_kcal).toBe(child?.tdee);
     expect(child?.floored).toBe(false);
@@ -440,15 +441,15 @@ describe("computeBudget — under 18 (#128)", () => {
     const b = computeBudget(TEEN, TODAY);
     const mifflin = bmr({ sex: "male", weight_kg: 52, height_cm: 165, age: 14 });
     expect(b?.bmr).not.toBe(Math.round(mifflin));
-    // Schofield male 10–18: 17.5 × 52 + 651 = 1561
-    expect(b?.bmr).toBe(1561);
+    // Schofield male 10–18: 17.686 × 52 + 658.2 = 1577.872 → 1578
+    expect(b?.bmr).toBe(1578);
   });
 
   /** Deliberately NOT asserted: that Schofield reads higher than Mifflin.
    *
    *  The literature claim behind #128 is that an adult equation under-reads an
    *  adolescent, and the first draft of this file asserted it — then went red.
-   *  At 165 cm / 52 kg Mifflin returns 1,483 and Schofield 1,561, so it holds
+   *  At 165 cm / 52 kg Mifflin returns 1,483 and Schofield 1,578, so it holds
    *  here; at 180 cm it inverts, because Mifflin has a +6.25/cm height term and
    *  Schofield's weight-only form has none.
    *
@@ -459,12 +460,12 @@ describe("computeBudget — under 18 (#128)", () => {
    *  is only that the two equations differ and that the deficit is gone. */
 
   it("bands by age and by sex", () => {
-    // Schofield male 3–10: 22.7 × 30 + 495 = 1176
+    // Schofield male 3–10: 22.706 × 30 + 504.3 = 1185.48 → 1185
     const child = computeBudget({ ...TEEN, birth_date: "2017-01-01", weight_kg: 30 }, TODAY);
-    expect(child?.bmr).toBe(1176);
-    // Schofield female 10–18: 12.2 × 52 + 746 = 1380.4 → 1380
+    expect(child?.bmr).toBe(1185);
+    // Schofield female 10–18: 13.384 × 52 + 692.6 = 1388.568 → 1389
     const girl = computeBudget({ ...TEEN, sex: "female" }, TODAY);
-    expect(girl?.bmr).toBe(1380);
+    expect(girl?.bmr).toBe(1389);
   });
 
   describe("the birthday, in both directions", () => {

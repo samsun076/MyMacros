@@ -67,20 +67,23 @@ export const ADULT_AGE = 18;
  *  (`male`/`female`) is inherited here rather than questioned: changing it costs
  *  a table rebuild and is #79's decision, not this one's.
  *
- *  ⚠️ **These coefficients need checking against a printed source before anyone
- *  relies on them.** They were written from the standard published forms and the
- *  test below hand-works them, which proves the code matches the constants — it
- *  cannot prove the constants match Schofield. That is a human's job and it is
- *  the one part of #128 a test cannot close.
+ *  **Checked against two independent sources, 2026-08-27**, after the first cut
+ *  of this constant was written from memory and was WRONG — badly so on the
+ *  female bands (20.315/485.9 written as 22.5/499, and 13.384/692.6 as
+ *  12.2/746). At 40 kg that is a 300 kcal error on a child's daily figure, in a
+ *  constant whose whole purpose is to stop a child being handed a wrong number.
+ *  It was caught by looking it up, which cost one search. Any future edit here
+ *  owes the same: cite the source in the commit, and use two that do not share
+ *  an origin.
  *
- *  Under 3 is deliberately not banded. The app needs a height and a weight and a
+ *  Under 3 is deliberately not banded. The app needs a height, a weight and a
  *  person tapping through onboarding; a toddler is not a user, and inventing a
  *  band for one would be pretending to a precision this has no source for. The
  *  3–10 band applies below 10, and the refusal to compute an adjustment — the
  *  part that actually protects anyone — holds at every age. */
 const SCHOFIELD: Record<Sex, { child: [number, number]; adolescent: [number, number] }> = {
-  male: { child: [22.7, 495], adolescent: [17.5, 651] },
-  female: { child: [22.5, 499], adolescent: [12.2, 746] },
+  male: { child: [22.706, 504.3], adolescent: [17.686, 658.2] },
+  female: { child: [20.315, 485.9], adolescent: [13.384, 692.6] },
 };
 
 /** What the engine needs. Every Mifflin-St Jeor input is nullable because
