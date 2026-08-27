@@ -52,7 +52,7 @@
  */
 
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, readdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, realpathSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { connect, evaluate, launchChrome, openPage, settle, waitFor } from "./cdp.mjs";
@@ -407,7 +407,20 @@ async function navigateAndWait(cdp, s, url, shot) {
   }
 }
 
-main().catch((e) => {
-  console.error(`\n✗ ${e.message}\n`);
-  process.exit(1);
-});
+/** Run ONLY when invoked directly, never on import.
+ *
+ *  `tools/docs.test.mjs` imports `MANIFEST` from this file to check that every
+ *  screenshot an article cites is one this tool produces. Without this guard
+ *  that import **runs the whole tool** — launches Chrome, fetches localhost,
+ *  writes 35 PNGs — which passed locally because a dev server happened to be up,
+ *  and failed the production build immediately, where neither exists.
+ *
+ *  `screencast.mjs` has the same shape and the same hazard (importing it starts
+ *  a recording and `rm -rf`s its output directory). This file is the one that
+ *  gets imported, so this file is the one that needs the guard. */
+if (process.argv[1] && realpathSync(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  main().catch((e) => {
+    console.error(`\n✗ ${e.message}\n`);
+    process.exit(1);
+  });
+}
