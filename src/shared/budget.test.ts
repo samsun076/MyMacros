@@ -9,6 +9,7 @@ import {
   earnedKcal,
   KCAL_PER_G,
   MIN_FAT_G_PER_KG,
+  MIN_TARGET_KCAL,
   macroTargets,
   missingBudgetInputs,
   PROTEIN_G_PER_KG,
@@ -88,6 +89,7 @@ describe("computeBudget", () => {
       tdee: 2682,
       target_kcal: 2182,
       floored: false,
+      minor: false,
     });
   });
 
@@ -352,4 +354,151 @@ describe("ATHLETE_PROFILES", () => {
   // — two answers to "what does someone who chose nothing get" is the fault
   // #86 hunts. That one is checked against real D1 in me.route.test.ts, where
   // the schema can actually be asked, rather than by restating 58 here.
+});
+
+/** #128 — a minor cannot be handed a deficit, by any path.
+ *
+ *  Three defects compounded before this: an adult equation that reads low on an
+ *  adolescent, a deficit subtracted from the low number, and an adult floor that
+ *  sat far beneath the result so it never fired. Each assertion below is written
+ *  against the one it guards.
+ *
+ *  **On decorative oracles.** The issue warned that asserting "a minor's target
+ *  is not a deficit" is meaningless if the fixture was already `maintain`. It
+ *  isn't: `DAVE` is `goal: "cut"`, `deficit_kcal: 500`, and as an adult returns
+ *  a target 500 below its own tdee. But there is a second, sharper trap the
+ *  issue did not name — a SMALL minor would land on `MIN_TARGET_KCAL` anyway, so
+ *  `target_kcal === 1200` would hold with and without the gate. So nothing here
+ *  asserts a bare number: every check is target-against-tdee, which separates
+ *  the two implementations at any body size.
+ */
+describe("computeBudget — under 18 (#128)", () => {
+  /** 14 on TODAY (2026-08-07). Deliberately built from DAVE, which carries a
+   *  live 500 kcal cut, so the gate has something to actually remove. */
+  const TEEN: BudgetInputs = {
+    ...DAVE,
+    birth_date: "2012-01-01",
+    height_cm: 165,
+    weight_kg: 52,
+  };
+
+  it("hands a minor maintenance, not a deficit — even though the profile says cut", () => {
+    const b = computeBudget(TEEN, TODAY);
+    expect(b).not.toBeNull();
+    expect(TEEN.goal).toBe("cut"); // the fixture really is asking for one
+    expect(TEEN.deficit_kcal).toBeGreaterThan(0);
+    // target === tdee is the whole claim, and it holds at any body size.
+    expect(b?.target_kcal).toBe(b?.tdee);
+    expect(b?.minor).toBe(true);
+  });
+
+  it("removes a surplus too, because the equation is unvalidated in both directions", () => {
+    const b = computeBudget({ ...TEEN, goal: "gain" }, TODAY);
+    expect(b?.target_kcal).toBe(b?.tdee);
+    expect(b?.minor).toBe(true);
+  });
+
+  /** The adult floor must not fire on a minor, and this is the ONLY fixture in
+   *  the file that can prove it.
+   *
+   *  The first attempt used a 38 kg 14-year-old and was decorative: her
+   *  maintenance is ~1,451, comfortably above the 1,200 female floor, so
+   *  `Math.max(raw, floor)` returns the same number whether or not the
+   *  exemption exists. A mutation restoring the adult floor came back GREEN
+   *  across all 824 tests.
+   *
+   *  Reaching it needs maintenance BELOW 1,200, which for the female child band
+   *  means 1.2 × (22.5W + 499) < 1200, i.e. under ~22 kg — a young child, not
+   *  an adolescent. So the case #128 is actually about (a 14-year-old) cannot
+   *  test the guard #128 asks for, and only a fixture outside the issue's own
+   *  scenario separates the two implementations. That is worth knowing before
+   *  anyone deletes this as unrealistic. */
+  it("does not claim the adult floor protected a minor", () => {
+    // 9-year-old, 21 kg, sedentary. Schofield female 3–10: 22.5 × 21 + 499 =
+    // 971.5 → × 1.2 = 1165.8. The female floor is 1,200, so an unexempted floor
+    // would raise the target AND set `floored: true`, which renders on screen
+    // as "we protected you" while handing a growing child an adult's number.
+    const child = computeBudget(
+      {
+        ...TEEN,
+        sex: "female",
+        birth_date: "2017-01-01",
+        height_cm: 135,
+        weight_kg: 21,
+        activity_level: "sedentary",
+        deficit_kcal: 1000,
+      },
+      TODAY,
+    );
+    expect(child?.tdee).toBe(1166);
+    expect(child?.tdee).toBeLessThan(MIN_TARGET_KCAL.female);
+    expect(child?.target_kcal).toBe(child?.tdee);
+    expect(child?.floored).toBe(false);
+  });
+
+  it("uses the paediatric equation, not Mifflin-St Jeor", () => {
+    const b = computeBudget(TEEN, TODAY);
+    const mifflin = bmr({ sex: "male", weight_kg: 52, height_cm: 165, age: 14 });
+    expect(b?.bmr).not.toBe(Math.round(mifflin));
+    // Schofield male 10–18: 17.5 × 52 + 651 = 1561
+    expect(b?.bmr).toBe(1561);
+  });
+
+  /** Deliberately NOT asserted: that Schofield reads higher than Mifflin.
+   *
+   *  The literature claim behind #128 is that an adult equation under-reads an
+   *  adolescent, and the first draft of this file asserted it — then went red.
+   *  At 165 cm / 52 kg Mifflin returns 1,483 and Schofield 1,561, so it holds
+   *  here; at 180 cm it inverts, because Mifflin has a +6.25/cm height term and
+   *  Schofield's weight-only form has none.
+   *
+   *  So the direction is a property of the BODY, not of the equations, and
+   *  writing it down as a test would have encoded a claim that is false for
+   *  some real users. Rule 4a applies to a population claim as much as to a
+   *  screenshot: the measurement is what is asserted, and the measurement here
+   *  is only that the two equations differ and that the deficit is gone. */
+
+  it("bands by age and by sex", () => {
+    // Schofield male 3–10: 22.7 × 30 + 495 = 1176
+    const child = computeBudget({ ...TEEN, birth_date: "2017-01-01", weight_kg: 30 }, TODAY);
+    expect(child?.bmr).toBe(1176);
+    // Schofield female 10–18: 12.2 × 52 + 746 = 1380.4 → 1380
+    const girl = computeBudget({ ...TEEN, sex: "female" }, TODAY);
+    expect(girl?.bmr).toBe(1380);
+  });
+
+  describe("the birthday, in both directions", () => {
+    // ageOn turns over ON the day, so 2008-08-07 is exactly 18 on 2026-08-07.
+    const born = "2008-08-07";
+
+    it("is still a minor the day before", () => {
+      const b = computeBudget({ ...DAVE, birth_date: born }, new Date(2026, 7, 6));
+      expect(b?.minor).toBe(true);
+      expect(b?.target_kcal).toBe(b?.tdee);
+    });
+
+    it("is an adult on the day, and the deficit the profile asked for appears", () => {
+      const b = computeBudget({ ...DAVE, birth_date: born }, new Date(2026, 7, 7));
+      expect(b?.minor).toBe(false);
+      expect(b?.target_kcal).toBeLessThan(b?.tdee ?? 0);
+      expect((b?.tdee ?? 0) - (b?.target_kcal ?? 0)).toBe(DAVE.deficit_kcal);
+    });
+
+    it("switches equation on the same day it switches goal handling", () => {
+      const before = computeBudget({ ...DAVE, birth_date: born }, new Date(2026, 7, 6));
+      const after = computeBudget({ ...DAVE, birth_date: born }, new Date(2026, 7, 7));
+      // Not merely different numbers — a different equation. Mifflin uses
+      // height; Schofield does not, so changing height moves only one of them.
+      const tallerBefore = computeBudget(
+        { ...DAVE, birth_date: born, height_cm: 200 },
+        new Date(2026, 7, 6),
+      );
+      const tallerAfter = computeBudget(
+        { ...DAVE, birth_date: born, height_cm: 200 },
+        new Date(2026, 7, 7),
+      );
+      expect(tallerBefore?.bmr).toBe(before?.bmr);
+      expect(tallerAfter?.bmr).not.toBe(after?.bmr);
+    });
+  });
 });

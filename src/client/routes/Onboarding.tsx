@@ -3,6 +3,7 @@ import { useNavigate } from "react-router";
 import type { ActivityLevel, AthleteProfile, Goal, Me, Sex, Units } from "../../shared/api";
 import {
   ATHLETE_PROFILES,
+  ADULT_AGE,
   PROTEIN_G_PER_KG,
   PROTEIN_G_PER_KG_RANGE,
   computeBudget,
@@ -202,9 +203,16 @@ export function Onboarding() {
         // value this screen was seeded with (#84).
         ...(firstRun ? { start_weight_kg: v.weight_kg } : {}),
         activity_level: v.activity_level,
-        goal: v.goal,
+        // #128. A minor's stored goal is `maintain` with a zero deficit, not the
+        // `cut` the column defaults to. The engine already ignores both, so this
+        // changes no number today — it matters on the BIRTHDAY. `ageOn` is
+        // derived per computation and nothing fires when someone turns 18, so a
+        // stored `cut` would silently become a live deficit overnight, with no
+        // event anywhere and nobody having chosen it. Storing what the app is
+        // actually doing means turning 18 changes nothing until they say so.
+        goal: budget?.minor ? "maintain" : v.goal,
         athlete_profile: v.athlete_profile,
-        deficit_kcal: v.goal === "maintain" ? 0 : v.deficit_kcal,
+        deficit_kcal: budget?.minor || v.goal === "maintain" ? 0 : v.deficit_kcal,
         eat_back_pct: v.eat_back_pct,
         protein_g_per_kg: v.protein_g_per_kg,
         carb_ratio_pct: v.carb_ratio_pct,
@@ -394,6 +402,20 @@ export function Onboarding() {
         <div className="sec-head">
           <span className="eyebrow">Goal</span>
         </div>
+        {/* #128. A minor gets no goal control and no deficit slider, and is TOLD
+            why rather than shown an absence. Same argument `budget.floored`
+            makes below: a clamp the user cannot see is its own kind of wrong
+            answer. Gated on `budget.minor` rather than on a date computed here,
+            so the screen and the engine cannot disagree about who is a minor. */}
+        {budget?.minor ? (
+          <p className="placeholder-note" role="alert">
+            Under {ADULT_AGE}, this app won't set a weight-loss or weight-gain target. The
+            equations it uses were built from adults and read low for you, and a deficit on
+            top of that is a number nobody should be handed. It'll track what you eat against
+            maintenance instead — everything else works the same.
+          </p>
+        ) : (
+        <>
         <div className="seg">
           {GOALS.map((g) => (
             <button
@@ -425,6 +447,8 @@ export function Onboarding() {
               <span className="mono">{fmtInt(v.deficit_kcal)}</span>
             </div>
           </Field>
+        )}
+        </>
         )}
       </section>
 
@@ -515,12 +539,18 @@ export function Onboarding() {
             />
             <span className="mono">{grams ? `${grams.protein_g}g` : "—"}</span>
           </div>
+          {/* #128. `v.goal` is still whatever the row says for a minor — the
+              engine ignores it, but this copy would not, and a screen that has
+              just said "we won't set a weight-loss target" must not then explain
+              cutting. Found by rendering it, not by reading it. */}
           <span className="opt-hint">
-            {v.goal === "cut"
-              ? "Cutting: more protein holds on to the muscle you already have."
-              : v.goal === "gain"
-                ? "Gaining: protein is the material, but past about 2.0 it starts crowding out the carbs that fuel training."
-                : "Maintaining: nothing under threat and nothing being added, so this sits lower."}
+            {budget?.minor
+              ? "Set by your body weight. Nothing here is aiming at losing or gaining."
+              : v.goal === "cut"
+                ? "Cutting: more protein holds on to the muscle you already have."
+                : v.goal === "gain"
+                  ? "Gaining: protein is the material, but past about 2.0 it starts crowding out the carbs that fuel training."
+                  : "Maintaining: nothing under threat and nothing being added, so this sits lower."}
           </span>
         </div>
       </section>
@@ -583,7 +613,7 @@ export function Onboarding() {
                 <dt>With daily activity</dt>
                 <dd>{fmtInt(budget.tdee)} kcal</dd>
               </div>
-              {v.goal !== "maintain" && (
+              {!budget.minor && v.goal !== "maintain" && (
                 <div>
                   <dt>{v.goal === "cut" ? "Less deficit" : "Plus surplus"}</dt>
                   <dd>

@@ -42,6 +42,47 @@ export const KCAL_PER_G = { protein: 4, carbs: 4, fat: 9 } as const;
  *  is its own kind of wrong answer. */
 export const MIN_TARGET_KCAL: Record<Sex, number> = { male: 1500, female: 1200 };
 
+/** The age at which the adult model starts applying (#128).
+ *
+ *  Below it the app **refuses to compute a deficit or a surplus** and uses a
+ *  paediatric BMR equation instead. This is the same posture as
+ *  `MIN_TARGET_KCAL` and `MIN_FAT_G_PER_KG` — a refusal to produce a number the
+ *  app has no business producing — not medical advice.
+ *
+ *  Three defects compounded in the same direction before this existed, and they
+ *  are worth keeping written down because each one alone looks survivable:
+ *
+ *    1. Mifflin-St Jeor's validation population was 19–78. On an adolescent it
+ *       reads LOW — higher metabolic rate per kg, larger brain-mass fraction.
+ *    2. A deficit was then subtracted from that already-low number.
+ *    3. `MIN_TARGET_KCAL` is an ADULT floor, so it did not catch the result. A
+ *       growing 14-year-old handed 1,200 kcal would have appeared guarded and
+ *       would not have been — and `floored: true` renders on screen as "we
+ *       protected you", which is worse than no floor at all. */
+export const ADULT_AGE = 18;
+
+/** Schofield (1985), the weight-only forms, as adopted by WHO/FAO — kcal/day.
+ *
+ *  Banded by age and sex, which is why `sex`'s CHECK constraint
+ *  (`male`/`female`) is inherited here rather than questioned: changing it costs
+ *  a table rebuild and is #79's decision, not this one's.
+ *
+ *  ⚠️ **These coefficients need checking against a printed source before anyone
+ *  relies on them.** They were written from the standard published forms and the
+ *  test below hand-works them, which proves the code matches the constants — it
+ *  cannot prove the constants match Schofield. That is a human's job and it is
+ *  the one part of #128 a test cannot close.
+ *
+ *  Under 3 is deliberately not banded. The app needs a height and a weight and a
+ *  person tapping through onboarding; a toddler is not a user, and inventing a
+ *  band for one would be pretending to a precision this has no source for. The
+ *  3–10 band applies below 10, and the refusal to compute an adjustment — the
+ *  part that actually protects anyone — holds at every age. */
+const SCHOFIELD: Record<Sex, { child: [number, number]; adolescent: [number, number] }> = {
+  male: { child: [22.7, 495], adolescent: [17.5, 651] },
+  female: { child: [22.5, 499], adolescent: [12.2, 746] },
+};
+
 /** What the engine needs. Every Mifflin-St Jeor input is nullable because
  *  `profiles` leaves them null until onboarding fills them in, and `weight_kg`
  *  is nullable because it isn't a profile column at all — it's the latest
@@ -68,6 +109,12 @@ export type Budget = {
   target_kcal: number;
   /** True when MIN_TARGET_KCAL raised the target above deficit-from-TDEE. */
   floored: boolean;
+  /** True when the person is under `ADULT_AGE`, so `target_kcal` is maintenance
+   *  computed from a paediatric equation and the profile's `goal` and
+   *  `deficit_kcal` were ignored (#128). Surfaced so the UI can SAY so — a clamp
+   *  the user cannot see is its own kind of wrong answer, which is the argument
+   *  `floored` already makes one field up. */
+  minor: boolean;
 };
 
 /** Which inputs onboarding still needs, in the order it asks for them.
@@ -112,6 +159,18 @@ export function bmr(input: {
   return base + (input.sex === "male" ? 5 : -161);
 }
 
+/** Schofield BMR for someone under `ADULT_AGE` (#128).
+ *
+ *  Weight-only by design: the published weight-and-height forms buy very little
+ *  and each extra coefficient is another number nobody here can check. Height is
+ *  still required to reach this function at all, because `missingBudgetInputs`
+ *  demands it for everyone. */
+export function paediatricBmr(input: { sex: Sex; weight_kg: number; age: number }): number {
+  const band = input.age < 10 ? "child" : "adolescent";
+  const [perKg, offset] = SCHOFIELD[input.sex][band];
+  return perKg * input.weight_kg + offset;
+}
+
 /** BMR × activity, then the goal's adjustment, then the floor.
  *
  *  Null when onboarding hasn't supplied everything — the caller shows the
@@ -126,22 +185,57 @@ export function computeBudget(i: BudgetInputs, today = new Date()): Budget | nul
   if (age === null || (i.sex !== "male" && i.sex !== "female")) return null;
   if (!positive(i.height_cm) || !positive(i.weight_kg)) return null;
 
-  const basal = bmr({ sex: i.sex, weight_kg: i.weight_kg, height_cm: i.height_cm, age });
+  // #128. The gate lives HERE rather than in the PATCH validator, and that is
+  // load-bearing: `computeBudget` is the single source every target producer
+  // goes through — `refreshTarget`, `GET /api/day`, `buildTrends`'s per-day
+  // loop, and Onboarding's live preview. A rule in `routes/me.ts` would leave
+  // the other three computing a deficit, and would not touch a row that
+  // predates it.
+  const minor = age < ADULT_AGE;
+
+  const basal = minor
+    ? paediatricBmr({ sex: i.sex, weight_kg: i.weight_kg, age })
+    : bmr({ sex: i.sex, weight_kg: i.weight_kg, height_cm: i.height_cm, age });
   const maintenance = basal * ACTIVITY_FACTORS[i.activity_level];
 
   // `deficit_kcal` is a magnitude; `goal` decides its sign. Maintaining
   // ignores it entirely rather than storing a second zero the user can't see.
-  const adjustment =
-    i.goal === "cut" ? -i.deficit_kcal : i.goal === "gain" ? i.deficit_kcal : 0;
+  //
+  // A minor gets no adjustment in EITHER direction. Not because a surplus is
+  // dangerous — it isn't — but because the equation underneath is not validated
+  // for them, so neither adjustment means anything. Refusing both is one rule;
+  // refusing the harmful one is two rules and a judgement call in the middle.
+  const adjustment = minor
+    ? 0
+    : i.goal === "cut"
+      ? -i.deficit_kcal
+      : i.goal === "gain"
+        ? i.deficit_kcal
+        : 0;
 
   const raw = maintenance + adjustment;
-  const floor = MIN_TARGET_KCAL[i.sex];
+
+  // The adult floor is deliberately NOT applied to a minor. It was derived for
+  // adults, it sits far below a growing adolescent's maintenance, and a floor
+  // that fires at the wrong value is worse than none — `floored: true` reads on
+  // screen as "we protected you". With no adjustment there is nothing for it to
+  // catch anyway.
+  //
+  // Expressed as a zero floor rather than an early return ON PURPOSE. The first
+  // cut returned early with its own literals, which made `adjustment`'s `minor`
+  // branch dead code — and the mutation that removed that branch came back
+  // GREEN across the whole suite, because the early return was already
+  // producing the right answer. Two statements of one rule, which is #86's own
+  // defect, and it was invisible until something tried to break it. One path
+  // now, each rule stated once.
+  const floor = minor ? 0 : MIN_TARGET_KCAL[i.sex];
 
   return {
     bmr: Math.round(basal),
     tdee: Math.round(maintenance),
     target_kcal: Math.round(Math.max(raw, floor)),
     floored: raw < floor,
+    minor,
   };
 }
 
