@@ -48,13 +48,24 @@ const localToday = () => {
 const args = process.argv.slice(2);
 const weeksFlag = args.indexOf("--weeks");
 const WEEKS = weeksFlag === -1 ? 0 : Number(args[weeksFlag + 1]);
-/* The value slot to skip is `--weeks`', and only when `--weeks` is there:
-   `weeksFlag` is -1 with no flag, so `weeksFlag + 1` is 0 and the guard threw
-   away argv[0] — the date. `node tools/seed-demo.mjs 2026-08-06` had therefore
-   always seeded *today* while printing the day it was given, silently. Found
-   by running the usage line at the top of this file (#92). */
-const valueSlot = weeksFlag === -1 ? -1 : weeksFlag + 1;
-const DAY = args.filter((a, i) => !a.startsWith("--") && i !== valueSlot)[0] ?? localToday();
+/* Every flag here takes a value, so the positional date is the first argument
+   that is neither a flag nor the slot after one.
+
+   Written generically after getting it wrong TWICE in the same file. The first
+   time, `valueSlot` was computed as `weeksFlag + 1` unconditionally — with no
+   `--weeks` that is 0, so the guard threw away argv[0], the date, and
+   `node tools/seed-demo.mjs 2026-08-06` silently seeded *today* while printing
+   the day it was given (#92). The second time, `--email` was added and its value
+   was not skipped, so `--email nobody@example.com` was read as the date and died
+   on "Not a YYYY-MM-DD date" — the same defect, one flag over, in the file that
+   already documents it (#142).
+
+   A per-flag list is a second statement of the flag set. This is one. */
+const VALUE_FLAGS = new Set(["--weeks", "--email"]);
+const DAY =
+  args.filter(
+    (a, i) => !a.startsWith("--") && !(i > 0 && VALUE_FLAGS.has(args[i - 1])),
+  )[0] ?? localToday();
 
 if (!/^\d{4}-\d{2}-\d{2}$/.test(DAY)) {
   console.error(`Not a YYYY-MM-DD date: ${DAY}`);
@@ -75,6 +86,75 @@ const run = (sql) => {
     ["wrangler", "d1", "execute", "mymacros-db", "--local", "--file", file, "--yes"],
     { stdio: "inherit" },
   );
+};
+
+/** Read a value back out. Same database, same binding, `--json` so it parses. */
+const query = (sql) => {
+  const out = execFileSync(
+    "npx",
+    ["wrangler", "d1", "execute", "mymacros-db", "--local", "--command", sql, "--json"],
+    { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] },
+  );
+  // wrangler prints a banner before the JSON on some versions; take from the
+  // first bracket rather than assuming the whole stream is the payload.
+  const i = out.indexOf("[");
+  return JSON.parse(out.slice(i))[0]?.results ?? [];
+};
+
+/** WHOSE rows these are, resolved once and asserted (#142).
+ *
+ *  Every INSERT below used to end `SELECT <literals>, id FROM users ORDER BY
+ *  createdAt LIMIT 1` — the OLDEST user, which is not necessarily the person
+ *  running this. With no users, or with somebody else as the oldest, the SELECT
+ *  matched nothing: **nothing was inserted, no error was raised, and the script
+ *  still printed "Seeded 4 logs".** The screenshots that followed were of an
+ *  empty app, and nothing anywhere said why.
+ *
+ *  It had never bitten because `dev@mymacros.local` happens to be the oldest row
+ *  on the author's machine, out of nine. That is luck, and a self-hoster
+ *  following the screenshot instructions on a fresh instance gets the silence.
+ *
+ *  So the id is resolved here, up front, and a miss is fatal rather than quiet.
+ *  `--email` picks a specific account when the oldest is the wrong one. */
+const emailFlag = args.indexOf("--email");
+const EMAIL = emailFlag === -1 ? null : args[emailFlag + 1];
+
+const resolveUser = () => {
+  const where = EMAIL ? `WHERE email = ${q(EMAIL)}` : "";
+  const rows = query(`SELECT id, email FROM users ${where} ORDER BY createdAt LIMIT 1;`);
+  if (!rows.length) {
+    console.error(
+      EMAIL
+        ? `\nNo user with email ${EMAIL}.\n` +
+            `Sign in once at ${"http://localhost:5173"} to create it, then re-run.\n`
+        : `\nNo users in the local database, so there is nobody to seed for.\n` +
+            `Sign in once (the DEV-only email/password button on the sign-in screen)\n` +
+            `to create an account, then re-run. Seeding before signing in writes\n` +
+            `nothing and used to say it had succeeded — that is #142.\n`,
+    );
+    process.exit(1);
+  }
+  return rows[0];
+};
+
+const USER = resolveUser();
+const USER_ID = q(USER.id);
+
+/** Prove the rows landed for THIS user, rather than trusting the exit code.
+ *  A count over `food_logs` alone would pass in exactly the case #142 is about —
+ *  the rows exist, for somebody else — so it is scoped by user_id. */
+const assertSeeded = (day, expected) => {
+  const [row] = query(
+    `SELECT COUNT(*) AS n FROM food_logs WHERE user_id = ${USER_ID} AND logged_on = ${q(day)};`,
+  );
+  const n = Number(row?.n ?? 0);
+  if (n < expected) {
+    console.error(
+      `\nSeeded ${n} rows for ${USER.email} on ${day}, expected at least ${expected}.\n` +
+        `Nothing was written. This is the failure #142 exists to make loud.\n`,
+    );
+    process.exit(1);
+  }
 };
 
 /** The long-name case (#92), and it is a *barcode* row on purpose.
@@ -162,14 +242,18 @@ const sql = [
        SELECT ${q(`demo-${DAY}-${i}`)}, id, ${q(DAY)}, ${q(m.at)}, ${q(m.slot)}, ${q(m.name)},
               ${m.kcal}, ${m.protein}, ${m.carbs}, ${m.fat}, ${q(m.source)},
               ${m.barcode ? q(m.barcode) : "NULL"}, ${m.confidence ?? "NULL"}, 0
-       FROM users ORDER BY createdAt LIMIT 1;`,
+       FROM users WHERE id = ${USER_ID};`,
   ),
 ].join("\n");
 
 run(sql);
 
 const eaten = MEALS.reduce((n, m) => n + m.kcal, 0);
-console.log(`\nSeeded ${MEALS.length} logs on ${DAY} — ${eaten} kcal of 1810, dinner left open.`);
+assertSeeded(DAY, MEALS.length);
+console.log(
+  `\nSeeded ${MEALS.length} logs on ${DAY} for ${USER.email} — ${eaten} kcal of 1810, ` +
+    `dinner left open.`,
+);
 
 /* ── the trends window (#22) ──────────────────────────────────────────────
  *
@@ -285,13 +369,13 @@ function seedWindow(weeks) {
     ...weighIns.map(
       (w) => `INSERT INTO weights (id, user_id, measured_on, weight_kg, source)
        SELECT ${q(`demo-w-wt-${w.day}`)}, id, ${q(w.day)}, ${w.kg}, 'garmin'
-       FROM users ORDER BY createdAt LIMIT 1;`,
+       FROM users WHERE id = ${USER_ID};`,
     ),
 
     ...runs.map(
       (r) => `INSERT INTO runs (id, user_id, ran_on, started_at, distance_m, duration_s, kcal, source, external_id)
        SELECT ${q(`demo-w-run-${r.day}`)}, id, ${q(r.day)}, ${q(at(r.day, 6))}, ${r.distance_m}, ${r.duration_s}, ${r.kcal}, 'sync', ${q(`demo-w-${r.day}`)}
-       FROM users ORDER BY createdAt LIMIT 1;`,
+       FROM users WHERE id = ${USER_ID};`,
     ),
 
     ...meals.flatMap((m) =>
@@ -300,7 +384,7 @@ function seedWindow(weeks) {
        SELECT ${q(`demo-w-${m.day}-${s.slot}`)}, id, ${q(m.day)}, ${q(at(m.day, s.hour))}, ${q(s.slot)}, ${q(s.name)},
               ${Math.round(m.kcal * s.share)}, ${Math.round((m.kcal * s.share * 0.32) / 4)}, ${Math.round((m.kcal * s.share * 0.4) / 4)}, ${Math.round((m.kcal * s.share * 0.28) / 9)},
               'text', 0.8, 0
-       FROM users ORDER BY createdAt LIMIT 1;`,
+       FROM users WHERE id = ${USER_ID};`,
       ),
     ),
 
@@ -311,14 +395,15 @@ function seedWindow(weeks) {
        SELECT ${q(`demo-w-${DAY}-barcode`)}, id, ${q(DAY)}, ${q(at(DAY, BARCODE_MEAL.hour))}, ${q(BARCODE_MEAL.slot)}, ${q(BARCODE_MEAL.name)},
               ${BARCODE_MEAL.kcal}, ${BARCODE_MEAL.protein}, ${BARCODE_MEAL.carbs}, ${BARCODE_MEAL.fat},
               ${q(BARCODE_MEAL.source)}, ${q(BARCODE_MEAL.barcode)}, NULL, 0
-       FROM users ORDER BY createdAt LIMIT 1;`,
+       FROM users WHERE id = ${USER_ID};`,
   ].join("\n");
 
   run(sql);
 
+  assertSeeded(DAY, 1);
   const meanIntake = Math.round(meals.reduce((n, m) => n + m.kcal, 0) / meals.length);
   console.log(
-    `\nSeeded ${weeks} weeks, ${from} → ${DAY}:` +
+    `\nSeeded ${weeks} weeks, ${from} → ${DAY}, for ${USER.email}:` +
       `\n  ${weighIns.length} weigh-ins of ${days.length} days (one 9-day gap, on purpose)` +
       `\n  ${meals.length} logged days, mean ${meanIntake} kcal` +
       `\n  ${runs.length} runs` +
