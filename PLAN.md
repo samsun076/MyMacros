@@ -8,7 +8,7 @@ Built for weight loss, built for one user first (Dave), but shaped so other peop
 
 | Area | Decision |
 |---|---|
-| Stack | Vite + React + Hono on **Cloudflare Workers**, D1 (SQLite), R2 (photos), better-auth. Free tier. Deploy model is `.github/workflows/deploy.yml` (#136): `main` → the author's instance only, a `v*` tag → every other instance (#137) — built, and **inert until a repo variable is set**, so Workers Builds is still the live deployer as of 2026-08-26. See CLAUDE.md |
+| Stack | Vite + React + Hono on **Cloudflare Workers**, D1 (SQLite), R2 (photos), better-auth. Free tier. Deploy is `.github/workflows/deploy.yml` (#136) — **one repo, one instance**: a fork deploys itself from its own fork. `main` → that repo's instance; a `v*` tag → every other instance in intent, though it cannot reach a fork yet (#141). **Inert until a repo variable is set**, so Workers Builds is still the live deployer as of 2026-08-28. See CLAUDE.md |
 | AI | **Claude Sonnet 5** vision + structured outputs (JSON schema) for photo→macros and text→macros. ~1–3¢ per photo |
 | API key | v1: `ANTHROPIC_API_KEY` as a Workers secret. OSS path: agent-install directives (Claude Code sets up D1/R2/secrets for the self-hoster) **and** optional per-user key in app settings for hosted multi-user |
 | Run data | Sync from **debrief's `runs.db`** — a small addition to the existing launchd pipeline POSTs recent runs (date, distance, kcal, TSS) to MyMacros' API. No new Suunto OAuth in v1 |

@@ -1,7 +1,32 @@
 name: Deploy
 
-# Migrate, then deploy, for every instance this repo feeds — in that order,
-# mechanically, so it cannot be forgotten (#136).
+# Migrate, then deploy — in that order, mechanically, so it cannot be forgotten
+# (#136).
+#
+# ## One repo, one instance
+#
+# **This workflow deploys the instance belonging to the repository it is running
+# in, and nothing else.** Your fork deploys your instance from your fork, with
+# your Cloudflare credentials in your fork's own settings. Nobody holds anybody
+# else's token.
+#
+# It did not always say that. Until 2026-08-28 this file carried a second job
+# (`wife:`) for deploying another person's instance from THIS repo, using
+# credentials stored here and a `wrangler.wife.jsonc` that never existed in the
+# tree. That was the shortcut, and it was ruled out: the wife's and daughter's
+# instances are treated as strangers, on their own Cloudflare and GitHub
+# accounts, precisely so the path that gets exercised is the one a self-hoster
+# actually walks rather than a family arrangement that hides its defects.
+#
+# The corollary, and the reason the second job could not simply be kept: with one
+# instance per repo there is one wrangler config, `wrangler.jsonc`, edited in
+# place. A `--config` flag threaded through `deploy`, `db:migrate:remote`,
+# `preflight` and every step here is one rule stated five times, and the failure
+# when a caller forgets it is silent — it reads the committed config and operates
+# against somebody else's instance without saying so. #140 is that bug already
+# shipped. A merge conflict in `wrangler.jsonc` is the loud alternative, and
+# upstream touches that file about twice a year (6 changes in 249 commits, the
+# last on the project's sixth day).
 #
 # ## Why this exists rather than Workers Builds
 #
@@ -12,59 +37,58 @@ name: Deploy
 # app loads, every query answers, and the first request touching a new column
 # 500s.
 #
-# It also cannot reach a second Cloudflare account. The settled model is one
-# account per instance, so a family of instances needs a deployer that can hold
-# more than one set of credentials. That is this file.
-#
 # ## Inert until switched on
 #
-# Every job is gated on a repository *variable*, not a secret, because a
+# The deploy job is gated on a repository *variable*, not a secret, because a
 # workflow that fails on every push for want of a token is worse than no
-# workflow. Nothing here runs until someone sets `DEPLOY_<NAME>` to `true` and
-# adds that instance's credentials.
+# workflow. Nothing here runs until someone sets `DEPLOY_PRIMARY` to `true` and
+# adds their credentials.
 #
-# ## Adding an instance
+# ## Switching it on, in your own fork
 #
-#   1. In that instance's Cloudflare account: My Profile → API Tokens → Create,
-#      using the "Edit Cloudflare Workers" template, plus D1 Edit. Copy the
-#      token and the Account ID.
-#   2. In this repo: Settings → Secrets and variables → Actions.
-#        secret   CF_API_TOKEN_<NAME>
-#        secret   CF_ACCOUNT_ID_<NAME>
-#        variable DEPLOY_<NAME> = true
-#   3. Copy the `wife` job below, change the three names and the config path.
-#      Copy `wife`, never `primary` — `primary` is the every-commit channel and
-#      belongs to exactly one instance.
+#   0. GitHub disables Actions on a new fork. Open the **Actions** tab and click
+#      "I understand my workflows, go ahead and enable them". Nothing below runs
+#      until you do, and no error says so.
+#   1. In your Cloudflare account: My Profile → API Tokens → Create, using the
+#      "Edit Cloudflare Workers" template, plus D1 Edit. Copy the token and the
+#      Account ID.
+#   2. In your fork: Settings → Secrets and variables → Actions.
+#        secret   CF_API_TOKEN_PRIMARY
+#        secret   CF_ACCOUNT_ID_PRIMARY
+#        variable DEPLOY_PRIMARY = true
+#        variable APP_URL_PRIMARY = https://your-host
 #
-# Each instance needs its own wrangler config, because `database_id`, `routes`
-# and `APP_URL` differ. `wrangler.jsonc` is the primary instance's;
-# `wrangler.<name>.jsonc` is another's. They are separate files rather than one
-# file with `env` blocks so that a mistake in one cannot silently deploy to the
-# other — the same reasoning as #127's preflight.
+# `PRIMARY` is the name of the only job here; it does not mean "the author's".
+# In your fork it is yours.
 
 # ── Two channels, and the split is the point (#137) ──────────
 #
-# **main** is the author's own instance and nothing else. He is the canary: the
-# defects no automated check can see are the ones he finds by opening the app,
-# so his instance takes every commit and breakage there is cheap. Commits here
-# land several a day and some of them correct the one before.
+# **main** is the author's own instance. He is the canary: the defects no
+# automated check can see are the ones he finds by opening the app, so his
+# instance takes every commit and breakage there is cheap. Commits land several
+# a day and some correct the one before.
 #
 # (This comment said "every defect this project has ever found" and cited six
 # commits on 2026-08-25. Both were wrong — that day had two — and #138's sweep
 # caught them. Rule 4a applies to a figure in a comment as much as to a claim
 # about a screenshot.)
 #
-# **a tag** is everybody else. One known-good point that every other instance
-# converges on, so "the same exact app, run the same exact way" is true and
-# "what version are you on" has an answer.
+# **a `v*` tag** is everybody else. One known-good point to converge on, so "the
+# same app, run the same way" is true and "what version are you on" has an
+# answer. A tag rather than a schedule: a monthly release ships whatever happens
+# to be on main that morning, where a tag ships what somebody decided was good.
+# Trigger, not calendar — the same rule as build rules 4b and 10.
 #
-# A tag rather than a schedule, deliberately: a monthly release ships whatever
-# happens to be on main that morning, where a tag ships what somebody decided
-# was good. Trigger, not calendar — the same rule as build rules 4b and 10.
+# ⚠️ **HOW A TAG REACHES A FORK IS UNSOLVED — see #141.** Measured 2026-08-27:
+# GitHub's *Sync fork* button transfers branches and not tags; a fork created
+# with the default option carries zero tags at all; `git push` never pushes tags
+# without `--tags`; and Actions are off by default in a fork. Any one of those
+# alone stops an upstream tag from ever starting a run here. So the `tags:`
+# trigger below is correct about intent and currently unreachable in practice for
+# anyone but the author. Do not read it as a working channel.
 #
-# And nobody can forget to tag, which was the objection that killed the first
-# attempt at this: the tag IS the deploy, so forgetting it means nothing
-# shipped, which is loud.
+# In YOUR fork, `main` is your main and the job below fires on your pushes to it.
+# That is the channel that works today.
 on:
   push:
     branches: [main]
@@ -138,41 +162,6 @@ jobs:
         run: |
           for i in $(seq 1 10); do
             body=$(curl -fsS "${{ vars.APP_URL_PRIMARY }}/api/health" || echo '{}')
-            echo "$body"
-            if [ "$(echo "$body" | jq -r '.ok')" = "true" ]; then exit 0; fi
-            sleep 6
-          done
-          echo "::error::/api/health never reported ok:true after the deploy"
-          exit 1
-
-  # ── A second instance. Copy this block per instance. ─────────
-  # Inert until DEPLOY_WIFE is set, so it costs nothing while it waits.
-  wife:
-    needs: gate
-    # Tags only. This instance never sees an untagged commit.
-    if: vars.DEPLOY_WIFE == 'true' && startsWith(github.ref, 'refs/tags/v')
-    runs-on: ubuntu-latest
-    env:
-      CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_TOKEN_WIFE }}
-      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID_WIFE }}
-      CONFIG: wrangler.wife.jsonc
-    steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-node@v6
-        with:
-          node-version: 22
-          cache: npm
-      - run: npm ci
-      - name: Migrate
-        run: npx wrangler d1 migrations apply mymacros-db --remote --config "$CONFIG"
-      - name: Build
-        run: npm run build
-      - name: Deploy
-        run: npx wrangler deploy --config "$CONFIG"
-      - name: Verify
-        run: |
-          for i in $(seq 1 10); do
-            body=$(curl -fsS "${{ vars.APP_URL_WIFE }}/api/health" || echo '{}')
             echo "$body"
             if [ "$(echo "$body" | jq -r '.ok')" = "true" ]; then exit 0; fi
             sleep 6

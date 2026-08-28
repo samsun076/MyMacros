@@ -84,22 +84,28 @@ explains the budget, the earned run bonus, the eat-back hedge, trend weight, the
 macro, corrections, the sync heartbeat and the day boundary — in the order you meet them
 opening the app. Every figure in it is checked against the constant it describes.
 
-**How updates reach your instance.** The model is two channels: pushes to `main` deploy
-the maintainer's own instance and nothing else — he is the canary, and the defects no
-automated check can see are the ones he finds by opening the app — while a `v*` tag
-deploys every other instance, including yours. One known-good point everybody converges
-on, so *the same app, run the same way* is true. Watch the repo's tags, not its commits.
-`.github/workflows/deploy.yml` ships here and implements both channels; the manual
-five-step version is there too. Settings → App shows which build you are running, baked
-in at build time and never fetched, and its *Check for updates* button asks your own
-Worker — nothing phones home.
+**How updates reach your instance.** **One repo, one instance** — you fork this, and
+your fork deploys your instance with your own Cloudflare credentials in your own repo
+settings. `.github/workflows/deploy.yml` ships here and does it, inert until you switch
+it on.
+
+The intended release model is two channels: pushes to `main` deploy the maintainer's own
+instance — he is the canary, and the defects no automated check can see are the ones he
+finds by opening the app — while a `v*` tag is the known-good point everyone else
+converges on. Settings → App shows which build you are running, baked in at build time
+and never fetched, and its *Check for updates* button asks your own Worker, so nothing
+phones home.
 [Keeping it updated](install.md#keeping-it-updated) is the detail.
 
-> **Status, 2026-08-26.** The workflow is **inert** — every job is gated on a repo
+> **Status, 2026-08-28.** The workflow is **inert** — the deploy job is gated on a repo
 > variable and none is set, so the maintainer's own instance still deploys through
-> Cloudflare Workers Builds and **no `v*` tag has been cut yet**. The two channels are
-> built and wired; they are not carrying traffic. This paragraph describes the model,
-> and this note is here so it cannot be read as a description of today.
+> Cloudflare Workers Builds and **no `v*` tag has been cut yet**.
+>
+> **And the tag channel does not currently reach a fork.** Measured: GitHub's *Sync fork*
+> button transfers branches and not tags, a fork created with the default option carries
+> no tags at all, and `git push` does not push tags without `--tags`. Until that is
+> solved, update by hand — the steps are in `install.md` and they work. This paragraph
+> describes the model; this note is here so it cannot be read as a description of today.
 
 Local development needs **Node 22.12+** (Wrangler wants ≥22, Vite 8 wants ≥22.12) and
 nothing else. D1 and R2 are emulated by miniflare, so **you do not need a Cloudflare

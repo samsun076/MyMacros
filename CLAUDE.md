@@ -947,11 +947,23 @@ result about the *inputs* and says nothing about this register.
   can see are the ones he finds by opening the app. (Not *every* defect: rule 4's
   shot-matrix found #123 on its first real run, #81's D1 ceiling came from
   measuring against workerd, #74 from a rule-4b reconciliation. Rule 4a applies
-  to this sentence too.) A **`v*` tag** deploys every other
-  instance. `primary:` is gated on `refs/heads/`, every other job on
-  `refs/tags/v`; **copy the `wife:` job for a new instance, never `primary:`**.
-  A tag rather than a schedule: trigger, not calendar, the same rule as 4b and
-  10 — and nobody can forget to tag, because the tag *is* the deploy.
+  to this sentence too.) A **`v*` tag** is intended to deploy every other instance —
+  trigger, not calendar, the same rule as 4b and 10.
+  **One repo, one instance** (settled 2026-08-28): a fork deploys its own
+  instance from its own fork with its own credentials, and there is exactly one
+  deploy job, `primary:`. The `wife:` job that deployed a second instance from
+  *this* repo is gone; the wife's and daughter's instances are treated as
+  strangers so the exercised path is the one a self-hoster actually walks.
+  **One wrangler config, `wrangler.jsonc`, edited in place** — a
+  `wrangler.<name>.jsonc` needs `--config` on `deploy`, `db:migrate:remote`,
+  `preflight` and every workflow step, which is one rule stated five times whose
+  failure is *silent* (it reads the committed config and deploys somebody else's
+  instance). A merge conflict is the loud alternative. #140 is that silent bug
+  already shipped.
+  **The tag channel does not currently reach a fork (#141).** Measured
+  2026-08-27: *Sync fork* transfers branches not tags, a default fork copies zero
+  tags, `git push` needs `--tags`, and Actions are off by default in a fork. Any
+  one of those alone stops it. Do not describe it as working.
   **The version in Settings → App is baked in at build time**
   (`__APP_VERSION__`, from `git describe --tags --always --dirty`, falling back
   to `package.json`) and **must never become a runtime fetch**: displaying what

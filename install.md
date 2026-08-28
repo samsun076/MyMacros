@@ -264,40 +264,50 @@ a step to decide about.
 
 ### Applying one — the automatic path
 
-**`.github/workflows/deploy.yml` is in your fork and does the whole thing.** It is inert
-until you switch it on, so it costs nothing while you decide.
+**`.github/workflows/deploy.yml` is in your fork and deploys your instance from your
+fork.** One repo, one instance: your Cloudflare credentials live in your fork's own
+settings and nobody holds anybody else's token. It is inert until you switch it on.
 
-1. In your Cloudflare account: **My Profile → API Tokens → Create**, using the
-   *Edit Cloudflare Workers* template, and add **D1 → Edit**. Copy the token and the
-   Account ID.
-2. In your fork: **Settings → Secrets and variables → Actions**
+**0. Enable Actions.** GitHub disables all workflows on a new fork. Open the **Actions**
+tab and click *"I understand my workflows, go ahead and enable them"*. Nothing below runs
+until you do, **and no error tells you that** — the workflow simply never appears.
 
-   | | |
-   |---|---|
-   | secret | `CF_API_TOKEN_WIFE` |
-   | secret | `CF_ACCOUNT_ID_WIFE` |
-   | variable | `DEPLOY_WIFE` = `true` |
-   | variable | `APP_URL_WIFE` = your URL |
+**1. Make a Cloudflare API token.** My Profile → API Tokens → Create, using the
+*Edit Cloudflare Workers* template, and add **D1 → Edit**. Copy the token and the
+Account ID.
 
-3. Give your instance its own `wrangler.wife.jsonc` — `database_id`, `routes` and
-   `APP_URL` differ per instance, and separate config files mean a mistake in one cannot
-   silently deploy to another.
+**2. Add them to your fork.** Settings → Secrets and variables → Actions:
 
-Pushing a `v*` tag then runs check + test, migrates, builds, deploys, and polls
-`/api/health` until it reports `ok:true`.
+| | |
+|---|---|
+| secret | `CF_API_TOKEN_PRIMARY` |
+| secret | `CF_ACCOUNT_ID_PRIMARY` |
+| variable | `DEPLOY_PRIMARY` = `true` |
+| variable | `APP_URL_PRIMARY` = your URL |
 
-⚠️ **It does not run `npm run preflight`, and that is a known gap, not a simplification.**
-`tools/preflight-deploy.mjs` reads `wrangler.jsonc` unconditionally and takes no config
-argument, so it cannot check a `wrangler.<name>.jsonc` instance — the guard that refuses
-to replace somebody else's Worker is therefore absent from exactly the path a
-self-hoster uses. Tracked separately. Until it is fixed, check your `database_id` by eye
-before the first deploy of a new instance.
+`PRIMARY` is the name of the only job in that file. **It does not mean "the author's".**
+In your fork it is yours.
 
-⚠️ **`WIFE` is a name, not a person — rename it to whatever you like.** What matters is
-that you copy the `wife:` job in that file and **never the `primary:` job**. `primary`
-is gated on `refs/heads/` and fires on every commit to `main`; that channel belongs to
-exactly one instance and it is not yours. Every other job is gated on `refs/tags/v`.
-Setting `DEPLOY_PRIMARY` on your own fork puts you on the canary stream.
+**3. There is no step 3.** You already edited `wrangler.jsonc` in §2.2, and that is the
+config this uses. There is no second config file to create.
+
+> **Why one file rather than a `wrangler.<name>.jsonc` of your own.** A separate config
+> means every command needs `--config` — `deploy`, `db:migrate:remote`, `preflight`, and
+> each step in the workflow. That is one rule stated five times, and forgetting it on any
+> one of them reads the committed `wrangler.jsonc` and operates against **somebody else's
+> instance, silently**. Editing in place risks a merge conflict instead, which git shows
+> you and stops on. Loud beats silent. Upstream touches that file about twice a year — 6
+> changes in 249 commits, the last on the project's sixth day — and if it ever does
+> conflict, **keep your version**.
+
+Pushes to **your** `main` then run check + test, migrate, build, preflight, deploy, and
+poll `/api/health` until it reports `ok:true`.
+
+⚠️ **Updating to a new upstream release is not solved yet.** The intended channel is a
+`v*` tag, and it does not currently reach a fork: GitHub's *Sync fork* button transfers
+branches and not tags, a default fork copies no tags at all, and `git push` does not push
+tags without `--tags`. Until that is fixed, use the by-hand path below. This is tracked
+and it is a real gap, not an omission from this document.
 
 ⚠️ **If you also set up Cloudflare Workers Builds, turn it off in the same sitting.**
 Two deployers pointed at one Worker will race, and which version survives is arbitrary.
@@ -306,20 +316,40 @@ ordered pair above exists.
 
 ### Applying one — by hand
 
-If you would rather not give a token to GitHub Actions, the same five steps run from
-your laptop. This is the fallback, not the main path.
+**Until the tag channel works, this is the path, not the fallback.**
 
-1. Fetch tags and check out the newest one: `git fetch --tags && git checkout v0.2.0`
-   (substitute the newest tag; see the warning above — there are none yet).
-2. `npm install` if dependencies changed.
-3. `npm run db:migrate:remote` — **first**.
-4. `npm run deploy`.
-5. `curl https://<your-host>/api/health` → `ok:true`.
+Your clone's `origin` is your fork, and your fork does not receive upstream's new
+commits or tags on its own. So the first thing you need is a second remote pointing at
+the project you forked from. **Once, ever:**
 
-Your `wrangler.*.jsonc` edits live in your fork and upstream rarely touches that file
-(re-measured 2026-08-26: 6 changes to `wrangler.jsonc` in 249 commits, the last on
-2026-08-06, the project's sixth day), so pulling is normally conflict-free. If it ever does conflict, **keep your version** — it is the
-file that defines your deployment.
+```bash
+git remote add upstream https://github.com/samsun076/MyMacros.git
+```
+
+Then, per update:
+
+```bash
+git fetch upstream --tags          # 1. get upstream's commits AND its tags
+git merge upstream/main            # 2. or `git checkout <newest v* tag>` for a release
+npm install                        # 3. if dependencies changed
+npm run db:migrate:remote          # 4. FIRST — before the deploy
+npm run deploy                     # 5. preflight, build, deploy
+curl https://<your-host>/api/health   # 6. want ok:true
+```
+
+**Step 1 is the one that is easy to get wrong.** `git fetch --tags` with no remote
+named fetches from `origin` — your fork — which has none of upstream's new tags. This
+document said exactly that until 2026-08-28 and the instruction could not work for the
+reader it was written for.
+
+Step 4 is unconditional on purpose: a `--remote` migrate with nothing pending is a no-op
+that prints an empty table, so there is never a question to answer about whether this
+release needs one.
+
+Your `wrangler.jsonc` edits from §2.2 live in your fork, and upstream rarely touches that
+file — re-measured 2026-08-26: **6 changes in 249 commits**, the last on the project's
+sixth day. So merging is normally conflict-free. If it ever does conflict, **keep your
+version**; it is the file that defines your deployment.
 
 ---
 
