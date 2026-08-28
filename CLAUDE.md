@@ -935,13 +935,16 @@ result about the *inputs* and says nothing about this register.
   deploy, poll `/api/health` until `ok:true`. Migration is unconditional because
   a `--remote` apply with nothing pending is a no-op, and a step nobody has to
   decide about cannot be decided wrong.
-  **Only `primary:` runs the preflight, and that is a gap rather than a
-  simplification.** `tools/preflight-deploy.mjs` calls `readWranglerConfig()`
-  with no argument and parses only `--force`, so it always reads
-  `wrangler.jsonc` and structurally cannot check a `wrangler.<name>.jsonc`
-  instance — #127's "refuse to replace another instance" guard is therefore
-  absent from exactly the path a self-hoster uses. Don't paper over it in the
-  docs; it needs a `--config` flag and a step in every job.
+  **The deploy job runs the preflight, and #140's gap is closed** — not by adding
+  a `--config` flag, but by there being one config to read. `preflight-deploy.mjs`
+  reads `wrangler.jsonc`, which under one-repo-one-instance is the only config
+  any fork has. Measured 2026-08-28 across all three paths: an update to the same
+  database continues, a Worker name absent from the account continues (the
+  ordinary first deploy), and a name collision with a different `database_id`
+  **refuses with exit 1 and stops `npm run deploy`**. `tools/deploy-guard.test.mjs`
+  pins the two structural halves — that the workflow still calls it, and that
+  `npm run deploy` still chains it — because nothing in `npm test` executes the
+  script itself and deleting either would be a one-line silent regression.
 - **Two channels, and the split is load-bearing** (#137). `main` deploys
   **Dave's instance only** — he is the canary, and the defects no automated check
   can see are the ones he finds by opening the app. (Not *every* defect: rule 4's
