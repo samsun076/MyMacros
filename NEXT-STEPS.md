@@ -3545,3 +3545,216 @@ refuses to start if it is taken, deliberately), npm run db:migrate,
 node tools/seed-demo.mjs --weeks 12, and mint a session cookie from the DEV-only
 email/password route (the Origin header is required and must match APP_URL).
 ```
+
+## Session AA — the OSS path was documented but had never been walked — 2026-08-26 → 08-29
+
+Ten commits. Seven issues closed, four filed. **No feature work**: the session
+started as an audit and turned into finding that the install procedure could not
+succeed for anybody but this machine.
+
+## What #139 found, and the pattern under it
+
+The audit asked which decisions were Dave's to make and whether he got to make
+them. Answer: **he had missed four, not one.** `npm run dev --strictPort`
+(his own daily command, never mentioned in chat), #127's `npm run init` (a
+Done-when item silently dropped), #127's guard inverted from fail-closed to
+fail-open, and #129's "do not restate the migration list by hand" violated.
+
+**The pattern is the finding.** Decisions that ADDED something led replies.
+Decisions that declined, inverted or dropped something went into commit bodies
+and progress lines. All four he had not seen are the second kind. And the three
+issues that reversed a written requirement (#130, #127, #129) closed with **zero
+comments between them**, while the three closed cleanly all got one.
+
+Three rules came out of it, and rule 2 is the one to keep if only one survives:
+
+1. A reversal leads the reply — not a table row, not a bullet, not a commit body.
+2. **An issue whose outcome differs from its body gets a closing comment saying
+   so, before it closes.** It would have caught all three.
+3. Nothing enters a `DECIDED, DO NOT RE-LITIGATE` list that was not put to Dave
+   as a question. The list is written here and pasted back by him, so an
+   assistant decision returns carrying his authority. One confirmed instance:
+   "no tagged releases".
+
+**The revert offer was a bad question.** Dave was asked whether to revert buried
+decisions and said yes; once he saw the list he rejected the frame —
+*"reverting doesnt make sense unless it was a bad engineering decision"*. Three
+of the six would have made the app worse. "Was this call his" and "was this call
+right" are different questions and the done-when conflated them.
+
+## The install procedure could not succeed. Measured.
+
+**#144.** `tools/wrangler-config.test.mjs` pinned `fuel.debrief.run` and
+`mymacros` as literals. Editing those is **step 2.2 of `install.md`**. And
+`npm run deploy` = preflight → build → **test** → so `npm run deploy`, step 2.5,
+could not complete for anybody who did step 2.2. The failure named a hostname, so
+nothing suggested the tests and the guide disagreed. The same test gates the
+workflow, so a fork's CI was red before it deployed anything.
+
+It survived because the repo has **0 forks**. The procedure had been read and
+reviewed and never once executed by a stranger.
+
+**And the by-hand update path was broken the same way.** `git fetch --tags` with
+no remote named fetches from `origin` — the fork — which has none of upstream's
+tags. Proven with a real fork simulation: old instruction gives
+`pathspec 'v1.0' did not match`, new instruction works. `install.md` never
+configured an `upstream` remote while five steps assumed one.
+
+## DECIDED — wife and daughter are strangers (2026-08-27)
+
+> "I operate for her bc she is not technical...but this makes me the 'other' user
+> to test whats broken or needs changing... going forward, consider wife and
+> daughter strangers. i will ensure that they have their own isolated accounts"
+
+Separate Cloudflare accounts, separate GitHub accounts, their own forks. The
+model is self-hoster **on purpose**, so the OSS path is what gets exercised
+rather than a family shortcut that hides its defects.
+
+Consequences, all landed in `ef2e8b1`: the `wife:` job is deleted (it deployed
+another instance from this repo, pointed at a `wrangler.wife.jsonc` that never
+existed); **one repo, one instance**; **one `wrangler.jsonc`, edited in place**.
+
+That last one is Dave's reasoning and it is about which failure is louder. A
+`--config` flag threaded through `deploy`, `db:migrate:remote`, `preflight` and
+every workflow step is one rule stated five times, and forgetting it on any one
+reads the committed config and deploys against somebody else's instance
+**silently**. A merge conflict is loud. #140 was that silent bug already shipped.
+
+## #141 — the tag channel cannot reach a fork, and is UNRESOLVED
+
+Three independent breaks, any one fatal: *Sync fork* transfers branches and not
+tags; a default-option fork carries **zero** tags; `git push` needs `--tags`; and
+Actions are off by default in a fork.
+
+Measured rather than argued — 1,000 forks of `cli/cli` sampled, the 13 whose
+branch was synced past a recent tag examined, **12 of 13 lack the tag**, with the
+cut-off landing exactly on fork-creation date twice.
+
+**Dave is not convinced and intends to keep pressing.** He wants a user to *see*
+in the app that a release exists. Two things were established:
+
+- **The app never phones home**, and the constraint that said it never could was
+  over-generalised. *"Don't phone home to the author's infrastructure"* is about
+  Dave's servers; asking **GitHub's** public releases API is not that.
+- *"A Worker cannot deploy a Worker"* is true and was used wrongly. It does not
+  need to deploy — it needs to ask GitHub to.
+
+## Two layers, and conflating them is why this took four rounds
+
+**Layer 2** (new build → phone) is solved and automatic since #54. **Layer 1**
+(new code → Worker) is the whole problem. Any sentence about "updates" that does
+not say which layer it means will be wrong about one of them.
+
+## Also this session
+
+- **#128** — a minor cannot be handed a deficit. The gate is in `computeBudget`,
+  which is the single source all four target producers go through. **Three of
+  four Schofield coefficients were written from memory and were wrong** — caught
+  only because Dave asked *"you can read the source no?"*. Checked against two
+  sources that do not share an origin. A constant encoding an external fact owes
+  its source in the commit.
+- **#134** — `docs/what-the-numbers-mean.md`, plus `tools/doc-shots.mjs`: 35
+  generated screenshots, clock pinned in-page so a re-run does not rewrite every
+  PNG. One exemplar article, `docs/features/daily-budget.md`.
+- **#142** — `seed-demo` wrote to the oldest user row and printed success having
+  written nothing. Worked here by luck.
+- **#140** — closed by measuring rather than building. The gap had already been
+  removed by the one-config decision; `tools/deploy-guard.test.mjs` now pins it
+  shut structurally.
+
+**Three of the session's own checks were wrong before they were right**: the
+screenshot tool's seed assertion (wrong URL shape, then wrong field), a test
+asserting Schofield reads higher than Mifflin (false at some body sizes), and a
+mutation that survived because the rule had been written twice. And `ef71fc4`
+broke the production build — `docs.test.mjs` imported `doc-shots.mjs`, whose
+`main()` ran on import, which passed locally only because a dev server was up.
+
+## Where it stands
+
+**1,320 tests. Production healthy on `0010`.** Deploy is still Workers Builds;
+`.github/workflows/deploy.yml` exists and is inert. **0 tags, 0 releases,
+0 forks** — the entire release model is unexercised.
+
+## Next
+
+**The install dry run, #143.** It is unblocked: #144 and the one-model fix were
+the blockers, #140 was the last known gap. Separate accounts, her machine,
+`install.md` as the only input, and **the agent must stall rather than work
+around** — the stall is the finding. It also settles three things nothing else
+can: whether a fork's own tag push fires its own workflow, whether a fork's own
+secrets reach its own runs, and whether the "Run workflow" dropdown lists tags.
+
+**Parked on Dave, and neither should be inferred:**
+
+1. **Is `docs/features/daily-budget.md` the right shape?** Eleven more articles
+   wait on that yes. Three audiences, one body, with an *Under the hood* footer
+   carrying files, constraints and what has no coverage.
+2. **Do the 35 screenshots belong here or in the site repo?** 6.5 MB is in public
+   history. His instinct said site repo; the split honouring both prior decisions
+   is prose here, images there. Undecided.
+
+**Then #141**, with the dry run's evidence rather than more argument.
+
+## Starter prompt (paste verbatim)
+
+```
+Working on MyMacros (~/Projects/MyMacros). Read CLAUDE.md, then the Session AA
+section at the end of NEXT-STEPS.md — it runs to the end of the file.
+
+Run `git log --oneline -1` for the real HEAD. This prompt names no SHA on purpose.
+
+THE STATE: 1,320 tests, production healthy on migration 0010, deploy still via
+Workers Builds. The GitHub Actions workflow exists and is INERT — no repo variable
+is set. 0 tags, 0 releases, 0 forks: the entire release model is unexercised, and
+CLAUDE.md's own rule says a bound never reached has never been tested.
+
+DECIDED 2026-08-27, DO NOT RE-LITIGATE: Dave's wife and daughter are treated as
+STRANGERS — separate Cloudflare accounts, separate GitHub accounts, their own
+forks — so the OSS path is what gets exercised rather than a family shortcut that
+hides its defects. One repo, one instance. One wrangler.jsonc, edited in place,
+because a --config flag threaded through five call sites fails SILENTLY where a
+merge conflict fails loudly.
+
+THE OPEN QUESTION IS #141 and Dave is not convinced. The tag channel cannot reach
+a fork — measured three ways, any one fatal. He wants a user to SEE in the app
+that a release exists. Two things are established: the app never phones home, but
+asking GitHub's public releases API is not phoning home to Dave; and "a Worker
+cannot deploy a Worker" is true and irrelevant, because it only has to ask GitHub
+to. Do not re-argue from scratch — read #141, it holds the measurements.
+
+AND DO NOT CONFLATE THE TWO LAYERS. New build reaching the phone is solved and
+automatic (#54). New code reaching the Worker is the whole problem. Four rounds
+were lost to sentences that were true of one and false of the other.
+
+NEXT IS THE DRY RUN (#143), and it is Dave's to run, not yours. Install only, not
+updates. If he has run it, its findings are the work.
+
+BLOCKED ON DAVE, and neither should be inferred: (1) is
+docs/features/daily-budget.md the right shape — eleven more articles wait on it;
+(2) do the 35 generated screenshots live here or in the site repo — 6.5 MB is in
+public history and his instinct said site repo.
+
+HOW HE WANTS TO WORK, learned the hard way this session: ONE THING AT A TIME. He
+said "you throw the entire enchilada at me... im a meat bag and slow". Batch the
+items that need only a yes; walk through only the real decisions. Do not invent
+decisions — if the answer changes only your work, pick it and say so in one line.
+Never hand him a diff. Lead with the answer; reasoning goes in the commit and the
+issue.
+
+AND WHEN YOU REVERSE SOMETHING ALREADY WRITTEN DOWN, that is the first sentence
+of the reply, not a table row. #139 is the audit of what happens otherwise.
+
+Ask of every check you write: COULD THIS EVER HAVE FAILED? Three of last
+session's could not, and one mutation survived because the rule had been written
+twice. Verify a red before believing it — three assertions were wrong about the
+code rather than the code being wrong. And a constant encoding an external fact
+(an equation, a threshold from a standard) owes its SOURCE in the commit, checked
+against two that do not share an origin: three of four Schofield coefficients
+shipped wrong from memory with a "needs verification" label attached, which read
+as diligence and functioned as an excuse.
+
+Environment, if starting cold: kill any orphan dev server on 5173, npm run
+db:migrate, then `node tools/doc-shots.mjs --seed` (it mints the session BEFORE
+seeding — seed-demo writes to the oldest user row and is a silent no-op with
+none).
+```
