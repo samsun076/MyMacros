@@ -239,12 +239,34 @@ export function useKeyboardLift(
  *  list-of-conditions #112 is about. `keyboardHeight` already returns 0 when no
  *  keyboard is up, so the sheet is padded by zero at rest and the hook needs no
  *  opinion about focus at all. */
+export function sheetInset(keyboard: number, offsetTop: number): number {
+  // **iOS has usually already done part of this** and the padding must not
+  // repeat it. `offsetTop` is how far the platform scrolled the visual viewport
+  // up on its own to reveal the focused field; adding the full keyboard height
+  // on top of that shifts the sheet twice, and its head — the title, and the
+  // grab band, which is the only exit that works mid-scroll — leaves the top of
+  // the screen.
+  //
+  // `deckLift` subtracts the same term for the same reason and says so. This
+  // function was written without it and shipped, because the fabricated
+  // keyboard in `cdp.mjs` reports `offsetTop: 0` unconditionally — the one term
+  // nothing in this repo can exercise, named in that file's own docstring as
+  // exactly that. Every automated check passed. It took a thumb, and every
+  // sheet's header was off the top of the phone.
+  //
+  // Subtracting makes the TOTAL shift the invariant, which is also why it
+  // cannot oscillate: as iOS gives its scroll back, the padding grows by the
+  // same amount and nothing on screen moves.
+  return Math.max(0, keyboard - offsetTop);
+}
+
 export function useKeyboardInset(): number {
   const [inset, setInset] = useState(0);
 
   useEffect(() => {
     const view = window.visualViewport;
-    const measure = () => setInset(keyboardHeight(view, window.innerHeight));
+    const measure = () =>
+      setInset(sheetInset(keyboardHeight(view, window.innerHeight), view?.offsetTop ?? 0));
     measure();
     view?.addEventListener("resize", measure);
     view?.addEventListener("scroll", measure);

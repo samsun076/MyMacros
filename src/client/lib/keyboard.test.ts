@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { KEYBOARD_GAP_PX, deckLift, keyboardHeight, keyboardInsetStyle } from "./keyboard";
+import { KEYBOARD_GAP_PX, deckLift, keyboardHeight, keyboardInsetStyle, sheetInset } from "./keyboard";
 
 /** #120. The camera deck rises so the pre-capture note clears the keyboard.
  *
@@ -160,4 +160,27 @@ test("keyboardInsetStyle sets nothing for a negative measurement", () => {
   // anyway: a negative padding is invalid CSS, dropped silently, which is the
   // failure mode that teaches you nothing.
   expect(keyboardInsetStyle(-40)).toEqual({});
+});
+
+/** #121's device failure: the padding must not repeat iOS's own scroll. */
+test("sheetInset is the keyboard when iOS has scrolled nothing", () => {
+  expect(sheetInset(336, 0)).toBe(336);
+});
+
+test("sheetInset subtracts what iOS already did", () => {
+  // The shipped bug: 336 + a platform scroll of 120 lifted the sheet 456px and
+  // took its header off the top of the screen. The total shift is the
+  // invariant, so the padding is only ever the remainder.
+  expect(sheetInset(336, 120)).toBe(216);
+});
+
+test("sheetInset never goes negative", () => {
+  // iOS scrolling further than the keyboard covers is not a reason to pull the
+  // sheet DOWN behind it. Same clamp, same reason, as deckLift's.
+  expect(sheetInset(336, 400)).toBe(0);
+});
+
+test("sheetInset is zero with no keyboard, whatever the scroll", () => {
+  expect(sheetInset(0, 0)).toBe(0);
+  expect(sheetInset(0, 80)).toBe(0);
 });
