@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { KEYBOARD_GAP_PX, deckLift, keyboardHeight } from "./keyboard";
+import { KEYBOARD_GAP_PX, deckLift, keyboardHeight, keyboardInsetStyle } from "./keyboard";
 
 /** #120. The camera deck rises so the pre-capture note clears the keyboard.
  *
@@ -138,4 +138,26 @@ test("a wider gap lifts the deck further by exactly that much", () => {
   expect(deckLift({ keyboard: KEYBOARD, below: BELOW, gap: KEYBOARD_GAP_PX + 20 })).toBe(
     deckLift({ keyboard: KEYBOARD, below: BELOW }) + 20,
   );
+});
+
+/** #121 — the sheet inset. */
+test("keyboardInsetStyle sets --kb to the measured height", () => {
+  expect(keyboardInsetStyle(336)).toEqual({ "--kb": "336px" });
+});
+
+/** Identity at rest is ABSENT, not `0px`, and it is the same contract
+ *  `dragStyle` states for `transform`: the two render identically and are not
+ *  the same thing. `calc(86dvh - var(--kb, 0px))` already falls back, so an
+ *  explicit `0px` would add a property to every sheet at rest for no effect —
+ *  and would mask a misspelled var, hiding the bug the fallback exists to make
+ *  visible. */
+test("keyboardInsetStyle sets nothing when no keyboard is up", () => {
+  expect(keyboardInsetStyle(0)).toEqual({});
+});
+
+test("keyboardInsetStyle sets nothing for a negative measurement", () => {
+  // `keyboardHeight` clamps at zero so this cannot arrive today. Asserted
+  // anyway: a negative padding is invalid CSS, dropped silently, which is the
+  // failure mode that teaches you nothing.
+  expect(keyboardInsetStyle(-40)).toEqual({});
 });

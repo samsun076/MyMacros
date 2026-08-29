@@ -1954,12 +1954,25 @@ section {
    two-class selector to the one-class one loses no cascade — and this rule goes
    on winning the property it exists for. */
 .sheet.picks-sheet {
-  max-height: 80dvh;
+  max-height: calc(80dvh - var(--kb, 0px));
 }
 
 /* ── confirm sheet ── */
 
 .sheet-wrap {
+  /* #121. `--kb` is the keyboard's height, set inline from `useKeyboardInset`
+     and absent when no keyboard is up. Padding the bottom of a fixed,
+     `inset: 0`, `flex-end` wrapper moves the sheet up by exactly that much.
+     `inset: 0` is the LAYOUT viewport, which iOS deliberately does not shrink
+     for the keyboard — so without this the sheet's bottom edge, its last macro
+     fields and its save button all sit behind it. Measured at 375x812 with a
+     336px inset: every field on confirm, portion, basket and the edit sheet
+     rendered below the keyboard line.
+
+     Padding rather than a transform because `transform` on `.sheet` belongs to
+     `sheet-drag.ts`, and because lifting the sheet whole would push the grab
+     band — the only exit that works mid-scroll — off the top. */
+  padding-bottom: var(--kb, 0px);
   position: fixed;
   inset: 0;
   z-index: 30;
@@ -1991,7 +2004,10 @@ section {
      three times. */
   padding: 0 20px calc(18px + env(safe-area-inset-bottom, 0px));
   box-shadow: var(--shadow-sheet);
-  max-height: 86dvh;
+  /* Less the keyboard (#121): the wrapper's padding moves the sheet up, and
+     without subtracting the same value here a tall sheet grows off the TOP
+     instead of being clipped at the bottom. One `--kb`, two consumers. */
+  max-height: calc(86dvh - var(--kb, 0px));
   overflow-y: auto;
   /* The handle's hit band (#102, moved here by #118). **Component-local rather
      than a `:root` token on purpose**: this is the size of one control, where

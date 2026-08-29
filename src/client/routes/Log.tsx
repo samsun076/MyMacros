@@ -49,6 +49,7 @@ import {
   setPortionQty,
 } from "../lib/portion";
 import { type SaveFailure, describeSaveFailure, stagedSaveFailure } from "../lib/save-failure";
+import { keyboardInsetStyle, useKeyboardInset } from "../lib/keyboard";
 import { useDragToDismiss } from "../lib/sheet-drag";
 
 /** The log flow: capture → editable confirm sheet → saved.
@@ -529,6 +530,10 @@ export function Log() {
    *  the panel wears a grab handle, the handle promises a drag, and until this
    *  it promised one nobody could make. */
   const closePicks = useCallback(() => setPicksOpen(false), []);
+  // #121. One reading for every sheet this screen owns — the picks panel and
+  // the confirm sheet are the same surface with different contents, and two
+  // measurements of one keyboard is #86's defect.
+  const kbInset = useKeyboardInset();
   const picksDrag = useDragToDismiss(closePicks);
 
   /** The confirm sheet's, which #102 deferred and #118 decided (see the
@@ -1314,7 +1319,7 @@ export function Log() {
           the camera rather than on a panel you had forgotten was open. The
           stream keeps running behind it; nothing here touches the camera. */}
       {picksOpen && !open && picks.length > 0 && (
-        <div className="sheet-wrap" {...picksDrag.backdrop}>
+        <div className="sheet-wrap" style={keyboardInsetStyle(kbInset)} {...picksDrag.backdrop}>
           <div
             className="sheet picks-sheet"
             role="dialog"
@@ -1349,6 +1354,7 @@ export function Log() {
       {open && first && (
         <div
           className={still ? "sheet-wrap over-photo" : "sheet-wrap"}
+          style={keyboardInsetStyle(kbInset)}
           {...confirmDrag.backdrop}
         >
           <div

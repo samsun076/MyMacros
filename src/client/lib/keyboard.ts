@@ -1,4 +1,4 @@
-import { useEffect, useState, type RefObject } from "react";
+import { type CSSProperties, type RefObject, useEffect, useState } from "react";
 
 /** The software keyboard, and what a screen owes the field under it (#120).
  *
@@ -193,4 +193,80 @@ export function useKeyboardLift(
   // Belt to the effect's own reset: a render between `active` going false and
   // the effect running must not draw a lifted deck with no field open.
   return active ? lift : 0;
+}
+
+/** How much room a bottom-anchored SHEET has to give back to the keyboard
+ *  (#121).
+ *
+ *  ## Why this is not `useKeyboardLift`
+ *
+ *  #120's answer to the camera deck was to raise the whole surface with a
+ *  `transform`. Three things stop that working here, and the third is the one
+ *  that decides it:
+ *
+ *    1. **`transform` on `.sheet` is taken.** `sheet-drag.ts`'s `dragStyle`
+ *       writes it, and its contract is that identity at rest is `undefined`
+ *       rather than `translate3d(0,0,0)` — composing a second transform onto
+ *       the same property would either break the spring-back easing or the
+ *       cancelled-gesture snap.
+ *    2. **A sheet has a head.** Lifting it whole pushes the grab band and the
+ *       title off the top of the screen, and the band is the exit that works
+ *       mid-scroll.
+ *    3. **`deckLift`'s `below` is feedback-free only because the deck does not
+ *       scroll.** It is the gap between two rects on one transformed surface,
+ *       which is invariant under that transform. `.sheet` *is* the scroller, so
+ *       an anchor's rect moves with `scrollTop`, and the measurement would feed
+ *       its own output back in.
+ *
+ *  ## What it does instead
+ *
+ *  It returns the keyboard's height so the wrapper can pad itself by it. The
+ *  wrapper is `position: fixed; inset: 0` with `justify-content: flex-end`, so
+ *  padding its bottom edge moves the sheet up by exactly that much — no
+ *  transform, no anchor, no measurement of the sheet's own contents, and
+ *  nothing for a scroll position to perturb. The sheet's `max-height` subtracts
+ *  the same value so it cannot grow off the top instead.
+ *
+ *  **It reuses `keyboardHeight` rather than restating the measurement** — the
+ *  layout viewport less the visual one, with the pinch-zoom guard — because two
+ *  answers to "how tall is the keyboard" is #86's defect with a second name.
+ *
+ *  ## Always on, unlike the deck's `active`
+ *
+ *  `useKeyboardLift` takes a derived boolean because the camera deck must only
+ *  move while the note is open. A sheet has many fields and no single condition
+ *  that means "one of them is focused", and inventing one would be exactly the
+ *  list-of-conditions #112 is about. `keyboardHeight` already returns 0 when no
+ *  keyboard is up, so the sheet is padded by zero at rest and the hook needs no
+ *  opinion about focus at all. */
+export function useKeyboardInset(): number {
+  const [inset, setInset] = useState(0);
+
+  useEffect(() => {
+    const view = window.visualViewport;
+    const measure = () => setInset(keyboardHeight(view, window.innerHeight));
+    measure();
+    view?.addEventListener("resize", measure);
+    view?.addEventListener("scroll", measure);
+    window.addEventListener("resize", measure);
+    return () => {
+      view?.removeEventListener("resize", measure);
+      view?.removeEventListener("scroll", measure);
+      window.removeEventListener("resize", measure);
+    };
+  }, []);
+
+  return inset;
+}
+
+/** The wrapper's inline style, so the CSS half is one custom property and the
+ *  two consumers cannot spell it differently. `undefined` at zero rather than
+ *  `"0px"`, matching `dragStyle`'s reasoning: an absent property and one set to
+ *  its identity render the same and are not the same thing. */
+export function keyboardInsetStyle(inset: number): CSSProperties {
+  // The cast is React's typing, not a loophole: `CSSProperties` enumerates
+  // known properties and has no index signature for custom ones, so a `--var`
+  // is unrepresentable without it. The value is still a template of a measured
+  // number, so nothing arbitrary reaches the DOM.
+  return inset > 0 ? ({ "--kb": `${inset}px` } as CSSProperties) : {};
 }

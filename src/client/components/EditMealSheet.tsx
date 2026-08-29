@@ -4,6 +4,7 @@ import { api } from "../lib/api";
 import { MAX_MEAL_ITEMS } from "../lib/basket";
 import { fmtInt } from "../lib/format";
 import { blankItem, editableFromLog, setPortionQty, type EditableItem } from "../lib/portion";
+import { keyboardInsetStyle, useKeyboardInset } from "../lib/keyboard";
 import { useDragToDismiss } from "../lib/sheet-drag";
 import { ItemRow } from "./ItemRow";
 import { SheetHandle } from "./SheetHandle";
@@ -109,6 +110,7 @@ export function EditMealSheet({
    *  The backdrop's own tap comes out of this same call (`drag.backdrop`), so
    *  the sentence above is a property of the code rather than a claim about
    *  it — there is no second handler left to drift. */
+  const kbInset = useKeyboardInset();
   const drag = useDragToDismiss(onClose);
 
   /* Which row's `source` a note is drawn from. Per row and not per sheet: a
@@ -185,7 +187,7 @@ export function EditMealSheet({
   }
 
   return (
-    <div className="sheet-wrap" {...drag.backdrop}>
+    <div className="sheet-wrap" style={keyboardInsetStyle(kbInset)} {...drag.backdrop}>
       <div
         className="sheet"
         role="dialog"
