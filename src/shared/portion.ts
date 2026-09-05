@@ -28,7 +28,7 @@
  *  In `src/shared/` for exactly the reason that directory exists — a quantity
  *  both the client preview and the Worker must agree on. It is the first
  *  portion rule to earn a place there; `FOOD_LIMITS` and `MEASURED_PORTION_UNITS`
- *  stay carried-and-restated (see `routes/analyze.ts`) because those are bounds
+ *  stay carried-and-restated (see `src/worker/portion-limits.ts`) because those are bounds
  *  each side enforces independently, where this is an equality each side has to
  *  reproduce.
  */

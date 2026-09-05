@@ -510,7 +510,7 @@ describe("POST /api/food-logs — the portion's bounds (#104)", () => {
 
      Every case below is counted in SLICES, so 100 is the ceiling in play
      (#109 made it unit-aware — a weight gets 2,000). The unit-aware half, and
-     the agreement of all three copies of the rule, live in
+     the agreement of the Worker's copy with the client's, live in
      `portion-limits.route.test.ts`; what stays here is this route's own
      refuse-don't-clamp behaviour, which #109 did not change. */
   it("refuses a qty past the ceiling normalize() enforces", async () => {
