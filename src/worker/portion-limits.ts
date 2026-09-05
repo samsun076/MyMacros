@@ -19,8 +19,8 @@
  *  missed. One module under `src/worker/` collapses it with no rule bent and no
  *  bundle cost. `routes/portion-limits.route.test.ts` fails if this and the
  *  client copy disagree. */
-export const MAX_QTY_COUNTED = 100;
-export const MAX_QTY_MEASURED = 2000;
+const MAX_QTY_COUNTED = 100;
+const MAX_QTY_MEASURED = 2000;
 
 /** Units a portion is MEASURED in, as opposed to counted (#109).
  *
