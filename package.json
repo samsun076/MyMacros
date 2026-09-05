@@ -13,7 +13,7 @@
     "cf-typegen": "wrangler types ./src/worker/worker-configuration.d.ts",
     "db:migrate": "wrangler d1 migrations apply mymacros-db --local",
     "db:migrate:remote": "wrangler d1 migrations apply mymacros-db --remote",
-    "db:studio": "sqlite3 \"$(find .wrangler/state/v3/d1 -name '*.sqlite' | head -1)\"",
+    "db:studio": "sqlite3 \"$(node tools/local-d1-path.mjs)\"",
     "auth:generate": "npx @better-auth/cli generate --config src/worker/auth.ts",
     "icons": "node tools/make-icons.mjs",
     "fonts": "node tools/fetch-fonts.mjs",
