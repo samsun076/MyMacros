@@ -150,8 +150,8 @@ describe("FOOD_LIMITS", () => {
  *  row and nothing else.
  *
  *  Which units are measured, and that the Worker agrees about them, is pinned
- *  in `src/worker/routes/portion-limits.route.test.ts` — the only place all
- *  three copies of the rule can be reached at once. */
+ *  in `src/worker/routes/portion-limits.route.test.ts` — the only place both
+ *  copies of the rule can be reached at once. */
 describe("portionQtyRule (#109)", () => {
   it("lets an honest 200 g through — the reported bug, in the field", () => {
     expect(parseNumeric("200", portionQtyRule("g"))).toEqual({ kind: "value", value: 200, clamped: null });

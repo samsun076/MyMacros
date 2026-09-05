@@ -174,9 +174,9 @@ export const FOOD_LIMITS = {
    *  also load-bearing rather than tidy, because the rescale divides by the
    *  as-read qty and a committed 0 would be a divide-by-zero.
    *
-   *  `normalize()` in `src/worker/routes/analyze.ts` and `portionQty()` in
-   *  `routes/food-logs.ts` state the same pair of ceilings a second and third
-   *  time for the wire. Deliberate, explained there, and pinned by
+   *  `src/worker/portion-limits.ts` states the same pair of ceilings a second
+   *  time for the wire, for both routes that read one (#111). Deliberate,
+   *  explained there, and pinned by
    *  `src/worker/routes/portion-limits.route.test.ts`. */
   portion_qty: { min: 0.1, max: 100, decimals: 1 },
   /** The same field when the unit is MEASURED rather than counted (#109) —
@@ -215,8 +215,8 @@ export const FOOD_LIMITS = {
  *
  *  **To add a unit, ask one question: does its number come off a scale or a
  *  pack, or does it count things?** Nothing else about the label matters.
- *  Restated verbatim in `src/worker/routes/analyze.ts` and
- *  `routes/food-logs.ts`; the three lists are pinned against each other by
+ *  Restated verbatim in `src/worker/portion-limits.ts`; the two lists are
+ *  pinned against each other by
  *  `src/worker/routes/portion-limits.route.test.ts`. */
 export const MEASURED_PORTION_UNITS = [
   "g",

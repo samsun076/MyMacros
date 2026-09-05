@@ -12,6 +12,7 @@ import { sameMacros, scaleMacros } from "../../shared/portion";
 import { insertChunks } from "../db";
 import { type BoundedField, itemRefusal } from "../item-refusal";
 import { ownedPhotoKey } from "../photos";
+import { maxPortionQty } from "../portion-limits";
 import type { AppEnv } from "../types";
 import { isDay, isInstant, isNum, oneOf } from "../validate";
 
@@ -172,17 +173,12 @@ const states = (v: unknown) => v !== undefined && v !== null;
  *  same bounds on both, so a stored pair can be compared without one of them
  *  having been quantised differently from the other.
  *
- *  **`MAX_QTY_COUNTED`, `MAX_QTY_MEASURED`, `MEASURED_PORTION_UNITS` and
- *  `MAX_UNIT` restate `normalize()`'s bounds in `routes/analyze.ts`**, which
- *  themselves restate `FOOD_LIMITS.portion_qty`, `FOOD_LIMITS.portion_qty_measured`
- *  and `MEASURED_PORTION_UNITS` in `src/client/lib/numeric.ts`. Carried, not
- *  derived — the same deliberate case #86 records for the pair above them, and
- *  for the same reason analyze.ts spells out: FOOD_LIMITS is a client module
- *  the Worker must not import, and this file's own 10000/1000 already restate
- *  the kcal and macro ceilings from there. Three statements of one rule.
- *  #109 is what that costs when the carried value turns out to be wrong — say
- *  so if any of it moves, and read `portion-limits.route.test.ts`, which fails
- *  if the three copies disagree.
+ *  **The ceilings and the unit list come from `src/worker/portion-limits.ts`**
+ *  (#111), shared with `normalize()` in `routes/analyze.ts` — one statement for
+ *  the Worker, carried from `FOOD_LIMITS` in `src/client/lib/numeric.ts` on
+ *  purpose, for the reason that file spells out. `MAX_UNIT` restates
+ *  `normalize()`'s 24 and stays here: it is this route's label rule, not the
+ *  ceiling's. `portion-limits.route.test.ts` fails if the two copies disagree.
  *
  *  **This route already did #109's other half and needed no change for it:**
  *  `portionQty` returns null on out of range and the route 400s
@@ -194,79 +190,7 @@ const states = (v: unknown) => v !== undefined && v !== null;
  *  refused when out of range (`energy`, `grams`, and the 400 on `ai_kcal:
  *  99_000`), and every free-text label the reader chose is trimmed to fit
  *  (`name` at 120). `unit` is a label. */
-const MAX_QTY_COUNTED = 100;
-const MAX_QTY_MEASURED = 2000;
 const MAX_UNIT = 24;
-
-/** Units a portion is MEASURED in, as opposed to counted (#109).
- *
- *  **Reading `unit` to pick a bound is not converting between units.** #58 is
- *  emphatic that `unit` is *a label, never a conversion*, and this is the
- *  first thing in the app that reads it for anything. Nothing here turns oz
- *  into g or ml into l; no qty is ever rescaled by a factor derived from a
- *  label. The only thing the label decides is which typo-catcher applies to
- *  the number sitting next to it.
- *
- *  **The line is "read off a scale or a pack" vs "counted".** A measured unit
- *  carries a number somebody read from a food scale or a package label, so
- *  honest input runs into the hundreds and thousands — 200 g of chicken is not
- *  a slipped thumb, it is Tuesday. A counted unit counts household-sized
- *  things, so honest input stays in single or low double digits. Note that
- *  `cups`, `tbsp` and `tsp` are standard volumes and still belong on the
- *  counted side: you count scoops, and 2,000 cups is a typo nothing else in
- *  the app would catch.
- *
- *  **Volume is in, and that was the judgement call.** #109 named only the
- *  weights, `g` and `oz`. But "250 ml of milk" is the same sentence as "200 g
- *  of chicken" with a different label on it, and #109's whole finding is that
- *  the *enumeration* was short while the reasoning was sound. Shipping another
- *  short list would be shipping the same bug. `kg`, `lb` and `l` are here for
- *  completeness rather than need — honest input in those never approaches
- *  either ceiling, so their entry changes no outcome — but they are what a
- *  pack prints, and a list assembled by asking "which ones do we actually
- *  need?" is precisely how the first one came out short.
- *
- *  **To add a unit, ask one question: does its number come off a scale or a
- *  pack, or does it count things?** Nothing else about the label matters.
- *  Restated verbatim in `src/client/lib/numeric.ts` and `routes/analyze.ts`. */
-export const MEASURED_PORTION_UNITS = [
-  "g",
-  "gram",
-  "kg",
-  "kilogram",
-  "oz",
-  "ounce",
-  "fl oz",
-  "floz",
-  "fluid ounce",
-  "lb",
-  "pound",
-  "ml",
-  "milliliter",
-  "millilitre",
-  "l",
-  "liter",
-  "litre",
-] as const;
-
-/** Lower-case, no periods, single-spaced, singular. The reader emits "grams",
- *  a hand-edit produces "Oz." and a pack says "fl. oz." — all one unit. */
-function unitKey(unit: string) {
-  return unit
-    .toLowerCase()
-    .replace(/\./g, "")
-    .replace(/\s+/g, " ")
-    .trim()
-    .replace(/s$/, "");
-}
-
-/** The ceiling for a qty counted in `unit`. Exported for its tests (#47) —
- *  it is one of the three copies `portion-limits.route.test.ts` pins together. */
-export function maxPortionQty(unit: string | null | undefined): number {
-  const measured =
-    typeof unit === "string" && (MEASURED_PORTION_UNITS as readonly string[]).includes(unitKey(unit));
-  return measured ? MAX_QTY_MEASURED : MAX_QTY_COUNTED;
-}
 
 /** **`unit` is an argument, not an afterthought** (#109): the qty and the
  *  reader's qty are bounded by the unit *on their own row*, because they count

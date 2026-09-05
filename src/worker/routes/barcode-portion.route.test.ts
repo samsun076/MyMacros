@@ -6,7 +6,8 @@ import { savedGrams } from "../../client/lib/portion";
 import type { FoodLog, FoodLogItemInput, FoodLogsCreated } from "../../shared/api";
 import { createDb } from "../db";
 import type { AppEnv } from "../types";
-import foodLogs, { maxPortionQty as saveMax } from "./food-logs";
+import { maxPortionQty as saveMax } from "../portion-limits";
+import foodLogs from "./food-logs";
 
 /** The barcode read's grams, from the sheet's memory into the column (#107).
  *

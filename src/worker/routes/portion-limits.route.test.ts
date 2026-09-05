@@ -5,24 +5,34 @@ import { MEASURED_PORTION_UNITS as CLIENT_UNITS, portionQtyRule } from "../../cl
 import type { FoodLogItemInput, FoodLogsCreated } from "../../shared/api";
 import { createDb } from "../db";
 import type { AppEnv } from "../types";
-import { MEASURED_PORTION_UNITS as ANALYZE_UNITS, maxPortionQty as analyzeMax, normalize } from "./analyze";
-import foodLogs, { MEASURED_PORTION_UNITS as SAVE_UNITS, maxPortionQty as saveMax } from "./food-logs";
+import { MEASURED_PORTION_UNITS as WORKER_UNITS, maxPortionQty as workerMax } from "../portion-limits";
+import { normalize } from "./analyze";
+import foodLogs from "./food-logs";
 
-/** The portion ceiling, stated three times, pinned against itself (#109).
+/** The portion ceiling, stated twice, pinned against itself (#109, #111).
  *
- *  **What this file is for.** The ceiling on `portion_qty` lives in three
- *  places — `FOOD_LIMITS` in `src/client/lib/numeric.ts`, `normalize()` in
- *  `routes/analyze.ts`, `portionQty()` in `routes/food-logs.ts` — each
- *  deliberately restating the one above it, because the Worker must not import
- *  a client module. #86's register calls that the acceptable case. #109 is the
- *  bill: the number was wrong, and it was wrong in all three at once, so
- *  nothing looked broken. *Consistently wrong is indistinguishable from
- *  correct until somebody reads a row.* This file is what makes them
- *  distinguishable — the first defence against #109 recurring is not the new
- *  number, it is a test that fails when the three copies stop agreeing.
+ *  **What this file is for.** The ceiling on `portion_qty` lives in two
+ *  places — `FOOD_LIMITS` in `src/client/lib/numeric.ts` and
+ *  `src/worker/portion-limits.ts` — the second deliberately restating the
+ *  first, because the Worker must not import a client module. #86's register
+ *  calls that the acceptable case. #109 is the bill: the number was wrong, and
+ *  it was wrong in every copy at once, so nothing looked broken. *Consistently
+ *  wrong is indistinguishable from correct until somebody reads a row.* This
+ *  file is what makes them distinguishable — the first defence against #109
+ *  recurring is not the new number, it is a test that fails when the copies
+ *  stop agreeing.
+ *
+ *  **It used to pin three.** `normalize()` and `portionQty()` each carried
+ *  their own copy inside the Worker with no barrier between them; #111
+ *  collapsed those to one module. What this file guards now is the one split
+ *  that is structural, and the two code paths that consume it — a smaller job
+ *  and a more honest one. It must NOT quietly become a module compared against
+ *  itself: `WORKER_UNITS` and `workerMax` come from the Worker module, the
+ *  `portionQtyRule` they are held against comes from the client, and the two
+ *  `describe`s below bind each route's live code path to that same rule.
  *
  *  **It imports the client module, and that is not the barrier being broken.**
- *  The rule the three source comments state is about the production bundle:
+ *  The rule the two source comments state is about the production bundle:
  *  the Worker ships without React, without the client's `lib/`, and a route
  *  that imported `FOOD_LIMITS` would drag a client module into it. A *test*
  *  import does none of that. The alternative considered and rejected was
@@ -32,12 +42,12 @@ import foodLogs, { MEASURED_PORTION_UNITS as SAVE_UNITS, maxPortionQty as saveMa
  *  day the regex stops matching. Running both implementations over the same
  *  units cannot do either.
  *
- *  **What it cannot catch, said plainly.** It compares the three lists to each
- *  other. A unit missing from *all three* — which is exactly what #109 was, `g`
+ *  **What it cannot catch, said plainly.** It compares the two lists to each
+ *  other. A unit missing from *both* — which is exactly what #109 was, `g`
  *  absent from an enumeration that named slices, tacos, cups and wings — is
  *  invisible here and always will be. No test finds an enumeration that is
  *  short everywhere. That one is caught by using the app, and by the question
- *  the three source comments now put to anyone adding a unit.
+ *  the two source comments now put to anyone adding a unit.
  */
 
 const db = createDb(env as unknown as Env);
@@ -103,39 +113,33 @@ beforeEach(async () => {
     .run();
 });
 
-/** Every unit any of the three copies has an opinion about, plus counted
+/** Every unit either copy has an opinion about, plus counted
  *  controls that none of them list — the controls are what prove a unit
  *  *falling out* of one list is caught as loudly as one being added to it. */
 const COUNTED_CONTROLS = ["slices", "slice", "cups", "cup", "tbsp", "tsp", "tacos", "eggs", "bowl", "wings", "breast"];
 
-/** Spellings none of the three lists contains literally, so they pin the
- *  *normaliser* as well as the list — three copies of `unitKey` is three
- *  chances for one of them to stop folding plurals or periods, and the lists
- *  are all written singular and bare. */
+/** Spellings neither list contains literally, so they pin the *normaliser*
+ *  as well as the list — two copies of `unitKey` is two chances for one of
+ *  them to stop folding plurals or periods, and both lists are written
+ *  singular and bare. */
 const SPELLING_CONTROLS = ["grams", "Grams", "G", "oz.", "ML", "fl oz", "fl. oz.", "litres"];
 
 const UNITS = [
-  ...new Set<string>([...CLIENT_UNITS, ...ANALYZE_UNITS, ...SAVE_UNITS, ...COUNTED_CONTROLS, ...SPELLING_CONTROLS]),
+  ...new Set<string>([...CLIENT_UNITS, ...WORKER_UNITS, ...COUNTED_CONTROLS, ...SPELLING_CONTROLS]),
 ];
 
 /** Above the counted ceiling (100) and below the measured one (2,000), so a
  *  single probe separates the two buckets for any unit. */
 const DISCRIMINATING_QTY = 200;
 
-describe("the three statements of the portion ceiling agree (#109)", () => {
+describe("the two statements of the portion ceiling agree (#109, #111)", () => {
   it("has units to compare at all — a silent empty table would pass every test below", () => {
     expect(UNITS.length).toBeGreaterThan(20);
   });
 
   for (const unit of UNITS) {
-    it(`analyze.ts and the client field carry the same ceiling for "${unit}"`, () => {
-      expect(analyzeMax(unit)).toBe(portionQtyRule(unit).max);
-    });
-  }
-
-  for (const unit of UNITS) {
-    it(`food-logs.ts and the client field carry the same ceiling for "${unit}"`, () => {
-      expect(saveMax(unit)).toBe(portionQtyRule(unit).max);
+    it(`the Worker and the client field carry the same ceiling for "${unit}"`, () => {
+      expect(workerMax(unit)).toBe(portionQtyRule(unit).max);
     });
   }
 
@@ -144,9 +148,9 @@ describe("the three statements of the portion ceiling agree (#109)", () => {
   });
 });
 
-/** The comparisons above are between three *exported constants*. These bind
- *  each one to the code path that actually runs, so a route that stopped
- *  calling its own `maxPortionQty` could not leave them green. */
+/** The comparison above is between two *exported constants*. These bind the
+ *  Worker's to each code path that actually runs, so a route that stopped
+ *  calling `maxPortionQty` could not leave it green. */
 describe("...and each is the ceiling its own code path enforces (#109)", () => {
   for (const unit of UNITS) {
     const allowed = portionQtyRule(unit).max >= DISCRIMINATING_QTY;
